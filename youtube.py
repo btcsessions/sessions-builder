@@ -104,6 +104,7 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
             video_meta[vid] = {
                 "video_id": vid,
                 "title": snippet["title"],
+                "thumbnail_url": snippet["thumbnails"].get("medium", snippet["thumbnails"].get("default", {})).get("url", ""),
             }
             fetched += 1
 
@@ -128,10 +129,12 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
             comments = int(stats.get("commentCount", 0))
             engagement = (likes + comments) / views if views > 0 else 0
 
+            meta = video_meta.get(vid, {})
             videos.append({
                 "video_id": vid,
-                "title": video_meta.get(vid, {}).get("title", item["snippet"]["title"]),
+                "title": meta.get("title", item["snippet"]["title"]),
                 "published_at": item["snippet"]["publishedAt"],
+                "thumbnail_url": meta.get("thumbnail_url", item["snippet"]["thumbnails"].get("medium", item["snippet"]["thumbnails"].get("default", {})).get("url", "")),
                 "view_count": views,
                 "like_count": likes,
                 "comment_count": comments,

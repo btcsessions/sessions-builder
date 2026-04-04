@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
@@ -420,6 +420,48 @@ def api_fetch_analytics():
         analytics_cache = fetch_channel_analytics()
         save_analytics(analytics_cache)
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/analyze-competitor-video", methods=["POST"])
+def api_analyze_competitor_video():
+    data = request.get_json()
+    channel_id = data.get("channel_id", "")
+    video_id = data.get("video_id", "")
+
+    if not channel_id or not video_id:
+        return jsonify({"error": "channel_id and video_id are required"}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    # Find the competitor and video
+    competitor = None
+    video = None
+    for comp in competitors_cache:
+        if comp["channel_id"] == channel_id:
+            competitor = comp
+            for v in comp["videos"]:
+                if v["video_id"] == video_id:
+                    video = v
+                    break
+            break
+
+    if not competitor or not video:
+        return jsonify({"error": "Competitor or video not found."}), 404
+
+    try:
+        analysis = analyze_competitor_video(
+            video=video,
+            competitor=competitor,
+            video_data=video_cache,
+            api_key=api_key,
+            analytics_data=analytics_cache,
+        )
+        return jsonify(analysis)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

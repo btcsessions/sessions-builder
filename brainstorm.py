@@ -1,3 +1,4 @@
+import json
 import anthropic
 from trends import analyze_trends, trends_to_prompt_section
 
@@ -270,9 +271,98 @@ Here are the creator's past videos for reference links:
         messages=[{"role": "user", "content": user_msg}],
     )
 
-    import json
     text = response.content[0].text.strip()
     # Handle if Claude wraps in code fences despite instructions
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
+def analyze_competitor_video(
+    video: dict,
+    competitor: dict,
+    video_data: list[dict],
+    api_key: str,
+    analytics_data: dict = None,
+) -> dict:
+    """Analyze a competitor's video and suggest takeaways for the creator."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Compute competitor channel averages
+    comp_videos = competitor.get("videos", [])
+    comp_avg_views = sum(v["view_count"] for v in comp_videos) // len(comp_videos) if comp_videos else 0
+    comp_avg_engagement = round(sum(v["engagement_rate"] for v in comp_videos) / len(comp_videos), 2) if comp_videos else 0
+
+    # Performance classification
+    if comp_avg_views > 0:
+        ratio = video["view_count"] / comp_avg_views
+        if ratio >= 2:
+            performance = f"BREAKOUT ({ratio:.1f}x their channel average)"
+        elif ratio >= 1.2:
+            performance = f"STRONG (above average, {ratio:.1f}x)"
+        elif ratio <= 0.5:
+            performance = f"UNDERPERFORMED ({ratio:.1f}x their average)"
+        else:
+            performance = f"AVERAGE ({ratio:.1f}x)"
+    else:
+        performance = "UNKNOWN"
+
+    # Creator's own stats for comparison
+    creator_avg = sum(v["view_count"] for v in video_data) // len(video_data) if video_data else 0
+
+    # Build a condensed list of creator's top videos for context
+    creator_top = "\n".join(
+        f"  - \"{v['title'][:55]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+        for v in video_data[:10]
+    )
+
+    system = f"""You are a YouTube content strategist. A creator is studying a competitor's video to learn from it.
+
+**The Creator's Channel:**
+- Average views: {creator_avg:,}
+- Top videos:
+{creator_top}
+
+**The Competitor: {competitor['name']}** (Category: {competitor.get('category', 'Unknown')})
+- Average views: {comp_avg_views:,}
+- Average engagement: {comp_avg_engagement}%
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "performance_summary": "1-2 sentence summary of how this video performed relative to the channel",
+  "title_analysis": "Analysis of the title — what works or doesn't, CTR tactics used",
+  "topic_analysis": "Why this topic likely performed the way it did",
+  "format_tactics": ["tactic 1", "tactic 2", "tactic 3"],
+  "takeaways": ["actionable takeaway 1 for the creator", "actionable takeaway 2", "actionable takeaway 3"],
+  "video_ideas": ["specific video idea the creator could make inspired by this", "another idea"]
+}}
+
+RULES:
+- Be specific and reference actual numbers
+- For breakout/strong videos: identify what likely drove the success
+- For underperformers: identify what likely went wrong
+- Tailor takeaways to the creator's niche and channel strengths
+- Video ideas should be adapted for the creator's audience, not carbon copies"""
+
+    user_msg = f"""Analyze this competitor video:
+
+**Title:** {video['title']}
+**Views:** {video['view_count']:,}
+**Likes:** {video.get('like_count', 0):,}
+**Comments:** {video.get('comment_count', 0):,}
+**Engagement Rate:** {video.get('engagement_rate', 0)}%
+**Published:** {video.get('published_at', 'Unknown')[:10]}
+**Performance:** {performance}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
