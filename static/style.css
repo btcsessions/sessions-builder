@@ -1,20 +1,23 @@
 :root {
-    --bg: #0f0f0f;
-    --surface: #1a1a1a;
-    --surface2: #252525;
-    --border: #333;
+    --bg: #0D101C;
+    --surface: #141824;
+    --surface2: #1B2030;
+    --border: #2A3045;
     --text: #e8e8e8;
-    --text-muted: #888;
-    --accent: #ff4444;
-    --accent-hover: #ff6666;
-    --user-msg: #1a3a5c;
-    --assistant-msg: #1a2a1a;
+    --text-muted: #8899AA;
+    --accent: #F7931A;
+    --accent-hover: #FFa940;
+    --accent-blue: #7ED3F2;
+    --user-msg: #1a2538;
+    --assistant-msg: #1c2218;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: "Avenir", "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
@@ -28,10 +31,13 @@ nav {
     padding: 0.75rem 1.5rem;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
 }
 nav .nav-brand {
-    font-weight: 700;
-    font-size: 1.1rem;
+    font-family: 'Bebas Neue', sans-serif;
+    font-weight: 400;
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
     color: var(--accent);
     text-decoration: none;
 }
@@ -39,11 +45,19 @@ nav a {
     color: var(--text-muted);
     text-decoration: none;
     font-size: 0.9rem;
+    transition: color 0.15s;
 }
-nav a:hover { color: var(--text); }
+nav a:hover { color: var(--accent-blue); }
 
 main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 main:has(.workspace) { padding: 0; max-width: none; }
+
+/* Headings */
+h1, h2, h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+}
 
 /* Hero */
 .hero { text-align: center; margin: 2rem 0; }
@@ -57,14 +71,14 @@ main:has(.workspace) { padding: 0; max-width: none; }
     margin-bottom: 1rem;
 }
 .alert.error {
-    background: #3a1a1a;
-    border: 1px solid #662222;
+    background: #2a1520;
+    border: 1px solid #5a2040;
     color: #ff8888;
 }
 .alert.success {
-    background: #1a3a1a;
-    border: 1px solid #226622;
-    color: #88ff88;
+    background: #0d1f1a;
+    border: 1px solid #1a4a3a;
+    color: var(--accent-blue);
 }
 
 /* Form */
@@ -113,8 +127,8 @@ main:has(.workspace) { padding: 0; max-width: none; }
     font-weight: 600;
     text-transform: uppercase;
 }
-.badge.connected { background: #1a3a1a; color: #88ff88; }
-.badge.disconnected { background: #3a2a1a; color: #ffaa66; }
+.badge.connected { background: #0d2a25; color: var(--accent-blue); }
+.badge.disconnected { background: #2a1f10; color: var(--accent); }
 .form-actions { margin-top: 1rem; }
 .analytics-status { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
@@ -166,7 +180,13 @@ main:has(.workspace) { padding: 0; max-width: none; }
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
-.nav-update-btn { margin-left: auto; }
+.nav-update-btn {
+    margin-left: auto;
+    border-color: var(--border);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+.nav-update-btn:hover { color: var(--accent-blue); border-color: var(--accent-blue); background: transparent; }
 
 /* Dashboard grid */
 .dashboard-grid {
@@ -202,7 +222,7 @@ th {
     border-bottom: 1px solid var(--border);
 }
 th a { color: var(--text); text-decoration: none; }
-th a:hover { color: var(--accent); }
+th a:hover { color: var(--accent-blue); }
 td {
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
@@ -215,8 +235,8 @@ td {
     white-space: normal;
     word-break: break-word;
 }
-.title-cell a { color: var(--text); text-decoration: none; }
-.title-cell a:hover { color: var(--accent); }
+.title-cell a { color: var(--text); text-decoration: none; transition: color 0.15s; }
+.title-cell a:hover { color: var(--accent-blue); }
 tr:hover { background: var(--surface2); }
 
 /* Chat */
@@ -316,12 +336,12 @@ tr:hover { background: var(--surface2); }
     padding: 0.75rem 1rem;
     transition: border-color 0.15s, background 0.15s;
 }
-.radio-card:hover { border-color: #555; }
+.radio-card:hover { border-color: #445; }
 .radio-card input[type="radio"] { display: none; }
 .radio-card input[type="radio"]:checked + .radio-card-body { color: #fff; }
 .radio-card:has(input:checked) {
     border-color: var(--accent);
-    background: rgba(255, 68, 68, 0.08);
+    background: rgba(247, 147, 26, 0.1);
 }
 .radio-card-body { display: flex; flex-direction: column; gap: 0.15rem; }
 .radio-card-title { font-weight: 700; font-size: 0.95rem; }
@@ -349,10 +369,10 @@ tr:hover { background: var(--surface2); }
     background: var(--surface2);
     transition: all 0.15s;
 }
-.radio-pill:hover span { border-color: #555; color: var(--text); }
+.radio-pill:hover span { border-color: #445; color: var(--text); }
 .radio-pill input:checked + span {
     border-color: var(--accent);
-    background: rgba(255, 68, 68, 0.12);
+    background: rgba(247, 147, 26, 0.15);
     color: #fff;
 }
 
@@ -389,7 +409,7 @@ tr:hover { background: var(--surface2); }
     transition: border-color 0.2s;
 }
 .cv-category:focus { outline: none; border-color: var(--accent); }
-.cv-saved { border-color: #66ff66 !important; }
+.cv-saved { border-color: var(--accent-blue) !important; }
 .cv-error { border-color: #ff6666 !important; }
 
 /* Format performance stats */
@@ -465,8 +485,8 @@ tr:hover { background: var(--surface2); }
     padding: 1.25rem;
 }
 .plan-card h2 {
-    font-size: 1rem;
-    color: var(--accent);
+    font-size: 1.1rem;
+    color: var(--accent-blue);
     margin-bottom: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -589,8 +609,8 @@ tr:hover { background: var(--surface2); }
     border-bottom: 1px solid var(--border);
 }
 .comp-video-row:last-child { border-bottom: none; }
-.comp-video-row a { color: var(--text); text-decoration: none; }
-.comp-video-row a:hover { color: var(--accent); }
+.comp-video-row a { color: var(--text); text-decoration: none; transition: color 0.15s; }
+.comp-video-row a:hover { color: var(--accent-blue); }
 .comp-video-stats { color: var(--text-muted); white-space: nowrap; margin-left: 0.5rem; }
 
 /* Trends */
@@ -611,8 +631,8 @@ tr:hover { background: var(--surface2); }
 }
 .trend-card.full-width { grid-column: 1 / -1; }
 .trend-card h2 {
-    font-size: 1rem;
-    color: var(--accent);
+    font-size: 1.1rem;
+    color: var(--accent-blue);
     margin-bottom: 0.25rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -642,8 +662,8 @@ tr:hover { background: var(--surface2); }
     opacity: 0.7;
     min-width: 2px;
 }
-.bar-fill.bar-above { background: #44aa44; }
-.bar-fill.bar-below { background: #aa6644; }
+.bar-fill.bar-above { background: var(--accent-blue); }
+.bar-fill.bar-below { background: var(--accent); }
 .bar-value {
     position: absolute;
     right: 0.5rem;
@@ -677,8 +697,8 @@ tr:hover { background: var(--surface2); }
     font-weight: 600;
     font-size: 0.75rem;
 }
-.stat-pill.hit { background: #1a3a1a; color: #88ff88; }
-.stat-pill.gem { background: #1a2a3a; color: #88bbff; }
+.stat-pill.hit { background: rgba(247, 147, 26, 0.15); color: var(--accent); }
+.stat-pill.gem { background: rgba(126, 211, 242, 0.12); color: var(--accent-blue); }
 .monthly-table-wrapper { overflow-x: auto; }
 .monthly-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .monthly-table th {
@@ -855,9 +875,9 @@ tr:hover { background: var(--surface2); }
     font-size: 0.75rem;
     font-weight: 700;
 }
-.phase-bull, .market-phase-badge.phase-bull { background: #1a3a1a; color: #66ff66; }
-.phase-bear, .market-phase-badge.phase-bear { background: #3a1a1a; color: #ff6666; }
-.phase-sideways, .market-phase-badge.phase-sideways { background: #2a2a1a; color: #dddd66; }
+.phase-bull, .market-phase-badge.phase-bull { background: rgba(247, 147, 26, 0.15); color: var(--accent); }
+.phase-bear, .market-phase-badge.phase-bear { background: rgba(126, 211, 242, 0.12); color: var(--accent-blue); }
+.phase-sideways, .market-phase-badge.phase-sideways { background: var(--surface2); color: var(--text-muted); }
 .phase-unknown, .market-phase-badge.phase-unknown { background: var(--surface2); color: var(--text-muted); }
 .market-phase-pip {
     display: inline-block;
@@ -869,9 +889,9 @@ tr:hover { background: var(--surface2); }
     font-size: 0.5rem;
     font-weight: 700;
 }
-.market-phase-pip.phase-bull { background: #1a3a1a; color: #66ff66; }
-.market-phase-pip.phase-bear { background: #3a1a1a; color: #ff6666; border: 1px solid #ff6666; }
-.market-phase-pip.phase-sideways { background: #2a2a1a; color: #dddd66; border: 1px dashed #dddd66; }
+.market-phase-pip.phase-bull { background: rgba(247, 147, 26, 0.2); color: var(--accent); }
+.market-phase-pip.phase-bear { background: rgba(126, 211, 242, 0.15); color: var(--accent-blue); border: 1px solid var(--accent-blue); }
+.market-phase-pip.phase-sideways { background: var(--surface2); color: var(--text-muted); border: 1px dashed var(--text-muted); }
 .market-phase-pip.phase-unknown { background: var(--surface2); color: var(--text-muted); }
 
 /* Text-based market badges */
@@ -883,8 +903,8 @@ tr:hover { background: var(--surface2); }
     font-weight: 800;
     letter-spacing: 0.05em;
 }
-.bull-badge { background: #1a3a1a; color: #66ff66; }
-.bear-badge { background: #3a1a1a; color: #ff6666; }
+.bull-badge { background: rgba(247, 147, 26, 0.15); color: var(--accent); }
+.bear-badge { background: rgba(126, 211, 242, 0.12); color: var(--accent-blue); }
 .vpd-stat {
     font-size: 0.6rem;
     color: var(--text-muted);
@@ -904,9 +924,9 @@ tr:hover { background: var(--surface2); }
     flex-direction: column;
     gap: 0.15rem;
 }
-.phase-bull-bg { background: #0d1f0d; border: 1px solid #1a3a1a; }
-.phase-bear-bg { background: #1f0d0d; border: 1px solid #3a1a1a; }
-.phase-sideways-bg { background: #1a1a0d; border: 1px solid #2a2a1a; }
+.phase-bull-bg { background: rgba(247, 147, 26, 0.06); border: 1px solid rgba(247, 147, 26, 0.2); }
+.phase-bear-bg { background: rgba(126, 211, 242, 0.05); border: 1px solid rgba(126, 211, 242, 0.15); }
+.phase-sideways-bg { background: var(--surface2); border: 1px solid var(--border); }
 .mp-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
 .mp-value { font-size: 0.9rem; font-weight: 600; }
 .mp-meta { font-size: 0.65rem; color: var(--text-muted); }
@@ -937,8 +957,8 @@ tr:hover { background: var(--surface2); }
     align-items: center;
     gap: 0.5rem;
 }
-.avoid-item { border-left: 3px solid #aa4444; padding-left: 0.75rem; }
-.avoid-num { background: #aa4444 !important; }
+.avoid-item { border-left: 3px solid #cc6655; padding-left: 0.75rem; }
+.avoid-num { background: #cc6655 !important; }
 .action-plan-card { border-color: var(--accent); }
 .action-item { font-weight: 500; }
 .source-tag {
@@ -1083,7 +1103,7 @@ tr:hover { background: var(--surface2); }
     text-decoration: none;
     line-height: 1.3;
 }
-.sv-title:hover { color: var(--accent); }
+.sv-title:hover { color: var(--accent-blue); }
 .sv-stats {
     display: flex;
     flex-wrap: wrap;
@@ -1258,10 +1278,10 @@ tr:hover { background: var(--surface2); }
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
-.badge-breakout { background: #1a3a1a; color: #66ff66; }
-.badge-strong { background: #1a2a3a; color: #66bbff; }
-.badge-under { background: #3a2a1a; color: #ffaa66; }
-.badge-avg { background: #2a2a2a; color: #999; }
+.badge-breakout { background: rgba(247, 147, 26, 0.18); color: var(--accent); }
+.badge-strong { background: rgba(126, 211, 242, 0.12); color: var(--accent-blue); }
+.badge-under { background: rgba(255, 170, 100, 0.1); color: #cc8855; }
+.badge-avg { background: var(--surface2); color: var(--text-muted); }
 .market-adj-badge {
     border: 1px dashed rgba(255,255,255,0.25);
     position: relative;
@@ -1308,7 +1328,7 @@ tr:hover { background: var(--surface2); }
 .analysis-video-title {
     font-size: 1rem;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-blue);
 }
 .analysis-yt-btn {
     white-space: nowrap;
