@@ -78,8 +78,33 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
 
     if recent_all:
         recent_avg = sum(v["view_count"] for v in recent_all) // len(recent_all)
-        recent_breakouts = [v for v in recent_all if v["view_count"] > recent_avg * 2]
-        recent_breakouts.sort(key=lambda v: v["view_count"], reverse=True)
+
+        # Group recent videos by source channel
+        by_source = defaultdict(list)
+        for v in recent_all:
+            by_source[v.get("_source", "You")].append(v)
+
+        # Find outliers per channel (2x that channel's own average)
+        per_channel_outliers = {}
+        for source, vids in by_source.items():
+            ch_avg = sum(v["view_count"] for v in vids) // len(vids)
+            outliers = [v for v in vids if v["view_count"] > ch_avg * 2]
+            outliers.sort(key=lambda v: v["view_count"], reverse=True)
+            if outliers:
+                per_channel_outliers[source] = outliers
+
+        # Round-robin interleave for even dispersion across channels
+        recent_breakouts = []
+        if per_channel_outliers:
+            max_per = max(len(o) for o in per_channel_outliers.values())
+            sources = sorted(per_channel_outliers.keys())
+            for i in range(max_per):
+                for src in sources:
+                    if i < len(per_channel_outliers[src]):
+                        recent_breakouts.append(per_channel_outliers[src][i])
+                if len(recent_breakouts) >= 10:
+                    break
+
         trends["recent_breakouts"] = [
             {
                 "title": v["title"],
