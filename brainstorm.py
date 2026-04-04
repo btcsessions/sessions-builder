@@ -795,6 +795,8 @@ Make sure at least 2-3 suggestions directly involve "{focus_topic}" as the subje
 
     system = f"""You are a YouTube content strategist for a bitcoin/freedom tech creator (BTC Sessions).
 
+This channel's core mission is helping people UNDERSTAND and USE bitcoin. Every video should be rooted in education and practical instruction. The audience ranges from total beginners to intermediate users who want to level up.
+
 **Creator's Top Videos:**
 {creator_top}
 
@@ -805,6 +807,21 @@ Make sure at least 2-3 suggestions directly involve "{focus_topic}" as the subje
 {trend_intel_context}
 {remix_angle}
 {focus_section}
+
+**CONTENT FRAMING — all suggestions must be educational/instructional in nature. Think:**
+- "The Best Tools For..." (best wallets for privacy, best apps for Lightning, best hardware for running a node)
+- "How To Use..." (how to use Sparrow Wallet, how to use CoinJoin, how to use a signing device)
+- "Best Tech Stack For..." (best privacy stack, best self-custody stack, best Lightning stack)
+- "Using [Device] With [App]..." (using Coldcard with Sparrow, using SeedSigner with Specter)
+- "First Impressions of..." (first impressions of a new wallet, new hardware, new privacy tool)
+- "Privacy/Security Setup With..." (full privacy setup with Whirlpool, securing your bitcoin with multisig)
+- "Complete Guide To..." (complete guide to self-custody, running your own node, Lightning channels)
+- "X vs Y" comparisons (Coldcard vs Trezor, Sparrow vs BlueWallet, Lightning vs on-chain for daily use)
+- "What Happens When..." explainers (what happens when you send bitcoin, what happens in a coinjoin)
+- General tech video styles adapted to bitcoin (unboxings, tier lists, "I tried X for 30 days", day-in-the-life with bitcoin-only)
+
+Be creative beyond these examples, but always anchor in practical bitcoin education. The goal is to bring new users in while still providing value to existing bitcoiners. Avoid hype, price speculation, or shilling — focus on sovereignty, understanding, and practical use.
+
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
 {{
@@ -823,10 +840,12 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 RULES:
 - Generate 4-5 remix ideas, each with a concrete title concept
 - Generate 3-4 style takeaways
-- Every suggestion must be actionable and specific to bitcoin/freedom tech
+- Every suggestion must be educational, instructional, or explainer content about bitcoin/freedom tech
 - Title concepts should be real titles the creator could use, not placeholders
 - If a focus topic is given, prioritize it heavily
-- Consider current market conditions when suggesting topics"""
+- Consider current market conditions and trending topics when suggesting — lean into what's timely
+- Balance content for new users (onboarding, first steps) with content for existing bitcoiners (advanced setups, optimizations)
+- Never suggest price prediction, trading, or speculation content"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
