@@ -377,6 +377,8 @@ def oauth_connect():
         prompt="consent",
     )
     session["oauth_state"] = state
+    # Save the code verifier for PKCE
+    session["code_verifier"] = flow.code_verifier
     return redirect(auth_url)
 
 
@@ -389,6 +391,8 @@ def oauth_callback():
 
     redirect_uri = url_for("oauth_callback", _external=True)
     flow = get_oauth_flow(client_id, client_secret, redirect_uri)
+    # Restore the code verifier from the session
+    flow.code_verifier = session.get("code_verifier")
 
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
