@@ -1,4 +1,5 @@
 import anthropic
+from trends import analyze_trends, trends_to_prompt_section
 
 
 def _build_competitors_section(competitors_data: list = None) -> str:
@@ -120,7 +121,11 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
             )
             analytics_section += f"\n**Monthly Trend (last 6 months):**\n{month_lines}\n"
 
-    return f"""You are a YouTube content strategist helping a creator plan their next videos. You have access to their channel's video performance data and analytics.
+    # Build trends section from video data
+    trends_data = analyze_trends(video_data)
+    trends_section = trends_to_prompt_section(trends_data)
+
+    return f"""You are a YouTube content strategist helping a creator plan their next videos. You have access to their channel's video performance data, trend analysis, and analytics.
 
 **Channel Stats Summary:**
 - Total videos analyzed: {total}
@@ -128,7 +133,8 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 - Average engagement rate: {avg_engagement}%
 - Top 3 by views: {top3}
 - Bottom 3 by views: {bottom3}
-{analytics_section}
+{analytics_section}{trends_section}
+
 **Video Performance Data:**
 {truncation_note}
 | Title | Views | Likes | Comments | Engagement | Published |
@@ -137,16 +143,20 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 {_build_competitors_section(competitors_data)}
 Use this data to:
 - Identify what topics, formats, or styles perform best
+- Recommend title formats that drive higher CTR based on the title pattern analysis (e.g. if "How to" titles outperform, lean into that)
+- Recommend optimal title length based on what performs best
+- Suggest the best days to publish based on historical performance
+- Identify breakout hit patterns — what do the 2x+ videos have in common?
+- Highlight hidden gem topics worth revisiting (high engagement but low views = underexposed good content)
 - Suggest new video ideas based on proven successes
-- Spot trends in timing, engagement, or topic performance
 - Analyze retention and watch time patterns to recommend ideal video length and pacing
 - Consider traffic sources when recommending SEO and promotion strategies
 - Compare against competitor channels to find gaps and opportunities
 - For mainstream tech competitors: study their formats, pacing, and engagement tactics to adapt for your niche
 - For bitcoin/crypto competitors: identify topic gaps and areas to go deeper or differentiate
-- Give specific, actionable recommendations backed by the data
+- Give specific, actionable recommendations backed by the data with actual numbers
 
-Be conversational, specific, and reference actual video titles and numbers when making points."""
+Always reference specific titles, numbers, and patterns when making points. Be direct and opinionated — the creator wants clear guidance, not hedged suggestions."""
 
 
 def chat_with_claude(

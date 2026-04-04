@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Trends - YouTube Planner{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Content Trends</h1>
+    <p>Patterns and insights from your {{ total_videos }} videos.</p>
+</div>
+
+<div class="trends-grid">
+
+    {% if trends.title_patterns %}
+    <section class="trend-card">
+        <h2>Title Format Performance</h2>
+        <p class="trend-subtitle">Which title styles get the most views (channel avg: {{ "{:,}".format(trends.overall_avg_views) }})</p>
+        <div class="trend-bars">
+            {% set max_views = trends.title_patterns.values()|map(attribute='avg_views')|max %}
+            {% for label, stats in trends.title_patterns.items() %}
+            <div class="trend-bar-row">
+                <div class="bar-label">
+                    <strong>{{ label }}</strong>
+                    <span class="bar-meta">{{ stats.count }} videos, {{ stats.avg_engagement }}% eng</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill {% if stats.avg_views > trends.overall_avg_views %}bar-above{% else %}bar-below{% endif %}"
+                         style="width: {{ (stats.avg_views / max_views * 100)|round }}%">
+                    </div>
+                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.publish_days %}
+    <section class="trend-card">
+        <h2>Best Days to Publish</h2>
+        <p class="trend-subtitle">Average views by day of week</p>
+        <div class="trend-bars">
+            {% set max_day_views = trends.publish_days.values()|map(attribute='avg_views')|max %}
+            {% for day, stats in trends.publish_days.items() %}
+            <div class="trend-bar-row">
+                <div class="bar-label">
+                    <strong>{{ day }}</strong>
+                    <span class="bar-meta">{{ stats.count }} videos</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_day_views * 100)|round }}%"></div>
+                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.title_length %}
+    <section class="trend-card">
+        <h2>Title Length Impact</h2>
+        <p class="trend-subtitle">Shorter or longer titles — which perform better?</p>
+        <div class="trend-bars">
+            {% set max_tl_views = trends.title_length.values()|map(attribute='avg_views')|max %}
+            {% for label, stats in trends.title_length.items() %}
+            <div class="trend-bar-row">
+                <div class="bar-label">
+                    <strong>{{ label }}</strong>
+                    <span class="bar-meta">{{ stats.count }} videos</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_tl_views * 100)|round }}%"></div>
+                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.breakout_hits %}
+    <section class="trend-card full-width">
+        <h2>Breakout Hits</h2>
+        <p class="trend-subtitle">Videos that got 2x+ your average views — what do they have in common?</p>
+        <div class="trend-list">
+            {% for b in trends.breakout_hits %}
+            <div class="trend-list-item">
+                <div class="trend-item-title">{{ b.title }}</div>
+                <div class="trend-item-stats">
+                    <span class="stat-pill hit">{{ b.multiplier }}x avg</span>
+                    <span>{{ "{:,}".format(b.views) }} views</span>
+                    <span>{{ b.engagement }}% eng</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.hidden_gems %}
+    <section class="trend-card full-width">
+        <h2>Hidden Gems</h2>
+        <p class="trend-subtitle">High engagement but below-median views — topics your audience loves but didn't find</p>
+        <div class="trend-list">
+            {% for g in trends.hidden_gems %}
+            <div class="trend-list-item">
+                <div class="trend-item-title">{{ g.title }}</div>
+                <div class="trend-item-stats">
+                    <span class="stat-pill gem">{{ g.engagement }}% eng</span>
+                    <span>{{ "{:,}".format(g.views) }} views</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.monthly %}
+    <section class="trend-card full-width">
+        <h2>Monthly Performance</h2>
+        <p class="trend-subtitle">Upload frequency and performance over time</p>
+        {% if trends.avg_uploads_per_month %}
+        <p class="trend-subtitle">Average upload rate: <strong>{{ trends.avg_uploads_per_month }} videos/month</strong></p>
+        {% endif %}
+        <div class="monthly-table-wrapper">
+            <table class="monthly-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Videos</th>
+                        <th>Total Views</th>
+                        <th>Avg Views</th>
+                        <th>Avg Engagement</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in trends.monthly|reverse %}
+                    <tr>
+                        <td>{{ m.month }}</td>
+                        <td>{{ m.videos_published }}</td>
+                        <td>{{ "{:,}".format(m.total_views) }}</td>
+                        <td>{{ "{:,}".format(m.avg_views) }}</td>
+                        <td>{{ m.avg_engagement }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, session, jsonify, redirect, u
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
 from brainstorm import chat_with_claude, generate_video_plan
+from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
 load_dotenv()
@@ -227,6 +228,14 @@ def api_chat():
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/trends")
+def trends_page():
+    if not video_cache:
+        return redirect(url_for("index"))
+    trends_data = analyze_trends(video_cache)
+    return render_template("trends.html", trends=trends_data, total_videos=len(video_cache))
 
 
 @app.route("/planner")
