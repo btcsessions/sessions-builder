@@ -50,10 +50,21 @@ def fetch_btc_prices(days: int = 730) -> dict:
     # If historical fetch failed, try current price endpoints as fallback
     if not prices:
         prices = _load_cached_prices()
+        if prices:
+            print(f"[Market] Using {len(prices)} cached price entries")
         current = _fetch_current_price()
         if current:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             prices[today] = current
+
+    # If we still have very little data, try to build history from CoinCap daily endpoint
+    if len(prices) < 200:
+        print(f"[Market] Only {len(prices)} days of data — trying to build history...")
+        history = _fetch_coincap_history_chunks()
+        if len(history) > len(prices):
+            history.update(prices)  # Keep any fresh current price
+            prices = history
+            print(f"[Market] Built up to {len(prices)} days of price history")
 
     if prices:
         _ensure_data_dir()
@@ -65,34 +76,38 @@ def fetch_btc_prices(days: int = 730) -> dict:
 
 def _fetch_coingecko_history(days: int) -> dict:
     """Fetch historical daily prices from CoinGecko market_chart endpoint."""
-    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}&interval=daily"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "Accept": "application/json",
     }
 
-    # Retry up to 3 times with backoff (CoinGecko rate-limits free tier)
-    for attempt in range(3):
-        try:
-            req = Request(url, headers=headers)
-            with urlopen(req, timeout=20) as resp:
-                data = json.loads(resp.read().decode())
+    # Try requested range first, then fall back to smaller range
+    for try_days in [days, 365, 200]:
+        url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={try_days}&interval=daily"
 
-            prices = {}
-            for timestamp_ms, price in data.get("prices", []):
-                dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-                date_str = dt.strftime("%Y-%m-%d")
-                prices[date_str] = round(price, 2)
+        for attempt in range(2):
+            try:
+                req = Request(url, headers=headers)
+                with urlopen(req, timeout=20) as resp:
+                    data = json.loads(resp.read().decode())
 
-            if prices:
-                print(f"[Market] CoinGecko history: {len(prices)} days fetched")
-                return prices
+                prices = {}
+                for timestamp_ms, price in data.get("prices", []):
+                    dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                    date_str = dt.strftime("%Y-%m-%d")
+                    prices[date_str] = round(price, 2)
 
-        except Exception as e:
-            print(f"[Market] CoinGecko history attempt {attempt+1}/3 failed: {e}")
-            if attempt < 2:
-                time.sleep(2 * (attempt + 1))
-            continue
+                if prices:
+                    print(f"[Market] CoinGecko history: {len(prices)} days fetched (requested {try_days})")
+                    return prices
+
+            except Exception as e:
+                print(f"[Market] CoinGecko {try_days}d attempt {attempt+1}/2 failed: {e}")
+                if attempt < 1:
+                    time.sleep(3)
+                continue
+
+        time.sleep(2)  # Pause between different day ranges
 
     return {}
 
@@ -122,6 +137,37 @@ def _fetch_coincap_history() -> dict:
     except Exception as e:
         print(f"[Market] CoinCap history failed: {e}")
         return {}
+
+
+def _fetch_coincap_history_chunks() -> dict:
+    """Fetch CoinCap history in smaller chunks to work around API limits."""
+    prices = {}
+    now_ms = int(time.time() * 1000)
+    chunk_days = 365
+
+    for i in range(2):  # Two 365-day chunks = ~730 days
+        end = now_ms - (i * chunk_days * 86400 * 1000)
+        start = end - (chunk_days * 86400 * 1000)
+        url = f"https://api.coincap.io/v2/assets/bitcoin/history?interval=d1&start={start}&end={end}"
+        headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode())
+
+            for entry in data.get("data", []):
+                dt = datetime.fromtimestamp(entry["time"] / 1000, tz=timezone.utc)
+                date_str = dt.strftime("%Y-%m-%d")
+                prices[date_str] = round(float(entry["priceUsd"]), 2)
+
+            print(f"[Market] CoinCap chunk {i+1}: got {len(data.get('data', []))} entries")
+        except Exception as e:
+            print(f"[Market] CoinCap chunk {i+1} failed: {e}")
+
+        time.sleep(1)  # Be polite to the API
+
+    return prices
 
 
 def _fetch_current_price() -> float | None:
