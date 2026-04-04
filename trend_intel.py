@@ -2,12 +2,25 @@
 
 Aggregates signals from free public APIs and caches results.
 Used to enrich AI prompts with current context.
+
+Sources:
+  Bitcoin/Crypto:
+    - CoinGecko: trending coins, categories, global market stats
+    - mempool.space: Bitcoin fees, mempool size, block height, hashrate
+    - Nostr.band: trending hashtags, trending notes, trending profiles
+    - Stacker.news: top bitcoin community discussions (GraphQL)
+
+  General Tech:
+    - Hacker News: top tech stories
+    - GitHub: trending repos from the past week
+    - TechCrunch, Wired, TechRadar: latest headlines via RSS
 """
 
 import json
 import os
 import time
-from datetime import datetime, timezone
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
@@ -35,13 +48,66 @@ def _api_get(url: str, timeout: int = 15) -> dict | list | None:
         return None
 
 
-# --- Bitcoin / Crypto Signals ---
+def _fetch_rss(url: str, timeout: int = 15) -> str | None:
+    """Fetch RSS/XML feed and return raw text."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/rss+xml, application/xml, text/xml",
+    }
+    try:
+        req = Request(url, headers=headers)
+        with urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        print(f"[TrendIntel] RSS fetch failed ({url[:50]}...): {e}")
+        return None
 
-def _fetch_coingecko_trending() -> list[dict]:
-    """Get trending coins from CoinGecko (free, no key)."""
+
+def _parse_rss_items(xml_text: str, max_items: int = 12) -> list[dict]:
+    """Parse RSS 2.0 feed and return list of {title, link, description}."""
+    try:
+        root = ET.fromstring(xml_text)
+        items = []
+        for item in root.findall(".//item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            # Clean HTML from description
+            desc_raw = (item.findtext("description") or "").strip()
+            # Strip HTML tags for a clean summary
+            desc = _strip_html(desc_raw)[:200]
+            categories = [c.text for c in item.findall("category") if c.text]
+            if title:
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "description": desc,
+                    "categories": categories[:3],
+                })
+            if len(items) >= max_items:
+                break
+        return items
+    except ET.ParseError as e:
+        print(f"[TrendIntel] RSS parse error: {e}")
+        return []
+
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags from a string."""
+    import re
+    clean = re.sub(r"<[^>]+>", " ", text)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
+# =========================================================================
+#  Bitcoin / Crypto Signals
+# =========================================================================
+
+def _fetch_coingecko_trending() -> tuple[list[dict], list[str]]:
+    """Get trending coins and categories from CoinGecko (free, no key)."""
     data = _api_get("https://api.coingecko.com/api/v3/search/trending")
     if not data:
-        return []
+        return [], []
     coins = []
     for item in data.get("coins", [])[:10]:
         c = item.get("item", {})
@@ -50,7 +116,6 @@ def _fetch_coingecko_trending() -> list[dict]:
             "symbol": c.get("symbol", ""),
             "market_cap_rank": c.get("market_cap_rank", 0),
         })
-    # Also grab trending categories if available
     categories = []
     for cat in data.get("categories", [])[:5]:
         categories.append(cat.get("name", ""))
@@ -106,8 +171,36 @@ def _fetch_bitcoin_block_height() -> int:
         return 0
 
 
-def _fetch_nostr_trending() -> list[str]:
-    """Get trending hashtags/topics from nostr.band (freedom tech signal)."""
+def _fetch_mempool_hashrate() -> dict:
+    """Get recent hashrate info from mempool.space."""
+    data = _api_get("https://mempool.space/api/v1/mining/hashrate/1w")
+    if not data:
+        return {}
+    hashrates = data.get("hashrates", [])
+    if hashrates:
+        latest = hashrates[-1]
+        return {
+            "hashrate_eh": round(latest.get("avgHashrate", 0) / 1e18, 1),
+        }
+    return {}
+
+
+def _fetch_bitcoin_difficulty() -> dict:
+    """Get difficulty adjustment info."""
+    data = _api_get("https://mempool.space/api/v1/difficulty-adjustment")
+    if not data:
+        return {}
+    return {
+        "progress_pct": round(data.get("progressPercent", 0), 1),
+        "estimated_change_pct": round(data.get("difficultyChange", 0), 1),
+        "remaining_blocks": data.get("remainingBlocks", 0),
+    }
+
+
+# --- Nostr / Freedom Tech ---
+
+def _fetch_nostr_trending_hashtags() -> list[str]:
+    """Get trending hashtags from nostr.band."""
     data = _api_get("https://api.nostr.band/v0/trending/hashtags")
     if not data:
         return []
@@ -119,7 +212,97 @@ def _fetch_nostr_trending() -> list[str]:
     return tags
 
 
-# --- General Tech Signals ---
+def _fetch_nostr_trending_notes() -> list[dict]:
+    """Get trending notes (posts) from nostr.band — what the community is discussing."""
+    data = _api_get("https://api.nostr.band/v0/trending/notes")
+    if not data:
+        return []
+    notes = []
+    for item in data.get("notes", [])[:10]:
+        event = item.get("event", {})
+        content = (event.get("content") or "")[:200]
+        author = item.get("author", {})
+        name = author.get("name") or author.get("display_name") or ""
+        if content:
+            notes.append({
+                "content": content,
+                "author": name,
+            })
+    return notes
+
+
+def _fetch_nostr_trending_profiles() -> list[dict]:
+    """Get trending profiles on nostr — who's gaining attention."""
+    data = _api_get("https://api.nostr.band/v0/trending/profiles")
+    if not data:
+        return []
+    profiles = []
+    for item in data.get("profiles", [])[:8]:
+        profile = item.get("profile", {})
+        name = profile.get("name") or profile.get("display_name") or ""
+        about = (profile.get("about") or "")[:100]
+        nip05 = profile.get("nip05", "")
+        if name:
+            profiles.append({
+                "name": name,
+                "about": about,
+                "nip05": nip05,
+            })
+    return profiles
+
+
+# --- Stacker News (Bitcoin community) ---
+
+def _fetch_stacker_news_top() -> list[dict]:
+    """Get top posts from stacker.news via GraphQL API."""
+    query = {
+        "query": """
+            {
+                items(sort: "top", when: "week", limit: 12) {
+                    items {
+                        title
+                        url
+                        sats
+                        ncomments
+                        user {
+                            name
+                        }
+                    }
+                }
+            }
+        """
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    try:
+        import json as _json
+        body = _json.dumps(query).encode("utf-8")
+        req = Request("https://stacker.news/api/graphql", data=body, headers=headers, method="POST")
+        with urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        items = data.get("data", {}).get("items", {}).get("items", [])
+        posts = []
+        for item in items:
+            title = item.get("title", "")
+            if title:
+                posts.append({
+                    "title": title,
+                    "sats": item.get("sats", 0),
+                    "comments": item.get("ncomments", 0),
+                    "author": (item.get("user") or {}).get("name", ""),
+                })
+        return posts
+    except Exception as e:
+        print(f"[TrendIntel] Stacker.news failed: {e}")
+        return []
+
+
+# =========================================================================
+#  General Tech Signals
+# =========================================================================
 
 def _fetch_hackernews_top() -> list[dict]:
     """Get top stories from Hacker News (tech pulse)."""
@@ -140,7 +323,6 @@ def _fetch_hackernews_top() -> list[dict]:
 
 def _fetch_github_trending_topics() -> list[dict]:
     """Get trending repos from GitHub API (tech trends signal)."""
-    from datetime import timedelta
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
     data = _api_get(
         f"https://api.github.com/search/repositories?q=created:>{week_ago}&sort=stars&order=desc&per_page=10"
@@ -158,31 +340,53 @@ def _fetch_github_trending_topics() -> list[dict]:
     return repos
 
 
-def _fetch_producthunt_trending() -> list[dict]:
-    """Approximate tech product trends via recent popular launches."""
-    # ProductHunt doesn't have a free public API, skip for now
-    return []
+def _fetch_techcrunch_headlines() -> list[dict]:
+    """Get latest TechCrunch headlines via RSS."""
+    xml = _fetch_rss("https://techcrunch.com/feed/")
+    if not xml:
+        return []
+    return _parse_rss_items(xml, max_items=10)
 
 
-# --- Aggregation ---
+def _fetch_wired_headlines() -> list[dict]:
+    """Get latest Wired headlines via RSS."""
+    xml = _fetch_rss("https://www.wired.com/feed/rss")
+    if not xml:
+        return []
+    return _parse_rss_items(xml, max_items=10)
+
+
+def _fetch_techradar_headlines() -> list[dict]:
+    """Get latest TechRadar headlines via RSS."""
+    xml = _fetch_rss("https://www.techradar.com/rss")
+    if not xml:
+        return []
+    return _parse_rss_items(xml, max_items=10)
+
+
+# =========================================================================
+#  Aggregation
+# =========================================================================
 
 def gather_trend_intel() -> dict:
     """Gather all trend signals. Returns structured intel dict."""
-    print("[TrendIntel] Gathering fresh trend intelligence...")
-
     # Check cache first
     cached = _load_cache()
     if cached:
         return cached
 
+    print("[TrendIntel] Gathering fresh trend intelligence...")
+
     intel = {
         "_fetched_at": datetime.now(timezone.utc).isoformat(),
         "crypto": {},
         "bitcoin_network": {},
+        "nostr": {},
+        "stacker_news": {},
         "tech": {},
     }
 
-    # Crypto trends
+    # --- Crypto market ---
     try:
         trending_coins, trending_categories = _fetch_coingecko_trending()
         intel["crypto"]["trending_coins"] = trending_coins
@@ -194,17 +398,27 @@ def gather_trend_intel() -> dict:
 
     intel["crypto"]["global_market"] = _fetch_coingecko_global()
 
-    # Bitcoin network state
+    # --- Bitcoin network state ---
     intel["bitcoin_network"]["fees"] = _fetch_mempool_fees()
     intel["bitcoin_network"]["mempool"] = _fetch_mempool_stats()
     intel["bitcoin_network"]["block_height"] = _fetch_bitcoin_block_height()
+    intel["bitcoin_network"]["hashrate"] = _fetch_mempool_hashrate()
+    intel["bitcoin_network"]["difficulty"] = _fetch_bitcoin_difficulty()
 
-    # Freedom tech / nostr
-    intel["crypto"]["nostr_trending"] = _fetch_nostr_trending()
+    # --- Nostr / freedom tech ---
+    intel["nostr"]["trending_hashtags"] = _fetch_nostr_trending_hashtags()
+    intel["nostr"]["trending_notes"] = _fetch_nostr_trending_notes()
+    intel["nostr"]["trending_profiles"] = _fetch_nostr_trending_profiles()
 
-    # General tech
+    # --- Stacker News ---
+    intel["stacker_news"]["top_posts"] = _fetch_stacker_news_top()
+
+    # --- General tech ---
     intel["tech"]["hackernews_top"] = _fetch_hackernews_top()
     intel["tech"]["github_trending"] = _fetch_github_trending_topics()
+    intel["tech"]["techcrunch"] = _fetch_techcrunch_headlines()
+    intel["tech"]["wired"] = _fetch_wired_headlines()
+    intel["tech"]["techradar"] = _fetch_techradar_headlines()
 
     # Save cache
     _save_cache(intel)
@@ -249,7 +463,7 @@ def intel_to_prompt_context(intel: dict) -> str:
 
     lines = ["\n**CURRENT TREND INTELLIGENCE** (live data):"]
 
-    # Crypto market
+    # --- Crypto market ---
     gm = intel.get("crypto", {}).get("global_market", {})
     if gm:
         lines.append(f"\nCrypto Market:")
@@ -260,18 +474,16 @@ def intel_to_prompt_context(intel: dict) -> str:
         if gm.get("btc_dominance"):
             lines.append(f"- BTC dominance: {gm['btc_dominance']}%")
 
-    # Trending coins
     coins = intel.get("crypto", {}).get("trending_coins", [])
     if coins:
         coin_names = [f"{c['name']} ({c['symbol']})" for c in coins[:8]]
         lines.append(f"\nTrending Coins: {', '.join(coin_names)}")
 
-    # Trending crypto categories
     cats = intel.get("crypto", {}).get("trending_categories", [])
     if cats:
         lines.append(f"Trending Crypto Categories: {', '.join(cats[:5])}")
 
-    # Bitcoin network
+    # --- Bitcoin network ---
     net = intel.get("bitcoin_network", {})
     fees = net.get("fees", {})
     if fees:
@@ -283,16 +495,44 @@ def intel_to_prompt_context(intel: dict) -> str:
         bh = net.get("block_height", 0)
         if bh:
             lines.append(f"- Block height: {bh:,}")
+        hr = net.get("hashrate", {})
+        if hr.get("hashrate_eh"):
+            lines.append(f"- Hashrate: {hr['hashrate_eh']} EH/s")
+        diff = net.get("difficulty", {})
+        if diff.get("remaining_blocks"):
+            lines.append(f"- Difficulty adjustment: {diff['progress_pct']}% through epoch, est. {diff['estimated_change_pct']}% change, {diff['remaining_blocks']} blocks remaining")
 
-    # Nostr / freedom tech
-    nostr = intel.get("crypto", {}).get("nostr_trending", [])
-    if nostr:
-        lines.append(f"\nNostr/Freedom Tech Trending: #{', #'.join(nostr[:10])}")
+    # --- Nostr / freedom tech ---
+    nostr = intel.get("nostr", {})
+    nostr_tags = nostr.get("trending_hashtags", [])
+    if nostr_tags:
+        lines.append(f"\nNostr/Freedom Tech Trending Hashtags: #{', #'.join(nostr_tags[:10])}")
 
-    # Tech trends
+    nostr_notes = nostr.get("trending_notes", [])
+    if nostr_notes:
+        lines.append(f"\nNostr Hot Discussions:")
+        for note in nostr_notes[:6]:
+            author = f" — {note['author']}" if note.get("author") else ""
+            content = note["content"][:120]
+            lines.append(f"- \"{content}\"{author}")
+
+    nostr_profiles = nostr.get("trending_profiles", [])
+    if nostr_profiles:
+        names = [p["name"] for p in nostr_profiles[:6]]
+        lines.append(f"\nNostr Trending Profiles: {', '.join(names)}")
+
+    # --- Stacker News ---
+    sn = intel.get("stacker_news", {}).get("top_posts", [])
+    if sn:
+        lines.append(f"\nStacker News Top Posts (Bitcoin community):")
+        for post in sn[:8]:
+            sats = f" ({post['sats']:,} sats)" if post.get("sats") else ""
+            lines.append(f"- {post['title']}{sats}")
+
+    # --- Tech trends ---
     hn = intel.get("tech", {}).get("hackernews_top", [])
     if hn:
-        lines.append(f"\nTech Pulse (Hacker News top stories):")
+        lines.append(f"\nTech Pulse (Hacker News):")
         for story in hn[:10]:
             lines.append(f"- {story['title']} (score: {story['score']})")
 
@@ -303,7 +543,16 @@ def intel_to_prompt_context(intel: dict) -> str:
             desc = f" — {repo['description']}" if repo['description'] else ""
             lines.append(f"- {repo['name']} ({repo['stars']} stars){desc}")
 
+    # Tech publication headlines
+    for source_key, label in [("techcrunch", "TechCrunch"), ("wired", "Wired"), ("techradar", "TechRadar")]:
+        articles = intel.get("tech", {}).get(source_key, [])
+        if articles:
+            titles = [a["title"] for a in articles[:6]]
+            lines.append(f"\n{label} Headlines:")
+            for t in titles:
+                lines.append(f"- {t}")
+
     lines.append("")
-    lines.append("Use these real-time signals to inform your suggestions — reference specific trending topics, network conditions, or tech trends where relevant.")
+    lines.append("Use these real-time signals to inform your suggestions — reference specific trending topics, network conditions, community discussions, or tech trends where relevant. Lean into what's hot RIGHT NOW.")
 
     return "\n".join(lines)
