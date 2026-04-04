@@ -1274,6 +1274,7 @@ tr:hover { background: var(--surface2); }
 }
 .outlier-item:last-child { border-bottom: none; }
 .outlier-item:hover { background: var(--surface2); }
+.outlier-clickable { cursor: pointer; }
 .outlier-thumb {
     width: 80px;
     min-width: 80px;

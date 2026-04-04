@@ -338,7 +338,13 @@
             <p class="trend-subtitle">2x+ each channel's own average</p>
             <div class="outlier-list">
                 {% for b in trends.recent_breakouts[:8] %}
-                <div class="outlier-item">
+                <div class="outlier-item outlier-clickable"
+                     data-video-id="{{ b.video_id }}"
+                     data-title="{{ b.title }}"
+                     data-thumb="{{ b.thumbnail_url }}"
+                     data-source="{{ b.source }}"
+                     data-category="{{ b.source_category }}"
+                     data-channel-id="{{ b.channel_id }}">
                     {% if b.thumbnail_url %}
                     <img src="{{ b.thumbnail_url }}" alt="" class="outlier-thumb" loading="lazy">
                     {% endif %}
@@ -729,6 +735,34 @@ document.querySelectorAll(".comp-video-clickable").forEach(el => {
 document.getElementById("close-analysis").addEventListener("click", () => {
     analysisResults.style.display = "none";
     analysisError.style.display = "none";
+});
+
+/* --- Recent outlier clicks --- */
+document.querySelectorAll(".outlier-clickable").forEach(el => {
+    el.style.cursor = "pointer";
+    el.addEventListener("click", async () => {
+        analysisResults.style.display = "none";
+        analysisError.style.display = "none";
+        analysisLoading.style.display = "block";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        const isOwn = el.dataset.source === "You";
+        const url = isOwn ? "/api/analyze-own-video" : "/api/analyze-competitor-video";
+        const body = isOwn
+            ? { video_id: el.dataset.videoId }
+            : { channel_id: el.dataset.channelId, video_id: el.dataset.videoId };
+        try {
+            const resp = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            showAnalysis(await resp.json(), el.dataset.title, el.dataset.videoId, el.dataset.thumb, el.dataset.source, el.dataset.category);
+        } catch (err) {
+            analysisError.textContent = "Analysis failed: " + err.message;
+            analysisError.style.display = "block";
+            analysisLoading.style.display = "none";
+        }
+    });
 });
 
 /* --- Remix modal --- */

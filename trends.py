@@ -116,6 +116,8 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
                 "published": v.get("published_at", "")[:10],
                 "thumbnail_url": v.get("thumbnail_url", ""),
                 "video_id": v.get("video_id", ""),
+                "channel_id": v.get("_channel_id", ""),
+                "source_category": v.get("_channel_category", "Bitcoin/Crypto"),
                 "market_phase": v.get("_market_phase", "unknown"),
                 "multiplier": round(v["view_count"] / max(per_channel_avg.get(v.get("_source", "You"), 1), 1), 1),
             }
