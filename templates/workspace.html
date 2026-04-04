@@ -4,38 +4,11 @@
 {% block content %}
 <div class="workspace">
 
-    <!-- LEFT SIDEBAR: Videos + Competitors -->
+    <!-- LEFT SIDEBAR: Competitors -->
     <aside class="ws-sidebar" id="ws-sidebar">
         <div class="sidebar-toggle-area">
             <button id="sidebar-collapse" class="btn small" title="Toggle sidebar">&#9776;</button>
-        </div>
-
-        <div class="sidebar-section">
-            <div class="sidebar-section-header" data-toggle="my-videos">
-                <h3>My Videos <span class="section-count">{{ videos|length }}</span></h3>
-                <span class="chevron">&#9660;</span>
-            </div>
-            <div class="sidebar-section-body" id="my-videos">
-                <div class="sidebar-stats">
-                    <span>{{ "{:,}".format(total_views) }} views</span>
-                    <span>{{ avg_engagement }}% avg eng</span>
-                </div>
-                <input type="text" id="video-search" class="sidebar-search" placeholder="Filter videos...">
-                <div class="sidebar-video-list" id="video-list">
-                    {% for video in videos %}
-                    <div class="sidebar-video own-video-clickable"
-                         data-title="{{ video.title|lower }}"
-                         data-video-id="{{ video.video_id }}"
-                         data-video-title="{{ video.title }}">
-                        <span class="sv-title">{{ video.title[:55] }}</span>
-                        <div class="sv-stats">
-                            <span>{{ "{:,}".format(video.view_count) }} views</span>
-                            <span>{{ video.engagement_rate }}%</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+            <span class="sidebar-label">Competitors</span>
         </div>
 
         {% if competitors %}
@@ -88,6 +61,11 @@
             </div>
         </div>
         {% endfor %}
+        {% else %}
+        <div class="sidebar-empty">
+            <p>No competitors added yet.</p>
+            <a href="/competitors" class="btn small">Add Competitors</a>
+        </div>
         {% endif %}
     </aside>
 
@@ -358,84 +336,46 @@ document.getElementById("sidebar-collapse").addEventListener("click", () => {
     document.getElementById("ws-sidebar").classList.toggle("sidebar-hidden");
 });
 
-/* --- Video search filter --- */
-document.getElementById("video-search").addEventListener("input", (e) => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll("#video-list .sidebar-video").forEach(el => {
-        el.style.display = el.dataset.title.includes(q) ? "" : "none";
-    });
-});
-
-/* --- Video analysis (own + competitor) --- */
+/* --- Competitor video analysis --- */
 const analysisLoading = document.getElementById("analysis-loading");
 const analysisError = document.getElementById("analysis-error");
 const analysisResults = document.getElementById("analysis-results");
 const planForm = document.getElementById("plan-form");
 const planHeader = document.querySelector(".planner-header");
 
-function showAnalysisLoading() {
-    planForm.style.display = "none";
-    planHeader.style.display = "none";
-    results.style.display = "none";
-    planError.style.display = "none";
-    analysisResults.style.display = "none";
-    analysisError.style.display = "none";
-    analysisLoading.style.display = "block";
-}
-
-function showAnalysisResult(data, title, videoId) {
-    if (data.error) {
-        analysisError.textContent = data.error;
-        analysisError.style.display = "block";
-    } else {
-        renderAnalysis(data, title, videoId);
-        analysisResults.style.display = "block";
-    }
-    analysisLoading.style.display = "none";
-}
-
-function showAnalysisError(msg) {
-    analysisError.textContent = msg;
-    analysisError.style.display = "block";
-    analysisLoading.style.display = "none";
-}
-
-/* Own videos */
-document.querySelectorAll(".own-video-clickable").forEach(el => {
-    el.addEventListener("click", async () => {
-        const videoId = el.dataset.videoId;
-        const title = el.dataset.videoTitle;
-        showAnalysisLoading();
-        try {
-            const resp = await fetch("/api/analyze-own-video", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ video_id: videoId }),
-            });
-            showAnalysisResult(await resp.json(), title, videoId);
-        } catch (err) {
-            showAnalysisError("Analysis failed: " + err.message);
-        }
-    });
-});
-
-/* Competitor videos */
 document.querySelectorAll(".comp-video-clickable").forEach(el => {
     el.addEventListener("click", async () => {
         const channelId = el.dataset.channelId;
         const videoId = el.dataset.videoId;
         const title = el.dataset.title;
-        showAnalysisLoading();
+
+        planForm.style.display = "none";
+        planHeader.style.display = "none";
+        results.style.display = "none";
+        planError.style.display = "none";
+        analysisResults.style.display = "none";
+        analysisError.style.display = "none";
+        analysisLoading.style.display = "block";
+
         try {
             const resp = await fetch("/api/analyze-competitor-video", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ channel_id: channelId, video_id: videoId }),
             });
-            showAnalysisResult(await resp.json(), title, videoId);
+            const data = await resp.json();
+            if (data.error) {
+                analysisError.textContent = data.error;
+                analysisError.style.display = "block";
+            } else {
+                renderAnalysis(data, title, videoId);
+                analysisResults.style.display = "block";
+            }
         } catch (err) {
-            showAnalysisError("Analysis failed: " + err.message);
+            analysisError.textContent = "Analysis failed: " + err.message;
+            analysisError.style.display = "block";
         }
+        analysisLoading.style.display = "none";
     });
 });
 

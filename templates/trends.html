@@ -64,9 +64,131 @@
     </div>
 </div>
 
+<!-- Video Analysis Panel (hidden until a video is clicked) -->
+<div class="trends-report-section">
+    <div id="analysis-loading" class="plan-loading" style="display:none">
+        <p>Analyzing video...</p>
+    </div>
+    <div id="analysis-error" class="alert error" style="display:none"></div>
+    <div id="analysis-results" class="analysis-results" style="display:none">
+        <div class="analysis-header">
+            <h2>Video Analysis</h2>
+            <button class="btn small" id="close-analysis">Close</button>
+        </div>
+        <div class="analysis-video-title-row">
+            <div id="analysis-video-title" class="analysis-video-title"></div>
+            <a id="analysis-yt-link" href="#" target="_blank" class="btn small analysis-yt-btn">Watch on YouTube</a>
+        </div>
+
+        <section class="plan-card">
+            <h2>Performance</h2>
+            <div id="analysis-performance" class="plan-text"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Title Analysis</h2>
+            <div id="analysis-title" class="plan-text"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Topic Analysis</h2>
+            <div id="analysis-topic" class="plan-text"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Format Tactics</h2>
+            <div id="analysis-tactics" class="plan-list"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Takeaways</h2>
+            <div id="analysis-takeaways" class="plan-list"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Video Ideas Inspired by This</h2>
+            <div id="analysis-ideas" class="plan-list"></div>
+        </section>
+    </div>
+</div>
+
 <hr class="settings-divider" style="margin:2rem 0">
 
 <div class="trends-grid">
+
+    <!-- My Videos list -->
+    <section class="trend-card full-width">
+        <div class="trend-card-header-row">
+            <div>
+                <h2>My Videos</h2>
+                <p class="trend-subtitle">{{ videos|length }} videos &middot; {{ "{:,}".format(total_views) }} total views &middot; {{ avg_engagement }}% avg engagement &mdash; click any video to analyze</p>
+            </div>
+            <input type="text" id="video-search" class="sidebar-search" placeholder="Filter videos..." style="max-width:200px">
+        </div>
+        <div class="trend-video-grid" id="video-list">
+            {% for video in videos %}
+            <div class="trend-video-item own-video-clickable"
+                 data-title="{{ video.title|lower }}"
+                 data-video-id="{{ video.video_id }}"
+                 data-video-title="{{ video.title }}">
+                <span class="tv-title">{{ video.title[:65] }}</span>
+                <div class="tv-stats">
+                    <span>{{ "{:,}".format(video.view_count) }} views</span>
+                    <span>{{ video.engagement_rate }}%</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if competitors %}
+    <!-- Competitor Videos -->
+    {% for comp in competitors %}
+    <section class="trend-card full-width">
+        <div class="trend-card-header-row">
+            <div>
+                <h2>{{ comp.name }} <span class="badge category-badge">{{ comp.category }}</span></h2>
+                <p class="trend-subtitle">{{ comp.videos|length }} videos
+                {% if comp.videos %}
+                {% set avg_views = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
+                &middot; {{ "{:,}".format(avg_views) }} avg views
+                {% endif %}
+                &mdash; click to analyze</p>
+            </div>
+        </div>
+        <div class="trend-video-grid">
+            {% for v in comp.videos[:15] %}
+            {% if comp.videos|length > 0 %}
+            {% set avg = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
+            {% set ratio = v.view_count / avg if avg > 0 else 0 %}
+            {% endif %}
+            <div class="trend-video-item comp-video-clickable"
+                 data-channel-id="{{ comp.channel_id }}"
+                 data-video-id="{{ v.video_id }}"
+                 data-title="{{ v.title }}">
+                {% if v.thumbnail_url %}
+                <img src="{{ v.thumbnail_url }}" alt="" class="tv-thumb" loading="lazy">
+                {% endif %}
+                <div class="tv-info">
+                    <span class="tv-title">{{ v.title[:55] }}</span>
+                    <div class="tv-stats">
+                        <span>{{ "{:,}".format(v.view_count) }} views</span>
+                        <span>{{ v.engagement_rate }}%</span>
+                        {% if ratio is defined and ratio >= 2 %}
+                        <span class="perf-badge badge-breakout">Breakout</span>
+                        {% elif ratio is defined and ratio >= 1.2 %}
+                        <span class="perf-badge badge-strong">Strong</span>
+                        {% elif ratio is defined and ratio <= 0.5 %}
+                        <span class="perf-badge badge-under">Under</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+    {% endif %}
 
     {% if trends.recent_breakouts %}
     <section class="trend-card full-width">
@@ -397,5 +519,89 @@ function renderReport(data) {
     document.getElementById("report-actions").innerHTML = (data.action_plan || []).map((a, i) =>
         `<div class="plan-option action-item"><span class="option-num">${i+1}</span> ${esc(a)}</div>`).join("");
 }
+
+/* --- Video search filter --- */
+document.getElementById("video-search").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll("#video-list .trend-video-item").forEach(el => {
+        el.style.display = el.dataset.title.includes(q) ? "" : "none";
+    });
+});
+
+/* --- Video analysis --- */
+const analysisLoading = document.getElementById("analysis-loading");
+const analysisError = document.getElementById("analysis-error");
+const analysisResults = document.getElementById("analysis-results");
+
+function showAnalysis(data, title, videoId) {
+    if (data.error) {
+        analysisError.textContent = data.error;
+        analysisError.style.display = "block";
+    } else {
+        document.getElementById("analysis-video-title").textContent = title;
+        document.getElementById("analysis-yt-link").href = "https://youtube.com/watch?v=" + encodeURIComponent(videoId);
+        document.getElementById("analysis-performance").textContent = data.performance_summary || "";
+        document.getElementById("analysis-title").textContent = data.title_analysis || "";
+        document.getElementById("analysis-topic").textContent = data.topic_analysis || "";
+        document.getElementById("analysis-tactics").innerHTML = (data.format_tactics || []).map((t, i) =>
+            `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+        document.getElementById("analysis-takeaways").innerHTML = (data.takeaways || []).map((t, i) =>
+            `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+        document.getElementById("analysis-ideas").innerHTML = (data.video_ideas || []).map((t, i) =>
+            `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+        analysisResults.style.display = "block";
+    }
+    analysisLoading.style.display = "none";
+    analysisResults.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/* Own videos */
+document.querySelectorAll(".own-video-clickable").forEach(el => {
+    el.addEventListener("click", async () => {
+        analysisResults.style.display = "none";
+        analysisError.style.display = "none";
+        analysisLoading.style.display = "block";
+        analysisLoading.scrollIntoView({ behavior: "smooth", block: "start" });
+        try {
+            const resp = await fetch("/api/analyze-own-video", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ video_id: el.dataset.videoId }),
+            });
+            showAnalysis(await resp.json(), el.dataset.videoTitle, el.dataset.videoId);
+        } catch (err) {
+            analysisError.textContent = "Analysis failed: " + err.message;
+            analysisError.style.display = "block";
+            analysisLoading.style.display = "none";
+        }
+    });
+});
+
+/* Competitor videos */
+document.querySelectorAll(".comp-video-clickable").forEach(el => {
+    el.addEventListener("click", async () => {
+        analysisResults.style.display = "none";
+        analysisError.style.display = "none";
+        analysisLoading.style.display = "block";
+        analysisLoading.scrollIntoView({ behavior: "smooth", block: "start" });
+        try {
+            const resp = await fetch("/api/analyze-competitor-video", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ channel_id: el.dataset.channelId, video_id: el.dataset.videoId }),
+            });
+            showAnalysis(await resp.json(), el.dataset.title, el.dataset.videoId);
+        } catch (err) {
+            analysisError.textContent = "Analysis failed: " + err.message;
+            analysisError.style.display = "block";
+            analysisLoading.style.display = "none";
+        }
+    });
+});
+
+document.getElementById("close-analysis").addEventListener("click", () => {
+    analysisResults.style.display = "none";
+    analysisError.style.display = "none";
+});
 </script>
 {% endblock %}
