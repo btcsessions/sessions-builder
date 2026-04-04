@@ -118,14 +118,21 @@ def api_chat():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/refresh", methods=["POST"])
-def refresh():
-    global video_cache
-    if not playlist_info.get("playlist_id") or not playlist_info.get("google_key"):
-        return jsonify({"error": "No playlist loaded. Go back to the home page to load one."}), 400
+@app.route("/api/update", methods=["POST"])
+def update_app():
+    import subprocess
     try:
-        video_cache = fetch_playlist_videos(playlist_info["playlist_id"], playlist_info["google_key"])
-        return jsonify({"ok": True, "count": len(video_cache)})
+        result = subprocess.run(
+            ["git", "pull", "origin", "claude/youtube-planning-app-B52L2"],
+            capture_output=True, text=True, timeout=30,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        output = result.stdout.strip()
+        if result.returncode != 0:
+            return jsonify({"error": result.stderr.strip() or "Git pull failed"}), 500
+        if "Already up to date" in output:
+            return jsonify({"updated": False, "message": "Already up to date."})
+        return jsonify({"updated": True, "message": output})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

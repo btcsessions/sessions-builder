@@ -13,10 +13,33 @@
         <a href="{{ url_for('dashboard') }}">Dashboard</a>
         {% endif %}
         <a href="{{ url_for('index') }}">Load Playlist</a>
+        <button id="update-app-btn" class="btn small nav-update-btn" title="Check for app updates">Update App</button>
     </nav>
     <main>
         {% block content %}{% endblock %}
     </main>
     {% block scripts %}{% endblock %}
+    <script>
+    const updateBtn = document.getElementById("update-app-btn");
+    updateBtn.addEventListener("click", async () => {
+        updateBtn.disabled = true;
+        updateBtn.textContent = "Checking...";
+        try {
+            const resp = await fetch("/api/update", { method: "POST" });
+            const data = await resp.json();
+            if (data.error) {
+                alert("Update failed: " + data.error);
+            } else if (data.updated) {
+                alert("App updated! Restart the app to apply changes.");
+            } else {
+                alert(data.message);
+            }
+        } catch (err) {
+            alert("Update failed: " + err.message);
+        }
+        updateBtn.disabled = false;
+        updateBtn.textContent = "Update App";
+    });
+    </script>
 </body>
 </html>
