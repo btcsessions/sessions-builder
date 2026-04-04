@@ -681,6 +681,19 @@ def api_suggest_channels():
             api_key=api_key,
             market_data=market_data,
         )
+
+        # Enrich suggestions with avatars from YouTube API
+        google_key = settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", "")
+        if google_key:
+            from youtube import resolve_channel_id
+            for group in ["crypto_channels", "tech_channels"]:
+                for ch in result.get(group, []):
+                    try:
+                        _, _, avatar = resolve_channel_id(ch["handle"], google_key)
+                        ch["avatar_url"] = avatar
+                    except Exception:
+                        ch["avatar_url"] = ""
+
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

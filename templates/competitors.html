@@ -164,7 +164,11 @@ document.getElementById("refresh-all-btn").addEventListener("click", async (e) =
 
 // Discover channels
 function renderSuggestion(ch, section) {
+    const avatarHtml = ch.avatar_url
+        ? `<img src="${esc(ch.avatar_url)}" alt="" class="insp-avatar">`
+        : `<div class="insp-avatar-placeholder">${esc(ch.name[0])}</div>`;
     return `<div class="insp-discover-card">
+        ${avatarHtml}
         <div class="insp-discover-info">
             <div class="insp-discover-name">
                 <strong>${esc(ch.name)}</strong>

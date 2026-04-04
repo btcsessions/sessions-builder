@@ -806,11 +806,15 @@ tr:hover { background: var(--surface2); }
 }
 .insp-discover-card {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.6rem;
     align-items: flex-start;
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.75rem;
     border-bottom: 1px solid var(--border);
     transition: background 0.1s;
+}
+.insp-discover-card > .insp-avatar,
+.insp-discover-card > .insp-avatar-placeholder {
+    margin-top: 0.15rem;
 }
 .insp-discover-card:last-child { border-bottom: none; }
 .insp-discover-card:hover { background: var(--surface2); }
