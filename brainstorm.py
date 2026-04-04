@@ -9,6 +9,7 @@ def generate_trend_report(
     trends_data: dict,
     api_key: str,
     analytics_data: dict = None,
+    market_data: dict = None,
 ) -> dict:
     """Generate an AI-powered trend report with actionable advice."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -133,8 +134,8 @@ RULES:
 
 **MY HIDDEN GEMS (high engagement, low views):**
 {gem_section}
-
-Generate a comprehensive trend report with actionable advice for my next videos."""
+{_build_market_section(market_data)}
+Generate a comprehensive trend report with actionable advice for my next videos. Factor in the current Bitcoin market sentiment when making recommendations."""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
@@ -147,6 +148,35 @@ Generate a comprehensive trend report with actionable advice for my next videos.
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
+
+
+def _build_market_section(market_data: dict = None) -> str:
+    if not market_data:
+        return ""
+    info = market_data.get("info", {})
+    summary = market_data.get("summary", {})
+    if not info.get("price"):
+        return ""
+
+    lines = ["\n**Bitcoin Market Sentiment:**"]
+    lines.append(f"- Current BTC price: ${info['price']:,.0f}")
+    lines.append(f"- 200-day MA: ${info.get('ma_200', 0):,.0f}")
+    lines.append(f"- Current phase: {info.get('phase', 'unknown').upper()}")
+
+    bull = summary.get("bull", {})
+    bear = summary.get("bear", {})
+    if bull.get("count"):
+        lines.append(f"- Bull market videos: {bull['count']} videos, {bull['avg_views']:,} avg views, {bull['avg_engagement']}% eng")
+    if bear.get("count"):
+        lines.append(f"- Bear market videos: {bear['count']} videos, {bear['avg_views']:,} avg views, {bear['avg_engagement']}% eng")
+
+    lines.append("")
+    lines.append("IMPORTANT: This creator is in the bitcoin/freedom tech niche. Market sentiment significantly affects viewership.")
+    lines.append("- In bear markets: focus on evergreen educational content, self-custody, privacy, and practical tools")
+    lines.append("- In bull markets: capitalize on heightened interest with beginner content, trending topics, and timely coverage")
+    lines.append("- Score video performance relative to the market phase they were published in, not just overall averages")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _build_competitors_section(competitors_data: list = None) -> str:
@@ -187,7 +217,7 @@ def _build_competitors_section(competitors_data: list = None) -> str:
     return "\n".join(sections)
 
 
-def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, competitors_data: list = None) -> str:
+def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, competitors_data: list = None, market_data: dict = None) -> str:
     if not video_data:
         return (
             "You are a YouTube content strategist. The user hasn't loaded any video data yet. "
@@ -281,7 +311,7 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 - Top 3 by views: {top3}
 - Bottom 3 by views: {bottom3}
 {analytics_section}{trends_section}
-
+{_build_market_section(market_data)}
 **Video Performance Data:**
 {truncation_note}
 | Title | Views | Likes | Comments | Engagement | Published |
@@ -313,11 +343,12 @@ def chat_with_claude(
     api_key: str,
     analytics_data: dict = None,
     competitors_data: list = None,
+    market_data: dict = None,
 ) -> str:
     """Send a message to Claude with video performance context."""
     client = anthropic.Anthropic(api_key=api_key)
 
-    system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data)
+    system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
 
     messages = []
     for msg in chat_history:
@@ -344,6 +375,7 @@ def generate_video_plan(
     api_key: str,
     analytics_data: dict = None,
     competitors_data: list = None,
+    market_data: dict = None,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -356,7 +388,7 @@ def generate_video_plan(
             entries.append(f"- \"{v['title']}\" ({v['view_count']:,} views) https://youtube.com/watch?v={v['video_id']}")
         past_titles = "\n".join(entries)
 
-    channel_context = _build_system_prompt(video_data, analytics_data, competitors_data)
+    channel_context = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
 
     # Build the user's input context
     links_text = "\n".join(f"- {l}" for l in links) if links else "None provided"
@@ -430,6 +462,7 @@ def analyze_own_video(
     api_key: str,
     analytics_data: dict = None,
     competitors_data: list = None,
+    market_data: dict = None,
 ) -> dict:
     """Analyze one of the creator's own videos with performance insights."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -473,6 +506,8 @@ def analyze_own_video(
                 analytics_note = f"\n**Analytics Data:** {avg_dur}min avg watch time, {avg_pct}% retention, +{subs} subscribers gained"
                 break
 
+    market_section = _build_market_section(market_data)
+
     system = f"""You are a YouTube content strategist. A creator is analyzing one of their own videos to understand its performance and learn from it.
 
 **Channel Overview:**
@@ -482,7 +517,7 @@ def analyze_own_video(
 {top5}
 - Lowest performers:
 {bottom5}
-
+{market_section}
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
 {{
@@ -530,6 +565,7 @@ def analyze_competitor_video(
     video_data: list[dict],
     api_key: str,
     analytics_data: dict = None,
+    market_data: dict = None,
 ) -> dict:
     """Analyze a competitor's video and suggest takeaways for the creator."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -562,6 +598,8 @@ def analyze_competitor_video(
         for v in video_data[:10]
     )
 
+    market_section = _build_market_section(market_data)
+
     system = f"""You are a YouTube content strategist. A creator is studying a competitor's video to learn from it.
 
 **The Creator's Channel:**
@@ -572,7 +610,7 @@ def analyze_competitor_video(
 **The Competitor: {competitor['name']}** (Category: {competitor.get('category', 'Unknown')})
 - Average views: {comp_avg_views:,}
 - Average engagement: {comp_avg_engagement}%
-
+{market_section}
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
 {{

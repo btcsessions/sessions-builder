@@ -716,6 +716,75 @@ tr:hover { background: var(--surface2); }
 }
 .sidebar-empty .btn { margin-top: 0.5rem; }
 
+/* Market sentiment */
+.market-bar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+}
+.market-bar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+}
+.market-label { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; }
+.market-value { font-weight: 600; }
+.market-phase-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.phase-bull, .market-phase-badge.phase-bull { background: #1a3a1a; color: #66ff66; }
+.phase-bear, .market-phase-badge.phase-bear { background: #3a1a1a; color: #ff6666; }
+.phase-sideways, .market-phase-badge.phase-sideways { background: #2a2a1a; color: #dddd66; }
+.phase-unknown, .market-phase-badge.phase-unknown { background: var(--surface2); color: var(--text-muted); }
+.market-phase-pip {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    line-height: 1rem;
+    text-align: center;
+    border-radius: 2px;
+    font-size: 0.5rem;
+    font-weight: 700;
+}
+.market-phase-pip.phase-bull { background: #1a3a1a; color: #66ff66; }
+.market-phase-pip.phase-bear { background: #3a1a1a; color: #ff6666; }
+.market-phase-pip.phase-sideways { background: #2a2a1a; color: #dddd66; }
+.market-phase-pip.phase-unknown { background: var(--surface2); color: var(--text-muted); }
+.vpd-stat {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.market-phase-grid {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.market-phase-card {
+    flex: 1;
+    min-width: 100px;
+    padding: 0.6rem;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.phase-bull-bg { background: #0d1f0d; border: 1px solid #1a3a1a; }
+.phase-bear-bg { background: #1f0d0d; border: 1px solid #3a1a1a; }
+.phase-sideways-bg { background: #1a1a0d; border: 1px solid #2a2a1a; }
+.mp-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+.mp-value { font-size: 0.9rem; font-weight: 600; }
+.mp-meta { font-size: 0.65rem; color: var(--text-muted); }
+
 /* Trend report */
 .report-sub {
     font-size: 0.8rem;

@@ -12,6 +12,44 @@
     <button id="generate-report-btn" class="btn primary">Generate AI Report</button>
 </div>
 
+<!-- Market Sentiment Bar -->
+<div class="trends-top-section">
+    <div class="market-bar">
+        <div class="market-bar-item">
+            <span class="market-label">BTC</span>
+            <span class="market-value">${{ "{:,.0f}".format(market_info.price) }}</span>
+        </div>
+        <div class="market-bar-item">
+            <span class="market-label">200d MA</span>
+            <span class="market-value">${{ "{:,.0f}".format(market_info.ma_200) }}</span>
+        </div>
+        <div class="market-bar-item">
+            <span class="market-label">Phase</span>
+            <span class="market-phase-badge phase-{{ market_info.phase }}">{{ market_info.phase|upper }}</span>
+        </div>
+        <div class="market-bar-item">
+            <span class="market-label">Bull Avg</span>
+            <span class="market-value">{{ "{:,}".format(bull_avg) }} views</span>
+        </div>
+        <div class="market-bar-item">
+            <span class="market-label">Bear Avg</span>
+            <span class="market-value">{{ "{:,}".format(bear_avg) }} views</span>
+        </div>
+        {% if market_summary.bull.count > 0 %}
+        <div class="market-bar-item">
+            <span class="market-label">Bull Videos</span>
+            <span class="market-value">{{ market_summary.bull.count }}</span>
+        </div>
+        {% endif %}
+        {% if market_summary.bear.count > 0 %}
+        <div class="market-bar-item">
+            <span class="market-label">Bear Videos</span>
+            <span class="market-value">{{ market_summary.bear.count }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <div id="report-loading" class="plan-loading trends-top-section" style="display:none">
     <p>Analyzing cross-channel trends and generating insights...</p>
 </div>
@@ -151,15 +189,21 @@
                         <span class="tv-title">{{ video.title[:55] }}</span>
                         <div class="tv-stats">
                             <span>{{ "{:,}".format(video.view_count) }} views</span>
-                            <span>{{ video.engagement_rate }}%</span>
-                            {% if video._score >= 2 %}
-                            <span class="perf-badge badge-breakout">{{ video._score }}x</span>
-                            {% elif video._score >= 1.2 %}
-                            <span class="perf-badge badge-strong">{{ video._score }}x</span>
-                            {% elif video._score <= 0.5 %}
-                            <span class="perf-badge badge-under">{{ video._score }}x</span>
+                            {% if video._market_score >= 2 %}
+                            <span class="perf-badge badge-breakout">{{ video._market_score }}x</span>
+                            {% elif video._market_score >= 1.2 %}
+                            <span class="perf-badge badge-strong">{{ video._market_score }}x</span>
+                            {% elif video._market_score <= 0.5 %}
+                            <span class="perf-badge badge-under">{{ video._market_score }}x</span>
                             {% else %}
-                            <span class="perf-badge badge-avg">{{ video._score }}x</span>
+                            <span class="perf-badge badge-avg">{{ video._market_score }}x</span>
+                            {% endif %}
+                            <span class="market-phase-pip phase-{{ video._market_phase }}">{{ video._market_phase[:1]|upper }}</span>
+                            {% if video._views_per_day > 0 %}
+                            <span class="vpd-stat">{{ video._views_per_day|int }}/d</span>
+                            {% endif %}
+                            {% if video._velocity and video._velocity.has_velocity and video._velocity.trending_up %}
+                            <span class="perf-badge badge-breakout" style="font-size:0.5rem">&#9650;</span>
                             {% endif %}
                         </div>
                     </div>
@@ -187,13 +231,18 @@
                         <span class="tv-title">{{ v.title[:50] }}</span>
                         <div class="tv-stats">
                             <span>{{ "{:,}".format(v.view_count) }} views</span>
-                            <span>{{ v.engagement_rate }}%</span>
                             {% if v._score >= 2 %}
                             <span class="perf-badge badge-breakout">{{ v._score }}x</span>
                             {% elif v._score >= 1.2 %}
                             <span class="perf-badge badge-strong">{{ v._score }}x</span>
                             {% elif v._score <= 0.5 %}
                             <span class="perf-badge badge-under">{{ v._score }}x</span>
+                            {% endif %}
+                            {% if v._market_phase is defined %}
+                            <span class="market-phase-pip phase-{{ v._market_phase }}">{{ v._market_phase[:1]|upper }}</span>
+                            {% endif %}
+                            {% if v._views_per_day is defined and v._views_per_day > 0 %}
+                            <span class="vpd-stat">{{ v._views_per_day|int }}/d</span>
                             {% endif %}
                         </div>
                     </div>
@@ -207,6 +256,35 @@
 
     <!-- RIGHT COLUMN: Data & Charts -->
     <div class="trends-col-data">
+
+        <!-- Market Sentiment Performance -->
+        <section class="trend-card">
+            <h2>Performance by Market Phase</h2>
+            <p class="trend-subtitle">Your videos segmented by BTC sentiment at publish</p>
+            <div class="market-phase-grid">
+                {% if market_summary.bull.count > 0 %}
+                <div class="market-phase-card phase-bull-bg">
+                    <span class="mp-label">Bull Market</span>
+                    <span class="mp-value">{{ "{:,}".format(market_summary.bull.avg_views) }} avg views</span>
+                    <span class="mp-meta">{{ market_summary.bull.count }} videos &middot; {{ market_summary.bull.avg_engagement }}% eng</span>
+                </div>
+                {% endif %}
+                {% if market_summary.bear.count > 0 %}
+                <div class="market-phase-card phase-bear-bg">
+                    <span class="mp-label">Bear Market</span>
+                    <span class="mp-value">{{ "{:,}".format(market_summary.bear.avg_views) }} avg views</span>
+                    <span class="mp-meta">{{ market_summary.bear.count }} videos &middot; {{ market_summary.bear.avg_engagement }}% eng</span>
+                </div>
+                {% endif %}
+                {% if market_summary.sideways.count > 0 %}
+                <div class="market-phase-card phase-sideways-bg">
+                    <span class="mp-label">Sideways</span>
+                    <span class="mp-value">{{ "{:,}".format(market_summary.sideways.avg_views) }} avg views</span>
+                    <span class="mp-meta">{{ market_summary.sideways.count }} videos &middot; {{ market_summary.sideways.avg_engagement }}% eng</span>
+                </div>
+                {% endif %}
+            </div>
+        </section>
 
         {% if trends.recent_breakouts %}
         <section class="trend-card">

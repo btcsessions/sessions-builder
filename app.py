@@ -4,6 +4,9 @@ from flask import Flask, render_template, request, session, jsonify, redirect, u
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
 from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report
+from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_score,
+                    record_snapshot, compute_velocity, compute_longevity_from_snapshots,
+                    get_current_market_info, get_market_summary)
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
@@ -117,6 +120,15 @@ if _google_key and competitors_cache:
         except Exception:
             pass
     save_competitors(competitors_cache)
+
+# Record view count snapshots for longevity tracking
+if video_cache or competitors_cache:
+    _snapshots = record_snapshot(video_cache, competitors_cache)
+else:
+    _snapshots = {}
+
+# Fetch BTC price data (cached, non-blocking if fails)
+_btc_prices = fetch_btc_prices()
 
 
 @app.route("/")
@@ -239,7 +251,11 @@ def api_chat():
         return jsonify({"error": "Anthropic API key not configured. Go back to the home page to set it."}), 400
 
     try:
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache)
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data)
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
         return jsonify({"reply": reply})
@@ -270,7 +286,17 @@ def trends_page():
     year_avg_engagement = round(sum(v["engagement_rate"] for v in year_videos) / len(year_videos), 2) if year_videos else 0
     year_total_views = sum(v["view_count"] for v in year_videos)
 
-    # Sort own videos by publish date (most recent first), add score
+    # Market data
+    market_info = get_current_market_info(_btc_prices)
+
+    # Market-adjusted baselines
+    bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
+    bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
+    bear_avg = sum(v["view_count"] for v in bear_year) // len(bear_year) if bear_year else year_avg_views
+    bull_avg = sum(v["view_count"] for v in bull_year) // len(bull_year) if bull_year else year_avg_views
+
+    # Sort own videos by publish date (most recent first), add scores
+    snapshots = _snapshots
     dated_videos = []
     for v in video_cache:
         try:
@@ -278,11 +304,31 @@ def trends_page():
             vc = dict(v)
             vc["_date"] = dt
             vc["_score"] = round(v["view_count"] / year_avg_views, 1) if year_avg_views else 0
+
+            # Market phase tagging
+            tag_video_market_phase(vc, _btc_prices)
+            phase = vc.get("_market_phase", "unknown")
+            phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg_views)
+            vc["_market_score"] = round(v["view_count"] / phase_avg, 1) if phase_avg else 0
+
+            # Longevity
+            compute_longevity_score(vc)
+            vel = compute_velocity(v["video_id"], snapshots)
+            vc["_velocity"] = vel
+            if vel["has_velocity"]:
+                vc["_longevity_score"] = compute_longevity_from_snapshots(vc, snapshots)
+
             dated_videos.append(vc)
         except (ValueError, KeyError):
-            dated_videos.append(dict(v, _date=None, _score=0))
+            dated_videos.append(dict(v, _date=None, _score=0, _market_phase="unknown",
+                                     _btc_price_at_publish=0, _market_score=0,
+                                     _days_old=0, _views_per_day=0, _longevity_score=0,
+                                     _velocity={"has_velocity": False}))
 
     dated_videos.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    # Market-segmented performance
+    market_summary = get_market_summary(_btc_prices, dated_videos)
 
     # Competitor videos: sort by date, keep top recent performers (8 per channel)
     scored_competitors = []
@@ -292,7 +338,6 @@ def trends_page():
             scored_competitors.append(comp)
             continue
         comp_avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
-        # Sort by date, most recent first
         dated_comp = []
         for v in vids:
             try:
@@ -300,11 +345,13 @@ def trends_page():
                 vc = dict(v)
                 vc["_date"] = dt
                 vc["_score"] = round(v["view_count"] / comp_avg, 1) if comp_avg else 0
+                tag_video_market_phase(vc, _btc_prices)
+                compute_longevity_score(vc)
                 dated_comp.append(vc)
             except (ValueError, KeyError):
-                dated_comp.append(dict(v, _date=None, _score=0))
+                dated_comp.append(dict(v, _date=None, _score=0, _market_phase="unknown",
+                                       _days_old=0, _views_per_day=0))
         dated_comp.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-        # Keep 8 most recent, but prioritize high performers
         recent = dated_comp[:20]
         recent.sort(key=lambda v: v["view_count"], reverse=True)
         top_recent = recent[:8]
@@ -326,6 +373,10 @@ def trends_page():
                            year_avg_engagement=year_avg_engagement,
                            year_total_views=year_total_views,
                            year_video_count=len(year_videos),
+                           bear_avg=bear_avg,
+                           bull_avg=bull_avg,
+                           market_info=market_info,
+                           market_summary=market_summary,
                            competitors=scored_competitors)
 
 
@@ -352,6 +403,10 @@ def api_generate_plan():
         return jsonify({"error": "Anthropic API key not configured. Set it in Settings."}), 400
 
     try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
         plan = generate_video_plan(
             video_type=video_type,
             topic=topic,
@@ -362,6 +417,7 @@ def api_generate_plan():
             analytics_data=analytics_cache,
             competitors_data=competitors_cache,
             api_key=api_key,
+            market_data=market_data,
         )
         return jsonify(plan)
     except Exception as e:
@@ -514,12 +570,17 @@ def api_generate_trend_report():
 
     trends_data = analyze_trends(video_cache, competitors_cache)
     try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
         report = generate_trend_report(
             video_data=video_cache,
             competitors_data=competitors_cache,
             trends_data=trends_data,
             api_key=api_key,
             analytics_data=analytics_cache,
+            market_data=market_data,
         )
         return jsonify(report)
     except Exception as e:
@@ -549,12 +610,17 @@ def api_analyze_own_video():
         return jsonify({"error": "Video not found."}), 404
 
     try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
         analysis = analyze_own_video(
             video=video,
             video_data=video_cache,
             api_key=api_key,
             analytics_data=analytics_cache,
             competitors_data=competitors_cache,
+            market_data=market_data,
         )
         return jsonify(analysis)
     except Exception as e:
@@ -591,12 +657,17 @@ def api_analyze_competitor_video():
         return jsonify({"error": "Competitor or video not found."}), 404
 
     try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
         analysis = analyze_competitor_video(
             video=video,
             competitor=competitor,
             video_data=video_cache,
             api_key=api_key,
             analytics_data=analytics_cache,
+            market_data=market_data,
         )
         return jsonify(analysis)
     except Exception as e:
