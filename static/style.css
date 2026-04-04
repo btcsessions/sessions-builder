@@ -36,10 +36,11 @@ nav {
 nav .nav-brand {
     font-family: 'Bebas Neue', sans-serif;
     font-weight: 400;
-    font-size: 1.4rem;
-    letter-spacing: 0.05em;
+    font-size: 1.6rem;
+    letter-spacing: 0.08em;
     color: var(--accent);
     text-decoration: none;
+    text-transform: uppercase;
 }
 nav a {
     color: var(--text-muted);
