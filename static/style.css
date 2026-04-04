@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&display=swap');
+
 :root {
     --bg: #0D101C;
     --surface: #141824;
@@ -13,8 +15,6 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&display=swap');
 
 body {
     font-family: "Avenir", "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -45,15 +45,16 @@ nav .nav-brand {
     text-transform: uppercase;
 }
 nav a {
-    color: var(--text-muted);
+    color: #c0c8d4;
     text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 400;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     transition: color 0.15s;
 }
-nav a:hover { color: var(--text); }
+nav a:hover { color: #fff; }
 
 main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 main:has(.workspace) { padding: 0; max-width: none; }
@@ -1196,7 +1197,7 @@ tr:hover { background: var(--surface2); }
     padding: 1.25rem;
 }
 .planner-header { margin-bottom: 1rem; }
-.planner-header h2 { font-size: 1.6rem; }
+.planner-header h2 { font-size: 1.6rem; color: var(--text); }
 .ws-plan-form {
     background: var(--surface);
     border: 1px solid var(--border);
