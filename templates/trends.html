@@ -189,14 +189,23 @@
                         <span class="tv-title">{{ video.title[:55] }}</span>
                         <div class="tv-stats">
                             <span>{{ "{:,}".format(video.view_count) }} views</span>
-                            {% if video._market_score >= 2 %}
-                            <span class="perf-badge badge-breakout">{{ video._market_score }}x</span>
-                            {% elif video._market_score >= 1.2 %}
-                            <span class="perf-badge badge-strong">{{ video._market_score }}x</span>
-                            {% elif video._market_score <= 0.5 %}
-                            <span class="perf-badge badge-under">{{ video._market_score }}x</span>
+                            {% if video._score >= 2 %}
+                            <span class="perf-badge badge-breakout" title="Overall: {{ video._score }}x year avg">{{ video._score }}x</span>
+                            {% elif video._score >= 1.2 %}
+                            <span class="perf-badge badge-strong" title="Overall: {{ video._score }}x year avg">{{ video._score }}x</span>
+                            {% elif video._score <= 0.5 %}
+                            <span class="perf-badge badge-under" title="Overall: {{ video._score }}x year avg">{{ video._score }}x</span>
                             {% else %}
-                            <span class="perf-badge badge-avg">{{ video._market_score }}x</span>
+                            <span class="perf-badge badge-avg" title="Overall: {{ video._score }}x year avg">{{ video._score }}x</span>
+                            {% endif %}
+                            {% if video._market_score >= 2 %}
+                            <span class="perf-badge badge-breakout market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
+                            {% elif video._market_score >= 1.2 %}
+                            <span class="perf-badge badge-strong market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
+                            {% elif video._market_score <= 0.5 %}
+                            <span class="perf-badge badge-under market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
                             {% endif %}
                             <span class="market-phase-pip phase-{{ video._market_phase }}">{{ video._market_phase[:1]|upper }}</span>
                             {% if video._views_per_day > 0 %}
