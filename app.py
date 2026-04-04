@@ -156,8 +156,9 @@ def index():
     if not video_cache:
         return redirect(url_for("settings_page"))
 
+    from datetime import datetime, timedelta, timezone
+
     # Build a unified outlier feed from all inspiration channels
-    from datetime import datetime, timezone
     outliers = []
     for comp in competitors_cache:
         vids = comp.get("videos", [])
@@ -180,10 +181,52 @@ def index():
     outliers.sort(key=lambda v: v["_date"], reverse=True)
     outliers = outliers[:20]
 
+    # Recent own videos with market-adjusted scores
+    cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
+    year_videos = []
+    for v in video_cache:
+        try:
+            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+            if dt >= cutoff_1y:
+                year_videos.append(v)
+        except (ValueError, KeyError):
+            pass
+
+    year_avg_views = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
+
+    # Market-adjusted baselines
+    bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
+    bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
+    bear_avg = sum(v["view_count"] for v in bear_year) // len(bear_year) if bear_year else year_avg_views
+    bull_avg = sum(v["view_count"] for v in bull_year) // len(bull_year) if bull_year else year_avg_views
+
+    market_info = get_current_market_info(_btc_prices)
+
+    recent_videos = []
+    for v in video_cache:
+        try:
+            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+        except (ValueError, KeyError):
+            continue
+        vc = dict(v)
+        vc["_date"] = dt
+        vc["_score"] = round(v["view_count"] / year_avg_views, 1) if year_avg_views else 0
+        tag_video_market_phase(vc, _btc_prices)
+        phase = vc.get("_market_phase", "unknown")
+        phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg_views)
+        vc["_market_score"] = round(v["view_count"] / phase_avg, 1) if phase_avg else 0
+        vc["_category"] = video_categories.get(v["video_id"], "")
+        recent_videos.append(vc)
+
+    recent_videos.sort(key=lambda v: v["_date"], reverse=True)
+    recent_videos = recent_videos[:20]
+
     return render_template(
         "workspace.html",
         competitors=competitors_cache,
         outliers=outliers,
+        recent_videos=recent_videos,
+        market_info=market_info,
         chat_history=chat_history,
     )
 

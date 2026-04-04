@@ -1073,6 +1073,39 @@ tr:hover { background: var(--surface2); }
     opacity: 0.7;
 }
 
+/* Recent videos on planner */
+.ws-recent-videos {
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+}
+.ws-recent-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+.ws-recent-header h3 { font-size: 0.95rem; margin: 0; }
+.ws-recent-list {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+.ws-recent-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.ws-recent-item:hover { background: var(--surface2); }
+.ws-recent-item:last-child { border-bottom: none; }
+.ws-recent-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.ws-recent-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.ws-recent-title { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-recent-stats { display: flex; flex-wrap: wrap; gap: 0.35rem; font-size: 0.65rem; color: var(--text-muted); align-items: center; }
+
 /* Center panel */
 .ws-center {
     overflow-y: auto;

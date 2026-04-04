@@ -106,6 +106,58 @@
             <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
         </form>
 
+        <!-- My Recent Videos -->
+        {% if recent_videos %}
+        <div class="ws-recent-videos">
+            <div class="ws-recent-header">
+                <h3>My Recent Videos</h3>
+                {% if market_info and market_info.phase != 'unknown' %}
+                <span class="market-phase-badge phase-{{ market_info.phase }}">{% if market_info.phase == 'bull' %}▲{% elif market_info.phase == 'bear' %}▼{% else %}◆{% endif %} {{ market_info.phase|upper }}</span>
+                {% endif %}
+            </div>
+            <div class="ws-recent-list">
+                {% for v in recent_videos %}
+                <div class="ws-recent-item own-video-clickable"
+                     data-video-id="{{ v.video_id }}"
+                     data-video-title="{{ v.title }}"
+                     data-thumb="{{ v.thumbnail_url or '' }}">
+                    {% if v.thumbnail_url %}
+                    <img src="{{ v.thumbnail_url }}" alt="" class="ws-recent-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="ws-recent-info">
+                        <span class="ws-recent-title">{{ v.title[:55] }}</span>
+                        <div class="ws-recent-stats">
+                            <span>{{ "{:,}".format(v.view_count) }} views</span>
+                            {% if v._score >= 2 %}
+                            <span class="perf-badge badge-breakout" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% elif v._score >= 1.2 %}
+                            <span class="perf-badge badge-strong" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% elif v._score <= 0.5 %}
+                            <span class="perf-badge badge-under" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% endif %}
+                            {% if v._market_score >= 2 %}
+                            <span class="perf-badge badge-breakout market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% elif v._market_score >= 1.2 %}
+                            <span class="perf-badge badge-strong market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% elif v._market_score <= 0.5 %}
+                            <span class="perf-badge badge-under market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% endif %}
+                            <span class="market-phase-pip phase-{{ v._market_phase }}" title="{{ v._market_phase|capitalize }} market">{% if v._market_phase == 'bull' %}▲{% elif v._market_phase == 'bear' %}▼{% elif v._market_phase == 'sideways' %}◆{% else %}?{% endif %}</span>
+                            {% if v._category %}
+                            <span class="badge category-badge">{{ v._category|title }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <div id="plan-loading" class="plan-loading" style="display:none">
             <p>Generating your video plan...</p>
         </div>
@@ -360,11 +412,49 @@ document.querySelectorAll(".comp-video-clickable").forEach(el => {
     });
 });
 
+document.querySelectorAll(".own-video-clickable").forEach(el => {
+    el.addEventListener("click", async () => {
+        const videoId = el.dataset.videoId;
+        const title = el.dataset.videoTitle;
+
+        planForm.style.display = "none";
+        planHeader.style.display = "none";
+        document.querySelector(".ws-recent-videos").style.display = "none";
+        results.style.display = "none";
+        planError.style.display = "none";
+        analysisResults.style.display = "none";
+        analysisError.style.display = "none";
+        analysisLoading.style.display = "block";
+
+        try {
+            const resp = await fetch("/api/analyze-own-video", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ video_id: videoId }),
+            });
+            const data = await resp.json();
+            if (data.error) {
+                analysisError.textContent = data.error;
+                analysisError.style.display = "block";
+            } else {
+                renderAnalysis(data, title, videoId, el.dataset.thumb);
+                analysisResults.style.display = "block";
+            }
+        } catch (err) {
+            analysisError.textContent = "Analysis failed: " + err.message;
+            analysisError.style.display = "block";
+        }
+        analysisLoading.style.display = "none";
+    });
+});
+
 document.getElementById("close-analysis").addEventListener("click", () => {
     analysisResults.style.display = "none";
     analysisError.style.display = "none";
     planForm.style.display = "";
     planHeader.style.display = "";
+    const recentVids = document.querySelector(".ws-recent-videos");
+    if (recentVids) recentVids.style.display = "";
 });
 
 function renderAnalysis(data, title, videoId, thumbUrl) {
