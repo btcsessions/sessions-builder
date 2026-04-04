@@ -42,6 +42,70 @@
         <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
     </div>
 
-    <button type="submit" class="btn primary">Save &amp; Reload Playlist</button>
+    <hr class="settings-divider">
+
+    <h3>YouTube Analytics <span class="badge {{ 'connected' if oauth_connected else 'disconnected' }}">{{ 'Connected' if oauth_connected else 'Not Connected' }}</span></h3>
+    <p class="form-hint">Optional. Adds watch time, retention, traffic sources, and subscriber data to AI analysis.</p>
+
+    <div class="form-group">
+        <label for="oauth_client_id">OAuth Client ID</label>
+        <input type="text" id="oauth_client_id" name="oauth_client_id"
+               value="{{ oauth_client_id }}"
+               placeholder="xxxx.apps.googleusercontent.com">
+        <small>From Google Cloud Console > Credentials > OAuth 2.0 Client ID (Web application)</small>
+    </div>
+
+    <div class="form-group">
+        <label for="oauth_client_secret">OAuth Client Secret</label>
+        <input type="password" id="oauth_client_secret" name="oauth_client_secret"
+               value="{{ oauth_client_secret }}"
+               placeholder="GOCSPX-...">
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn primary">Save &amp; Reload Playlist</button>
+    </div>
 </form>
+
+{% if oauth_client_id and oauth_client_secret %}
+<div class="setup-form" style="margin-top: 1rem;">
+    {% if not oauth_connected %}
+    <a href="{{ url_for('oauth_connect') }}" class="btn primary">Connect YouTube Analytics</a>
+    <small class="form-hint">You'll be redirected to Google to authorize access to your channel analytics.</small>
+    {% else %}
+    <div class="analytics-status">
+        <span class="badge connected">YouTube Analytics Connected</span>
+        <button id="fetch-analytics-btn" class="btn small">{{ 'Refresh Analytics' if has_analytics else 'Fetch Analytics' }}</button>
+        <span id="analytics-status-msg" class="form-hint"></span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const fetchBtn = document.getElementById("fetch-analytics-btn");
+if (fetchBtn) {
+    const statusMsg = document.getElementById("analytics-status-msg");
+    fetchBtn.addEventListener("click", async () => {
+        fetchBtn.disabled = true;
+        fetchBtn.textContent = "Fetching...";
+        statusMsg.textContent = "";
+        try {
+            const resp = await fetch("/api/fetch-analytics", { method: "POST" });
+            const data = await resp.json();
+            if (data.error) {
+                statusMsg.textContent = "Error: " + data.error;
+            } else {
+                statusMsg.textContent = "Analytics updated!";
+            }
+        } catch (err) {
+            statusMsg.textContent = "Failed: " + err.message;
+        }
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = "Refresh Analytics";
+    });
+}
+</script>
 {% endblock %}

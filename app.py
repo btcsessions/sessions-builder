@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, session, jsonify, redirect, u
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id
 from brainstorm import chat_with_claude, generate_video_plan
+from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
 load_dotenv()
 
@@ -13,24 +14,31 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "yt-planner-secret-key")
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
+ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 
 # In-memory store
 video_cache = []
 chat_history = []
 playlist_info = {}
+analytics_cache = {}
 
 
 def _ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=""):
+def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
+                   oauth_client_id="", oauth_client_secret=""):
     _ensure_data_dir()
+    # Preserve existing fields not being explicitly set
+    existing = load_settings()
     settings = {
-        "playlist_id": playlist_id,
-        "playlist_url": playlist_url,
-        "google_key": google_key,
-        "anthropic_key": anthropic_key,
+        "playlist_id": playlist_id or existing.get("playlist_id", ""),
+        "playlist_url": playlist_url or existing.get("playlist_url", ""),
+        "google_key": google_key or existing.get("google_key", ""),
+        "anthropic_key": anthropic_key or existing.get("anthropic_key", ""),
+        "oauth_client_id": oauth_client_id or existing.get("oauth_client_id", ""),
+        "oauth_client_secret": oauth_client_secret or existing.get("oauth_client_secret", ""),
     }
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
@@ -56,6 +64,19 @@ def load_video_cache() -> list:
     return []
 
 
+def save_analytics(data: dict):
+    _ensure_data_dir()
+    with open(ANALYTICS_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def load_analytics() -> dict:
+    if os.path.exists(ANALYTICS_FILE):
+        with open(ANALYTICS_FILE) as f:
+            return json.load(f)
+    return {}
+
+
 # Load persisted data on startup
 _saved = load_settings()
 playlist_info = {
@@ -63,6 +84,7 @@ playlist_info = {
     "google_key": _saved.get("google_key", ""),
 }
 video_cache = load_video_cache()
+analytics_cache = load_analytics()
 
 
 @app.route("/")
@@ -80,7 +102,12 @@ def settings_page():
         google_key=settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", ""),
         anthropic_key=settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
         playlist_url=settings.get("playlist_url", ""),
+        oauth_client_id=settings.get("oauth_client_id", ""),
+        oauth_client_secret=settings.get("oauth_client_secret", ""),
+        oauth_connected=is_authenticated(),
+        has_analytics=bool(analytics_cache),
         has_videos=len(video_cache) > 0,
+        error=request.args.get("error"),
     )
 
 
@@ -91,6 +118,8 @@ def fetch():
     playlist_url = request.form.get("playlist_url", "").strip()
     google_key = request.form.get("google_key", "").strip()
     anthropic_key = request.form.get("anthropic_key", "").strip()
+    oauth_client_id = request.form.get("oauth_client_id", "").strip()
+    oauth_client_secret = request.form.get("oauth_client_secret", "").strip()
 
     if not playlist_url or not google_key:
         return render_template(
@@ -110,7 +139,8 @@ def fetch():
         chat_history = []
 
         # Persist everything
-        save_settings(playlist_id, google_key, anthropic_key, playlist_url)
+        save_settings(playlist_id, google_key, anthropic_key, playlist_url,
+                      oauth_client_id, oauth_client_secret)
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -172,7 +202,7 @@ def api_chat():
         return jsonify({"error": "Anthropic API key not configured. Go back to the home page to set it."}), 400
 
     try:
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key)
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache)
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
         return jsonify({"reply": reply})
@@ -210,9 +240,58 @@ def api_generate_plan():
             competitors=competitors,
             notes=notes,
             video_data=video_cache,
+            analytics_data=analytics_cache,
             api_key=api_key,
         )
         return jsonify(plan)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/oauth/connect")
+def oauth_connect():
+    """Start the OAuth flow for YouTube Analytics."""
+    settings = load_settings()
+    client_id = settings.get("oauth_client_id", "")
+    client_secret = settings.get("oauth_client_secret", "")
+    if not client_id or not client_secret:
+        return redirect(url_for("settings_page", error="Set OAuth Client ID and Secret in Settings first."))
+
+    redirect_uri = url_for("oauth_callback", _external=True)
+    flow = get_oauth_flow(client_id, client_secret, redirect_uri)
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+
+@app.route("/oauth/callback")
+def oauth_callback():
+    """Handle the OAuth callback from Google."""
+    settings = load_settings()
+    client_id = settings.get("oauth_client_id", "")
+    client_secret = settings.get("oauth_client_secret", "")
+
+    redirect_uri = url_for("oauth_callback", _external=True)
+    flow = get_oauth_flow(client_id, client_secret, redirect_uri)
+
+    flow.fetch_token(authorization_response=request.url)
+    creds = flow.credentials
+    save_credentials(creds)
+
+    return redirect(url_for("settings_page"))
+
+
+@app.route("/api/fetch-analytics", methods=["POST"])
+def api_fetch_analytics():
+    global analytics_cache
+    try:
+        analytics_cache = fetch_channel_analytics()
+        save_analytics(analytics_cache)
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
