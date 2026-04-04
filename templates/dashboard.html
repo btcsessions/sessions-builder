@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - YouTube Planner{% endblock %}
+
+{% block content %}
+<div class="stats-bar">
+    <div class="stat">
+        <span class="stat-value">{{ total_videos }}</span>
+        <span class="stat-label">Videos</span>
+    </div>
+    <div class="stat">
+        <span class="stat-value">{{ "{:,}".format(total_views) }}</span>
+        <span class="stat-label">Total Views</span>
+    </div>
+    <div class="stat">
+        <span class="stat-value">{{ "{:,}".format(avg_views) }}</span>
+        <span class="stat-label">Avg Views</span>
+    </div>
+    <div class="stat">
+        <span class="stat-value">{{ avg_engagement }}%</span>
+        <span class="stat-label">Avg Engagement</span>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <section class="video-table-section">
+        <h2>Video Performance</h2>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        {% for col, label in [('title', 'Title'), ('view_count', 'Views'), ('like_count', 'Likes'), ('comment_count', 'Comments'), ('engagement_rate', 'Engagement'), ('published_at', 'Published')] %}
+                        <th>
+                            {% set next_order = 'asc' if (sort_by == col and order == 'desc') else 'desc' %}
+                            <a href="?sort={{ col }}&order={{ next_order }}">
+                                {{ label }}
+                                {% if sort_by == col %}
+                                    {{ '▲' if order == 'asc' else '▼' }}
+                                {% endif %}
+                            </a>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for video in videos %}
+                    <tr>
+                        <td class="thumb-cell">
+                            {% if video.thumbnail_url %}
+                            <img src="{{ video.thumbnail_url }}" alt="" class="thumb">
+                            {% endif %}
+                        </td>
+                        <td class="title-cell">
+                            <a href="https://youtube.com/watch?v={{ video.video_id }}" target="_blank">
+                                {{ video.title }}
+                            </a>
+                        </td>
+                        <td>{{ "{:,}".format(video.view_count) }}</td>
+                        <td>{{ "{:,}".format(video.like_count) }}</td>
+                        <td>{{ "{:,}".format(video.comment_count) }}</td>
+                        <td>{{ video.engagement_rate }}%</td>
+                        <td>{{ video.published_at[:10] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="chat-section">
+        <div class="chat-header">
+            <h2>AI Brainstorm</h2>
+            <button id="clear-chat" class="btn small" title="Clear chat">Clear</button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            {% if not chat_history %}
+            <div class="chat-welcome">
+                <p>Ask me anything about your video performance! For example:</p>
+                <ul>
+                    <li>"What topics get the most views?"</li>
+                    <li>"Suggest 5 video ideas based on my top performers"</li>
+                    <li>"Why do some videos have high engagement but low views?"</li>
+                    <li>"What's the best day/time to publish based on my data?"</li>
+                </ul>
+            </div>
+            {% endif %}
+            {% for msg in chat_history %}
+            <div class="chat-msg {{ msg.role }}">
+                <div class="msg-content">{{ msg.content }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <form id="chat-form" class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Ask about your videos..." autocomplete="off">
+            <button type="submit" class="btn primary">Send</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
+{% endblock %}

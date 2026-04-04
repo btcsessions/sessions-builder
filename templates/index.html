@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}YouTube Planner - Load Playlist{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>YouTube Video Planner</h1>
+    <p>Load a playlist to analyze your video performance and brainstorm new ideas with AI.</p>
+</div>
+
+{% if error %}
+<div class="alert error">{{ error }}</div>
+{% endif %}
+
+<form action="{{ url_for('fetch') }}" method="post" class="setup-form">
+    <div class="form-group">
+        <label for="playlist_url">YouTube Playlist URL or ID</label>
+        <input type="text" id="playlist_url" name="playlist_url"
+               placeholder="https://www.youtube.com/playlist?list=PLxxxxxxx"
+               required>
+        <small>Paste a full playlist URL or just the playlist ID (starts with PL)</small>
+    </div>
+
+    <div class="form-group">
+        <label for="google_key">Google API Key</label>
+        <input type="password" id="google_key" name="google_key"
+               value="{{ google_key }}"
+               placeholder="Your Google/YouTube Data API key"
+               required>
+        <small>Needs YouTube Data API v3 enabled. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Get one here</a></small>
+    </div>
+
+    <div class="form-group">
+        <label for="anthropic_key">Anthropic API Key</label>
+        <input type="password" id="anthropic_key" name="anthropic_key"
+               value="{{ anthropic_key }}"
+               placeholder="sk-ant-...">
+        <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
+    </div>
+
+    <button type="submit" class="btn primary">Load Playlist</button>
+</form>
+{% endblock %}
