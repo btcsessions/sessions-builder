@@ -19,40 +19,88 @@ def _ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
 
+def _load_cached_prices() -> dict:
+    """Load cached prices regardless of TTL."""
+    if os.path.exists(BTC_CACHE_FILE):
+        try:
+            with open(BTC_CACHE_FILE) as f:
+                return json.load(f).get("prices", {})
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
 def fetch_btc_prices(days: int = 730) -> dict:
     """Fetch daily BTC prices from CoinGecko. Returns {date_str: price}."""
     # Check cache
     if os.path.exists(BTC_CACHE_FILE):
-        with open(BTC_CACHE_FILE) as f:
-            cached = json.load(f)
-        if time.time() - cached.get("_fetched_at", 0) < BTC_CACHE_TTL:
-            return cached.get("prices", {})
-
-    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}&interval=daily"
-    req = Request(url, headers={"User-Agent": "YT-Planner/1.0"})
-
-    try:
-        with urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-    except (URLError, Exception):
-        # Return cached data if available, even if stale
-        if os.path.exists(BTC_CACHE_FILE):
+        try:
             with open(BTC_CACHE_FILE) as f:
-                return json.load(f).get("prices", {})
-        return {}
+                cached = json.load(f)
+            if time.time() - cached.get("_fetched_at", 0) < BTC_CACHE_TTL:
+                return cached.get("prices", {})
+        except (json.JSONDecodeError, IOError):
+            pass
 
-    prices = {}
-    for timestamp_ms, price in data.get("prices", []):
-        dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-        date_str = dt.strftime("%Y-%m-%d")
-        prices[date_str] = round(price, 2)
+    # Try CoinGecko market_chart for historical data (with retry)
+    prices = _fetch_coingecko_history(days)
 
-    # Save cache
-    _ensure_data_dir()
-    with open(BTC_CACHE_FILE, "w") as f:
-        json.dump({"_fetched_at": time.time(), "prices": prices}, f)
+    # If historical fetch failed, try simple price endpoint for at least current price
+    if not prices:
+        prices = _load_cached_prices()
+        current = _fetch_coingecko_simple()
+        if current:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            prices[today] = current
+
+    if prices:
+        _ensure_data_dir()
+        with open(BTC_CACHE_FILE, "w") as f:
+            json.dump({"_fetched_at": time.time(), "prices": prices}, f)
 
     return prices
+
+
+def _fetch_coingecko_history(days: int) -> dict:
+    """Fetch historical daily prices from CoinGecko market_chart endpoint."""
+    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}&interval=daily"
+    headers = {
+        "User-Agent": "YT-Planner/1.0",
+        "Accept": "application/json",
+    }
+
+    # Retry up to 3 times with backoff (CoinGecko rate-limits free tier)
+    for attempt in range(3):
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode())
+
+            prices = {}
+            for timestamp_ms, price in data.get("prices", []):
+                dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                date_str = dt.strftime("%Y-%m-%d")
+                prices[date_str] = round(price, 2)
+            return prices
+
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))  # 2s, 4s backoff
+            continue
+
+    return {}
+
+
+def _fetch_coingecko_simple() -> float | None:
+    """Fetch just the current BTC price from CoinGecko simple endpoint."""
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    try:
+        req = Request(url, headers={"User-Agent": "YT-Planner/1.0", "Accept": "application/json"})
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        return data.get("bitcoin", {}).get("usd")
+    except Exception:
+        return None
 
 
 def compute_200d_ma(prices: dict, date_str: str) -> float | None:

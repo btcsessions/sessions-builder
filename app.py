@@ -129,6 +129,11 @@ else:
 
 # Fetch BTC price data (cached, non-blocking if fails)
 _btc_prices = fetch_btc_prices()
+if _btc_prices:
+    _latest = sorted(_btc_prices.keys())[-1]
+    print(f"[Market] BTC data loaded: {len(_btc_prices)} days, latest {_latest} = ${_btc_prices[_latest]:,.0f}")
+else:
+    print("[Market] WARNING: Could not fetch BTC price data. Market features will show $0.")
 
 
 @app.route("/")
