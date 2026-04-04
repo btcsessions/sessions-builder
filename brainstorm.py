@@ -508,7 +508,26 @@ def analyze_own_video(
 
     market_section = _build_market_section(market_data)
 
-    system = f"""You are a YouTube content strategist. A creator is analyzing one of their own videos to understand its performance and learn from it.
+    # Market phase info for this specific video
+    video_phase = video.get("_market_phase", "unknown")
+    video_market_score = video.get("_market_score", 0)
+    video_btc_price = video.get("_btc_price_at_publish", 0)
+    phase_avg = video.get("_phase_avg", avg_views)
+    bear_avg_views = video.get("_bear_avg", avg_views)
+    bull_avg_views = video.get("_bull_avg", avg_views)
+
+    market_perf_note = ""
+    if video_phase != "unknown" and video_market_score > 0:
+        if video_market_score >= 2:
+            market_perf_note = f"BREAKOUT for a {video_phase} market video ({video_market_score}x the {video_phase} avg of {phase_avg:,} views)"
+        elif video_market_score >= 1.2:
+            market_perf_note = f"STRONG for a {video_phase} market video ({video_market_score}x the {video_phase} avg of {phase_avg:,} views)"
+        elif video_market_score <= 0.5:
+            market_perf_note = f"UNDERPERFORMED even for a {video_phase} market video ({video_market_score}x the {video_phase} avg of {phase_avg:,} views)"
+        else:
+            market_perf_note = f"AVERAGE for a {video_phase} market video ({video_market_score}x the {video_phase} avg of {phase_avg:,} views)"
+
+    system = f"""You are a YouTube content strategist specializing in the bitcoin/freedom tech niche. A creator is analyzing one of their own videos to understand its performance and learn from it.
 
 **Channel Overview:**
 - Average views: {avg_views:,}
@@ -517,24 +536,36 @@ def analyze_own_video(
 {top5}
 - Lowest performers:
 {bottom5}
+- Bear market average views: {bear_avg_views:,}
+- Bull market average views: {bull_avg_views:,}
 {market_section}
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
 {{
-  "performance_summary": "1-2 sentence summary of how this video performed relative to the channel",
+  "performance_summary": "1-2 sentence summary of overall performance",
+  "market_context": "How the BTC market conditions at the time of publishing affected this video's performance. Reference the specific market phase and price. Compare to phase-specific averages, not just overall averages.",
   "title_analysis": "Analysis of the title — what works or doesn't, CTR tactics used",
-  "topic_analysis": "Why this topic likely performed the way it did",
+  "topic_analysis": "Why this topic likely performed the way it did given market conditions",
   "format_tactics": ["what worked well 1", "what worked well 2", "what could improve"],
   "takeaways": ["actionable lesson 1", "actionable lesson 2", "actionable lesson 3"],
-  "video_ideas": ["follow-up or sequel idea 1", "related topic idea 2"]
+  "video_ideas": ["follow-up or sequel idea 1", "related topic idea 2", "idea 3"]
 }}
 
 RULES:
 - Be specific and reference actual numbers
-- For breakout/strong videos: identify what likely drove the success and how to replicate it
-- For underperformers: identify what likely went wrong and how to avoid it next time
-- Suggest follow-up or sequel ideas that could capitalize on what worked
+- The market_context field MUST analyze how BTC market conditions at publish time affected this video. Compare performance to the phase-specific average, not just overall.
+- For BREAKOUT/STRONG videos: identify what drove the success. Suggest how to double down on this type of content — apply the same winning formula to OTHER bitcoin concepts, devices, apps, or tools. Give specific examples.
+- For UNDERPERFORMING videos: be honest about what likely went wrong. Suggest how the title, angle, or timing could have been improved. Would a different framing have worked better?
+- video_ideas should be concrete and specific — name actual products, tools, or concepts
 - Be direct and actionable"""
+
+    market_line = ""
+    if video_phase != "unknown":
+        market_line = f"\n**Market Phase at Publish:** {video_phase.upper()}"
+        if video_btc_price:
+            market_line += f" (BTC ~${video_btc_price:,.0f})"
+        if market_perf_note:
+            market_line += f"\n**Market-Adjusted Performance:** {market_perf_note}"
 
     user_msg = f"""Analyze this video from my channel:
 
@@ -544,7 +575,7 @@ RULES:
 **Comments:** {video.get('comment_count', 0):,}
 **Engagement Rate:** {video.get('engagement_rate', 0)}%
 **Published:** {video.get('published_at', 'Unknown')[:10]}
-**Performance:** {performance}{analytics_note}"""
+**Overall Performance:** {performance}{market_line}{analytics_note}"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",

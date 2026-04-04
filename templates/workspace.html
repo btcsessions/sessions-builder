@@ -233,6 +233,11 @@
                 <div id="analysis-performance" class="plan-text"></div>
             </section>
 
+            <section class="plan-card" id="analysis-market-card" style="display:none">
+                <h2>Market Context</h2>
+                <div id="analysis-market-context" class="plan-text"></div>
+            </section>
+
             <section class="plan-card">
                 <h2>Title Analysis</h2>
                 <div id="analysis-title" class="plan-text"></div>
@@ -475,6 +480,14 @@ function renderAnalysis(data, title, videoId, thumbUrl) {
     if (thumbUrl) { thumbEl.src = thumbUrl; thumbEl.style.display = "block"; }
     else { thumbEl.style.display = "none"; }
     document.getElementById("analysis-performance").textContent = data.performance_summary || "";
+    const marketCard = document.getElementById("analysis-market-card");
+    const marketCtx = document.getElementById("analysis-market-context");
+    if (data.market_context) {
+        marketCtx.textContent = data.market_context;
+        marketCard.style.display = "";
+    } else {
+        marketCard.style.display = "none";
+    }
     document.getElementById("analysis-title").textContent = data.title_analysis || "";
     document.getElementById("analysis-topic").textContent = data.topic_analysis || "";
     document.getElementById("analysis-tactics").innerHTML = (data.format_tactics || []).map((t, i) =>

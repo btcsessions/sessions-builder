@@ -729,6 +729,33 @@ def api_analyze_own_video():
         return jsonify({"error": "Video not found."}), 404
 
     try:
+        # Enrich video with market phase data
+        video = dict(video)
+        tag_video_market_phase(video, _btc_prices)
+
+        # Compute market-adjusted score
+        from datetime import datetime, timedelta, timezone
+        cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
+        year_videos = []
+        for v in video_cache:
+            try:
+                dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+                if dt >= cutoff_1y:
+                    year_videos.append(v)
+            except (ValueError, KeyError):
+                pass
+        year_avg = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
+        bear_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
+        bull_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
+        bear_avg = sum(v["view_count"] for v in bear_vids) // len(bear_vids) if bear_vids else year_avg
+        bull_avg = sum(v["view_count"] for v in bull_vids) // len(bull_vids) if bull_vids else year_avg
+        phase = video.get("_market_phase", "unknown")
+        phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg)
+        video["_market_score"] = round(video["view_count"] / phase_avg, 1) if phase_avg else 0
+        video["_phase_avg"] = phase_avg
+        video["_bear_avg"] = bear_avg
+        video["_bull_avg"] = bull_avg
+
         market_data = {
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
