@@ -911,10 +911,13 @@ def api_remix_video():
         return jsonify({"error": "Anthropic API key not configured."}), 400
 
     try:
+        from trend_intel import gather_trend_intel, intel_to_prompt_context
         market_data = {
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
         }
+        intel = gather_trend_intel()
+        intel_context = intel_to_prompt_context(intel)
         result = remix_video(
             video_title=video_title,
             video_source=video_source,
@@ -924,6 +927,7 @@ def api_remix_video():
             api_key=api_key,
             focus_topic=focus_topic,
             market_data=market_data,
+            trend_intel_context=intel_context,
         )
         return jsonify(result)
     except Exception as e:

@@ -761,6 +761,7 @@ def remix_video(
     api_key: str,
     focus_topic: str = "",
     market_data: dict = None,
+    trend_intel_context: str = "",
 ) -> dict:
     """Generate remix ideas: adapt a video's format/style for the creator's bitcoin channel."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -801,6 +802,7 @@ Make sure at least 2-3 suggestions directly involve "{focus_topic}" as the subje
 **Source:** {video_source} ({source_category})
 **Analysis Context:** {analysis_summary}
 {market_section}
+{trend_intel_context}
 {remix_angle}
 {focus_section}
 You must respond with ONLY valid JSON (no markdown, no code fences):
