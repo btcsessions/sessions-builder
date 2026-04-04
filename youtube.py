@@ -191,17 +191,27 @@ def fetch_playlist_videos(playlist_id: str, api_key: str) -> list[dict]:
         if not next_page:
             break
 
-    # Step 2: Fetch statistics in batches of 50
+    # Step 2: Fetch statistics in batches of 50, filter out Shorts
     videos = []
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i:i + 50]
         resp = youtube.videos().list(
             id=",".join(batch),
-            part="statistics,snippet",
+            part="statistics,snippet,contentDetails",
         ).execute()
 
         for item in resp.get("items", []):
             vid = item["id"]
+
+            # Skip Shorts (videos under 60 seconds)
+            duration_str = item.get("contentDetails", {}).get("duration", "PT0S")
+            dm = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+            duration_seconds = 0
+            if dm:
+                duration_seconds = int(dm.group(1) or 0) * 3600 + int(dm.group(2) or 0) * 60 + int(dm.group(3) or 0)
+            if duration_seconds < 60:
+                continue
+
             stats = item["statistics"]
             meta = video_meta.get(vid, {})
             views = int(stats.get("viewCount", 0))
