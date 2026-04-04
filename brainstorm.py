@@ -1,7 +1,45 @@
 import anthropic
 
 
-def _build_system_prompt(video_data: list[dict], analytics_data: dict = None) -> str:
+def _build_competitors_section(competitors_data: list = None) -> str:
+    if not competitors_data:
+        return ""
+
+    sections = []
+    # Group by category
+    by_category = {}
+    for comp in competitors_data:
+        cat = comp.get("category", "Other")
+        by_category.setdefault(cat, []).append(comp)
+
+    category_instructions = {
+        "Mainstream Tech": "Study their formats, production style, pacing, and engagement tactics. Consider how to adapt their successful approaches for the bitcoin/freedom tech niche.",
+        "Bitcoin/Crypto": "Look for topic gaps, content they cover that you don't, and areas where you can go deeper or offer a unique perspective.",
+        "Freedom Tech": "Identify underserved topics in privacy, self-sovereignty, and open-source tech that you could cover better or differently.",
+    }
+
+    for cat, comps in by_category.items():
+        instruction = category_instructions.get(cat, f"Analyze their content for useful patterns and opportunities.")
+        sections.append(f"\n**Competitor Channels — {cat}:**")
+        sections.append(f"*Strategy: {instruction}*\n")
+
+        for comp in comps:
+            videos = comp.get("videos", [])
+            if not videos:
+                continue
+            avg_views = sum(v["view_count"] for v in videos) // len(videos)
+            top5 = videos[:5]
+            video_lines = "\n".join(
+                f"    - \"{v['title'][:55]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+                for v in top5
+            )
+            sections.append(f"  **{comp['name']}** (avg {avg_views:,} views, {len(videos)} recent videos)")
+            sections.append(f"  Top performers:\n{video_lines}\n")
+
+    return "\n".join(sections)
+
+
+def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, competitors_data: list = None) -> str:
     if not video_data:
         return (
             "You are a YouTube content strategist. The user hasn't loaded any video data yet. "
@@ -96,13 +134,16 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None) ->
 | Title | Views | Likes | Comments | Engagement | Published |
 |-------|-------|-------|----------|------------|-----------|
 {table}
-
+{_build_competitors_section(competitors_data)}
 Use this data to:
 - Identify what topics, formats, or styles perform best
 - Suggest new video ideas based on proven successes
 - Spot trends in timing, engagement, or topic performance
 - Analyze retention and watch time patterns to recommend ideal video length and pacing
 - Consider traffic sources when recommending SEO and promotion strategies
+- Compare against competitor channels to find gaps and opportunities
+- For mainstream tech competitors: study their formats, pacing, and engagement tactics to adapt for your niche
+- For bitcoin/crypto competitors: identify topic gaps and areas to go deeper or differentiate
 - Give specific, actionable recommendations backed by the data
 
 Be conversational, specific, and reference actual video titles and numbers when making points."""
@@ -114,11 +155,12 @@ def chat_with_claude(
     chat_history: list[dict],
     api_key: str,
     analytics_data: dict = None,
+    competitors_data: list = None,
 ) -> str:
     """Send a message to Claude with video performance context."""
     client = anthropic.Anthropic(api_key=api_key)
 
-    system_prompt = _build_system_prompt(video_data, analytics_data)
+    system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data)
 
     messages = []
     for msg in chat_history:
@@ -144,6 +186,7 @@ def generate_video_plan(
     video_data: list[dict],
     api_key: str,
     analytics_data: dict = None,
+    competitors_data: list = None,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -156,7 +199,7 @@ def generate_video_plan(
             entries.append(f"- \"{v['title']}\" ({v['view_count']:,} views) https://youtube.com/watch?v={v['video_id']}")
         past_titles = "\n".join(entries)
 
-    channel_context = _build_system_prompt(video_data, analytics_data)
+    channel_context = _build_system_prompt(video_data, analytics_data, competitors_data)
 
     # Build the user's input context
     links_text = "\n".join(f"- {l}" for l in links) if links else "None provided"

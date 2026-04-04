@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Competitors - YouTube Planner{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Competitor Channels</h1>
+    <p>Track competing channels to learn from their content strategy.</p>
+</div>
+
+<div class="competitors-layout">
+    <div class="add-competitor-form setup-form">
+        <h3>Add a Channel</h3>
+        <div class="form-group">
+            <label for="comp-url">Channel URL or Handle</label>
+            <input type="text" id="comp-url" placeholder="https://youtube.com/@channelname or @handle">
+        </div>
+        <div class="form-group">
+            <label for="comp-category">Category</label>
+            <select id="comp-category">
+                <option value="Mainstream Tech">Mainstream Tech</option>
+                <option value="Bitcoin/Crypto">Bitcoin/Crypto</option>
+                <option value="Freedom Tech">Freedom Tech</option>
+                <option value="custom">Custom...</option>
+            </select>
+        </div>
+        <div class="form-group" id="custom-label-group" style="display:none">
+            <label for="comp-custom-label">Custom Label</label>
+            <input type="text" id="comp-custom-label" placeholder="e.g. Finance, Prepper, Privacy">
+        </div>
+        <div class="form-actions">
+            <button id="add-comp-btn" class="btn primary">Add Channel</button>
+            <button id="refresh-all-btn" class="btn small">Refresh All</button>
+        </div>
+        <div id="comp-status" class="form-hint"></div>
+    </div>
+
+    <div class="competitors-list">
+        {% if not competitors %}
+        <div class="empty-state">
+            <p>No competitor channels added yet. Add one to get started.</p>
+        </div>
+        {% endif %}
+
+        {% for comp in competitors %}
+        <div class="competitor-card" data-channel-id="{{ comp.channel_id }}">
+            <div class="comp-header">
+                <div>
+                    <h3>{{ comp.name }}</h3>
+                    <span class="badge category-badge">{{ comp.category }}</span>
+                </div>
+                <button class="btn small remove-comp-btn" data-channel-id="{{ comp.channel_id }}">Remove</button>
+            </div>
+            <div class="comp-stats">
+                <span>{{ comp.videos|length }} videos tracked</span>
+                {% if comp.videos %}
+                <span>Avg {{ "{:,}".format((comp.videos|map(attribute='view_count')|sum // comp.videos|length)) }} views</span>
+                {% endif %}
+            </div>
+            {% if comp.videos %}
+            <div class="comp-top-videos">
+                <strong>Top 5:</strong>
+                {% for v in comp.videos[:5] %}
+                <div class="comp-video-row">
+                    <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank">{{ v.title[:60] }}</a>
+                    <span class="comp-video-stats">{{ "{:,}".format(v.view_count) }} views</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const categorySelect = document.getElementById("comp-category");
+const customGroup = document.getElementById("custom-label-group");
+categorySelect.addEventListener("change", () => {
+    customGroup.style.display = categorySelect.value === "custom" ? "block" : "none";
+});
+
+const addBtn = document.getElementById("add-comp-btn");
+const status = document.getElementById("comp-status");
+
+addBtn.addEventListener("click", async () => {
+    const url = document.getElementById("comp-url").value.trim();
+    const category = categorySelect.value;
+    const customLabel = document.getElementById("comp-custom-label").value.trim();
+
+    if (!url) { status.textContent = "Enter a channel URL."; return; }
+
+    addBtn.disabled = true;
+    addBtn.textContent = "Adding...";
+    status.textContent = "";
+
+    try {
+        const resp = await fetch("/api/competitors/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, category, custom_label: customLabel }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            status.textContent = data.error;
+        } else {
+            location.reload();
+        }
+    } catch (err) {
+        status.textContent = "Failed: " + err.message;
+    }
+    addBtn.disabled = false;
+    addBtn.textContent = "Add Channel";
+});
+
+document.querySelectorAll(".remove-comp-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        const channelId = btn.dataset.channelId;
+        btn.disabled = true;
+        await fetch("/api/competitors/remove", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel_id: channelId }),
+        });
+        btn.closest(".competitor-card").remove();
+    });
+});
+
+document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Refreshing...";
+    status.textContent = "";
+    try {
+        const resp = await fetch("/api/competitors/refresh", { method: "POST" });
+        const data = await resp.json();
+        if (data.warnings) {
+            status.textContent = "Some errors: " + data.warnings.join(", ");
+        } else {
+            location.reload();
+        }
+    } catch (err) {
+        status.textContent = "Failed: " + err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = "Refresh All";
+});
+</script>
+{% endblock %}

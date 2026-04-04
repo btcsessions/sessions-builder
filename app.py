@@ -2,7 +2,7 @@ import os
 import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
-from youtube import fetch_playlist_videos, parse_playlist_id
+from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
 from brainstorm import chat_with_claude, generate_video_plan
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
@@ -18,12 +18,14 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
+COMPETITORS_FILE = os.path.join(DATA_DIR, "competitors.json")
 
 # In-memory store
 video_cache = []
 chat_history = []
 playlist_info = {}
 analytics_cache = {}
+competitors_cache = []  # list of {"name", "url", "category", "channel_id", "videos": [...]}
 
 
 def _ensure_data_dir():
@@ -80,6 +82,19 @@ def load_analytics() -> dict:
     return {}
 
 
+def save_competitors(data: list):
+    _ensure_data_dir()
+    with open(COMPETITORS_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def load_competitors() -> list:
+    if os.path.exists(COMPETITORS_FILE):
+        with open(COMPETITORS_FILE) as f:
+            return json.load(f)
+    return []
+
+
 # Load persisted data on startup
 _saved = load_settings()
 playlist_info = {
@@ -88,6 +103,7 @@ playlist_info = {
 }
 video_cache = load_video_cache()
 analytics_cache = load_analytics()
+competitors_cache = load_competitors()
 
 
 @app.route("/")
@@ -205,7 +221,7 @@ def api_chat():
         return jsonify({"error": "Anthropic API key not configured. Go back to the home page to set it."}), 400
 
     try:
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache)
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache)
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
         return jsonify({"reply": reply})
@@ -244,11 +260,95 @@ def api_generate_plan():
             notes=notes,
             video_data=video_cache,
             analytics_data=analytics_cache,
+            competitors_data=competitors_cache,
             api_key=api_key,
         )
         return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/competitors")
+def competitors_page():
+    return render_template("competitors.html", competitors=competitors_cache)
+
+
+@app.route("/api/competitors/add", methods=["POST"])
+def api_add_competitor():
+    global competitors_cache
+    data = request.get_json()
+    channel_url = data.get("url", "").strip()
+    category = data.get("category", "").strip()
+    custom_label = data.get("custom_label", "").strip()
+
+    if not channel_url:
+        return jsonify({"error": "Channel URL is required"}), 400
+    if not category:
+        return jsonify({"error": "Category is required"}), 400
+
+    settings = load_settings()
+    google_key = settings.get("google_key", "")
+    if not google_key:
+        return jsonify({"error": "Google API key not configured. Set it in Settings."}), 400
+
+    try:
+        result = fetch_channel_videos(channel_url, google_key, max_videos=30)
+        label = custom_label if category == "custom" else category
+        competitor = {
+            "name": result["channel_title"],
+            "url": channel_url,
+            "channel_id": result["channel_id"],
+            "category": label,
+            "videos": result["videos"],
+        }
+
+        # Don't add duplicates
+        for existing in competitors_cache:
+            if existing["channel_id"] == competitor["channel_id"]:
+                return jsonify({"error": f"{competitor['name']} is already added."}), 400
+
+        competitors_cache.append(competitor)
+        save_competitors(competitors_cache)
+        return jsonify({"ok": True, "competitor": {
+            "name": competitor["name"],
+            "category": competitor["category"],
+            "video_count": len(competitor["videos"]),
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/competitors/remove", methods=["POST"])
+def api_remove_competitor():
+    global competitors_cache
+    data = request.get_json()
+    channel_id = data.get("channel_id", "")
+    competitors_cache = [c for c in competitors_cache if c["channel_id"] != channel_id]
+    save_competitors(competitors_cache)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/competitors/refresh", methods=["POST"])
+def api_refresh_competitors():
+    global competitors_cache
+    settings = load_settings()
+    google_key = settings.get("google_key", "")
+    if not google_key:
+        return jsonify({"error": "Google API key not configured."}), 400
+
+    errors = []
+    for comp in competitors_cache:
+        try:
+            result = fetch_channel_videos(comp["url"], google_key, max_videos=30)
+            comp["videos"] = result["videos"]
+            comp["name"] = result["channel_title"]
+        except Exception as e:
+            errors.append(f"{comp['name']}: {e}")
+
+    save_competitors(competitors_cache)
+    if errors:
+        return jsonify({"ok": True, "warnings": errors})
+    return jsonify({"ok": True})
 
 
 @app.route("/oauth/connect")
