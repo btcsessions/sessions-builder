@@ -156,9 +156,34 @@ def index():
     if not video_cache:
         return redirect(url_for("settings_page"))
 
+    # Build a unified outlier feed from all inspiration channels
+    from datetime import datetime, timezone
+    outliers = []
+    for comp in competitors_cache:
+        vids = comp.get("videos", [])
+        if not vids:
+            continue
+        avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
+        for v in vids:
+            ratio = v["view_count"] / avg if avg > 0 else 0
+            if ratio >= 1.2:
+                vc = dict(v)
+                vc["_channel"] = comp["name"]
+                vc["_channel_id"] = comp["channel_id"]
+                vc["_ratio"] = round(ratio, 1)
+                try:
+                    vc["_date"] = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+                except (ValueError, KeyError):
+                    vc["_date"] = datetime.min.replace(tzinfo=timezone.utc)
+                outliers.append(vc)
+
+    outliers.sort(key=lambda v: v["_date"], reverse=True)
+    outliers = outliers[:20]
+
     return render_template(
         "workspace.html",
         competitors=competitors_cache,
+        outliers=outliers,
         chat_history=chat_history,
     )
 

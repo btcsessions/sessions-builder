@@ -4,64 +4,37 @@
 {% block content %}
 <div class="workspace">
 
-    <!-- LEFT SIDEBAR: Competitors -->
+    <!-- LEFT SIDEBAR: Inspiration Outliers -->
     <aside class="ws-sidebar" id="ws-sidebar">
         <div class="sidebar-toggle-area">
             <button id="sidebar-collapse" class="btn small" title="Toggle sidebar">&#9776;</button>
             <span class="sidebar-label">Inspiration</span>
         </div>
 
-        {% if competitors %}
-        {% for comp in competitors %}
-        <div class="sidebar-section">
-            <div class="sidebar-section-header" data-toggle="comp-{{ loop.index }}">
-                <h3>{{ comp.name }} <span class="section-count badge category-badge">{{ comp.category }}</span></h3>
-                <span class="chevron">&#9660;</span>
-            </div>
-            <div class="sidebar-section-body collapsed" id="comp-{{ loop.index }}">
-                <div class="sidebar-stats">
-                    <span>{{ comp.videos|length }} videos</span>
-                    {% if comp.videos %}
-                    {% set avg_views = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
-                    <span>{{ "{:,}".format(avg_views) }} avg views</span>
+        {% if outliers %}
+        <div class="sidebar-video-list">
+            {% for v in outliers %}
+            <div class="sidebar-video comp-video-clickable"
+                 data-channel-id="{{ v._channel_id }}"
+                 data-video-id="{{ v.video_id }}"
+                 data-title="{{ v.title }}"
+                 data-thumb="{{ v.thumbnail_url or '' }}">
+                <div class="sv-thumb-row">
+                    {% if v.thumbnail_url %}
+                    <img src="{{ v.thumbnail_url }}" alt="" class="sv-thumb" loading="lazy">
                     {% endif %}
-                </div>
-                <div class="sidebar-video-list">
-                    {% for v in comp.videos[:15] %}
-                    {% if comp.videos|length > 0 %}
-                    {% set avg = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
-                    {% set ratio = v.view_count / avg if avg > 0 else 0 %}
-                    {% endif %}
-                    <div class="sidebar-video comp-video-clickable"
-                         data-channel-id="{{ comp.channel_id }}"
-                         data-video-id="{{ v.video_id }}"
-                         data-title="{{ v.title }}"
-                         data-thumb="{{ v.thumbnail_url or '' }}">
-                        <div class="sv-thumb-row">
-                            {% if v.thumbnail_url %}
-                            <img src="{{ v.thumbnail_url }}" alt="" class="sv-thumb" loading="lazy">
-                            {% endif %}
-                            <div class="sv-thumb-info">
-                                <span class="sv-title">{{ v.title[:55] }}</span>
-                                <div class="sv-stats">
-                                    <span>{{ "{:,}".format(v.view_count) }} views</span>
-                                    <span>{{ v.engagement_rate }}%</span>
-                                    {% if ratio is defined and ratio >= 2 %}
-                                    <span class="perf-badge badge-breakout">Breakout</span>
-                                    {% elif ratio is defined and ratio >= 1.2 %}
-                                    <span class="perf-badge badge-strong">Strong</span>
-                                    {% elif ratio is defined and ratio <= 0.5 %}
-                                    <span class="perf-badge badge-under">Under</span>
-                                    {% endif %}
-                                </div>
-                            </div>
+                    <div class="sv-thumb-info">
+                        <span class="sv-title">{{ v.title[:55] }}</span>
+                        <div class="sv-stats">
+                            <span>{{ "{:,}".format(v.view_count) }} views</span>
+                            <span class="perf-badge {% if v._ratio >= 2 %}badge-breakout{% else %}badge-strong{% endif %}">{{ v._ratio }}x</span>
+                            <span class="sv-channel">{{ v._channel }}</span>
                         </div>
                     </div>
-                    {% endfor %}
                 </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
         {% else %}
         <div class="sidebar-empty">
             <p>No inspiration channels added yet.</p>
@@ -339,15 +312,6 @@ function esc(text) {
 }
 
 /* --- Sidebar toggling --- */
-document.querySelectorAll(".sidebar-section-header").forEach(header => {
-    header.addEventListener("click", () => {
-        const targetId = header.dataset.toggle;
-        const body = document.getElementById(targetId);
-        body.classList.toggle("collapsed");
-        header.querySelector(".chevron").classList.toggle("collapsed");
-    });
-});
-
 document.getElementById("sidebar-collapse").addEventListener("click", () => {
     document.getElementById("ws-sidebar").classList.toggle("sidebar-hidden");
 });
