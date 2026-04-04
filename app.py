@@ -8,6 +8,9 @@ from analytics import get_oauth_flow, save_credentials, load_credentials, is_aut
 
 load_dotenv()
 
+# Allow OAuth over HTTP for local development
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "yt-planner-secret-key")
 
