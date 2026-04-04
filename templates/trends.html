@@ -2,439 +2,364 @@
 {% block title %}Trends - YouTube Planner{% endblock %}
 
 {% block content %}
-<div class="hero">
-    <h1>Content Trends</h1>
-    <p>Cross-channel analysis: {{ total_videos }} of your videos + {{ competitor_count }} competitor channels.</p>
+
+<!-- AI Report + Analysis (full width, above the columns) -->
+<div class="trends-top-bar">
+    <div class="trends-top-left">
+        <h1>Trends & Analysis</h1>
+        <p class="text-muted">{{ total_videos }} videos + {{ competitor_count }} competitors</p>
+    </div>
+    <button id="generate-report-btn" class="btn primary">Generate AI Report</button>
 </div>
 
-<!-- AI Trend Report -->
-<div class="trends-report-section">
-    <div class="report-header">
-        <h2>AI Trend Report</h2>
-        <button id="generate-report-btn" class="btn primary">Generate Report</button>
-    </div>
-    <div id="report-loading" class="plan-loading" style="display:none">
-        <p>Analyzing cross-channel trends and generating insights...</p>
-    </div>
-    <div id="report-error" class="alert error" style="display:none"></div>
-    <div id="report-results" style="display:none">
+<div id="report-loading" class="plan-loading trends-top-section" style="display:none">
+    <p>Analyzing cross-channel trends and generating insights...</p>
+</div>
+<div id="report-error" class="alert error trends-top-section" style="display:none"></div>
 
+<div id="report-results" class="trends-top-section" style="display:none">
+    <div class="report-cards-grid">
         <section class="plan-card">
             <h2>Current Landscape</h2>
             <div id="report-landscape" class="plan-text"></div>
         </section>
-
+        <section class="plan-card">
+            <h2>Competitor Insights</h2>
+            <div id="report-comp-insights" class="plan-text"></div>
+        </section>
         <section class="plan-card">
             <h2>Topic Opportunities</h2>
             <div id="report-topics" class="report-topics"></div>
         </section>
-
         <section class="plan-card">
             <h2>Title Trends</h2>
             <div id="report-title-summary" class="plan-text" style="margin-bottom:0.75rem"></div>
             <strong class="report-sub">What's Working:</strong>
             <div id="report-title-tactics" class="plan-list"></div>
-            <strong class="report-sub" style="margin-top:0.75rem;display:block">What to Avoid:</strong>
+            <strong class="report-sub" style="margin-top:0.75rem;display:block">Avoid:</strong>
             <div id="report-title-avoid" class="plan-list"></div>
         </section>
-
         <section class="plan-card">
             <h2>Thumbnail Trends</h2>
             <div id="report-thumb-summary" class="plan-text" style="margin-bottom:0.75rem"></div>
             <strong class="report-sub">Tactics:</strong>
             <div id="report-thumb-tactics" class="plan-list"></div>
-            <strong class="report-sub" style="margin-top:0.75rem;display:block">Concepts to Try:</strong>
+            <strong class="report-sub" style="margin-top:0.75rem;display:block">Concepts:</strong>
             <div id="report-thumb-examples" class="plan-list"></div>
         </section>
-
         <section class="plan-card">
             <h2>Format Recommendations</h2>
             <div id="report-formats" class="report-formats"></div>
         </section>
-
-        <section class="plan-card">
-            <h2>Competitor Insights</h2>
-            <div id="report-comp-insights" class="plan-text"></div>
-        </section>
-
-        <section class="plan-card action-plan-card">
-            <h2>Action Plan</h2>
-            <div id="report-actions" class="plan-list"></div>
-        </section>
     </div>
+    <section class="plan-card action-plan-card" style="margin-top:0.75rem">
+        <h2>Action Plan</h2>
+        <div id="report-actions" class="plan-list"></div>
+    </section>
 </div>
 
-<!-- Video Analysis Panel (hidden until a video is clicked) -->
-<div class="trends-report-section">
-    <div id="analysis-loading" class="plan-loading" style="display:none">
-        <p>Analyzing video...</p>
+<!-- Video Analysis Panel -->
+<div id="analysis-loading" class="plan-loading trends-top-section" style="display:none">
+    <p>Analyzing video...</p>
+</div>
+<div id="analysis-error" class="alert error trends-top-section" style="display:none"></div>
+<div id="analysis-results" class="analysis-results trends-top-section" style="display:none">
+    <div class="analysis-header">
+        <h2>Video Analysis</h2>
+        <button class="btn small" id="close-analysis">Close</button>
     </div>
-    <div id="analysis-error" class="alert error" style="display:none"></div>
-    <div id="analysis-results" class="analysis-results" style="display:none">
-        <div class="analysis-header">
-            <h2>Video Analysis</h2>
-            <button class="btn small" id="close-analysis">Close</button>
-        </div>
-        <div class="analysis-video-title-row">
-            <div id="analysis-video-title" class="analysis-video-title"></div>
-            <a id="analysis-yt-link" href="#" target="_blank" class="btn small analysis-yt-btn">Watch on YouTube</a>
-        </div>
-
+    <div class="analysis-video-title-row">
+        <div id="analysis-video-title" class="analysis-video-title"></div>
+        <a id="analysis-yt-link" href="#" target="_blank" class="btn small analysis-yt-btn">Watch on YouTube</a>
+    </div>
+    <div class="report-cards-grid">
         <section class="plan-card">
             <h2>Performance</h2>
             <div id="analysis-performance" class="plan-text"></div>
         </section>
-
         <section class="plan-card">
             <h2>Title Analysis</h2>
             <div id="analysis-title" class="plan-text"></div>
         </section>
-
         <section class="plan-card">
             <h2>Topic Analysis</h2>
             <div id="analysis-topic" class="plan-text"></div>
         </section>
-
         <section class="plan-card">
             <h2>Format Tactics</h2>
             <div id="analysis-tactics" class="plan-list"></div>
         </section>
-
         <section class="plan-card">
             <h2>Takeaways</h2>
             <div id="analysis-takeaways" class="plan-list"></div>
         </section>
-
         <section class="plan-card">
-            <h2>Video Ideas Inspired by This</h2>
+            <h2>Video Ideas</h2>
             <div id="analysis-ideas" class="plan-list"></div>
         </section>
     </div>
 </div>
 
-<hr class="settings-divider" style="margin:2rem 0">
+<!-- 2-column layout: videos left, data right -->
+<div class="trends-layout">
 
-<div class="trends-grid">
+    <!-- LEFT COLUMN: Video Lists -->
+    <div class="trends-col-videos">
 
-    <!-- My Videos list -->
-    <section class="trend-card full-width">
-        <div class="trend-card-header-row">
-            <div>
+        <!-- My Videos -->
+        <section class="trend-card">
+            <div class="trend-card-header-row">
                 <h2>My Videos</h2>
-                <p class="trend-subtitle">{{ videos|length }} videos &middot; {{ "{:,}".format(total_views) }} total views &middot; {{ avg_engagement }}% avg engagement &mdash; click any video to analyze</p>
+                <input type="text" id="video-search" class="sidebar-search" placeholder="Filter..." style="max-width:160px">
             </div>
-            <input type="text" id="video-search" class="sidebar-search" placeholder="Filter videos..." style="max-width:200px">
-        </div>
-        <div class="trend-video-grid" id="video-list">
-            {% for video in videos %}
-            <div class="trend-video-item own-video-clickable"
-                 data-title="{{ video.title|lower }}"
-                 data-video-id="{{ video.video_id }}"
-                 data-video-title="{{ video.title }}">
-                <span class="tv-title">{{ video.title[:65] }}</span>
-                <div class="tv-stats">
-                    <span>{{ "{:,}".format(video.view_count) }} views</span>
-                    <span>{{ video.engagement_rate }}%</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-
-    {% if competitors %}
-    <!-- Competitor Videos -->
-    {% for comp in competitors %}
-    <section class="trend-card full-width">
-        <div class="trend-card-header-row">
-            <div>
-                <h2>{{ comp.name }} <span class="badge category-badge">{{ comp.category }}</span></h2>
-                <p class="trend-subtitle">{{ comp.videos|length }} videos
-                {% if comp.videos %}
-                {% set avg_views = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
-                &middot; {{ "{:,}".format(avg_views) }} avg views
-                {% endif %}
-                &mdash; click to analyze</p>
-            </div>
-        </div>
-        <div class="trend-video-grid">
-            {% for v in comp.videos[:15] %}
-            {% if comp.videos|length > 0 %}
-            {% set avg = comp.videos|map(attribute='view_count')|sum // comp.videos|length %}
-            {% set ratio = v.view_count / avg if avg > 0 else 0 %}
-            {% endif %}
-            <div class="trend-video-item comp-video-clickable"
-                 data-channel-id="{{ comp.channel_id }}"
-                 data-video-id="{{ v.video_id }}"
-                 data-title="{{ v.title }}">
-                {% if v.thumbnail_url %}
-                <img src="{{ v.thumbnail_url }}" alt="" class="tv-thumb" loading="lazy">
-                {% endif %}
-                <div class="tv-info">
-                    <span class="tv-title">{{ v.title[:55] }}</span>
-                    <div class="tv-stats">
-                        <span>{{ "{:,}".format(v.view_count) }} views</span>
-                        <span>{{ v.engagement_rate }}%</span>
-                        {% if ratio is defined and ratio >= 2 %}
-                        <span class="perf-badge badge-breakout">Breakout</span>
-                        {% elif ratio is defined and ratio >= 1.2 %}
-                        <span class="perf-badge badge-strong">Strong</span>
-                        {% elif ratio is defined and ratio <= 0.5 %}
-                        <span class="perf-badge badge-under">Under</span>
-                        {% endif %}
+            <p class="trend-subtitle">Most recent first &middot; scored against past year avg ({{ "{:,}".format(year_avg_views) }} views)</p>
+            <div class="video-scroll-list" id="video-list">
+                {% for video in videos %}
+                <div class="trend-video-item own-video-clickable"
+                     data-title="{{ video.title|lower }}"
+                     data-video-id="{{ video.video_id }}"
+                     data-video-title="{{ video.title }}">
+                    {% if video.thumbnail_url %}
+                    <img src="{{ video.thumbnail_url }}" alt="" class="tv-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="tv-info">
+                        <span class="tv-title">{{ video.title[:55] }}</span>
+                        <div class="tv-stats">
+                            <span>{{ "{:,}".format(video.view_count) }} views</span>
+                            <span>{{ video.engagement_rate }}%</span>
+                            {% if video._score >= 2 %}
+                            <span class="perf-badge badge-breakout">{{ video._score }}x</span>
+                            {% elif video._score >= 1.2 %}
+                            <span class="perf-badge badge-strong">{{ video._score }}x</span>
+                            {% elif video._score <= 0.5 %}
+                            <span class="perf-badge badge-under">{{ video._score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg">{{ video._score }}x</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endfor %}
-    {% endif %}
+        </section>
 
-    {% if trends.recent_breakouts %}
-    <section class="trend-card full-width">
-        <h2>Recent Breakouts (Last 90 Days)</h2>
-        <p class="trend-subtitle">Videos across all channels that hit 2x+ the combined average ({{ "{:,}".format(trends.recent_avg_views) }} avg views)</p>
-        <div class="trend-list">
-            {% for b in trends.recent_breakouts %}
-            <div class="trend-list-item">
-                <div class="trend-item-title">
-                    {{ b.title }}
-                    <span class="source-tag">{{ b.source }}</span>
-                </div>
-                <div class="trend-item-stats">
-                    <span>{{ b.published }}</span>
-                    <span>{{ "{:,}".format(b.views) }} views</span>
-                    <span>{{ b.engagement }}% eng</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.title_patterns %}
-    <section class="trend-card">
-        <h2>Title Format Performance</h2>
-        <p class="trend-subtitle">Cross-channel: {{ trends.total_video_count }} videos (avg {{ "{:,}".format(trends.overall_avg_views) }} views)</p>
-        <div class="trend-bars">
-            {% set max_views = trends.title_patterns.values()|map(attribute='avg_views')|max %}
-            {% for label, stats in trends.title_patterns.items() %}
-            <div class="trend-bar-row">
-                <div class="bar-label">
-                    <strong>{{ label }}</strong>
-                    <span class="bar-meta">{{ stats.own_count }} yours + {{ stats.comp_count }} comp</span>
-                </div>
-                <div class="bar-track">
-                    <div class="bar-fill {% if stats.avg_views > trends.overall_avg_views %}bar-above{% else %}bar-below{% endif %}"
-                         style="width: {{ (stats.avg_views / max_views * 100)|round }}%">
+        <!-- Competitor Videos -->
+        {% for comp in competitors %}
+        <section class="trend-card">
+            <h2>{{ comp.name }} <span class="badge category-badge">{{ comp.category }}</span></h2>
+            <p class="trend-subtitle">Top recent performers &middot; {{ "{:,}".format(comp.avg_views) }} avg views</p>
+            <div class="video-scroll-list">
+                {% for v in comp.scored_videos %}
+                <div class="trend-video-item comp-video-clickable"
+                     data-channel-id="{{ comp.channel_id }}"
+                     data-video-id="{{ v.video_id }}"
+                     data-title="{{ v.title }}">
+                    {% if v.thumbnail_url %}
+                    <img src="{{ v.thumbnail_url }}" alt="" class="tv-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="tv-info">
+                        <span class="tv-title">{{ v.title[:50] }}</span>
+                        <div class="tv-stats">
+                            <span>{{ "{:,}".format(v.view_count) }} views</span>
+                            <span>{{ v.engagement_rate }}%</span>
+                            {% if v._score >= 2 %}
+                            <span class="perf-badge badge-breakout">{{ v._score }}x</span>
+                            {% elif v._score >= 1.2 %}
+                            <span class="perf-badge badge-strong">{{ v._score }}x</span>
+                            {% elif v._score <= 0.5 %}
+                            <span class="perf-badge badge-under">{{ v._score }}x</span>
+                            {% endif %}
+                        </div>
                     </div>
-                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
                 </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
+        </section>
+        {% endfor %}
 
-    {% if trends.recent_patterns %}
-    <section class="trend-card">
-        <h2>Recent Format Trends (90 Days)</h2>
-        <p class="trend-subtitle">What title formats are trending now</p>
-        <div class="trend-bars">
-            {% set max_recent_views = trends.recent_patterns.values()|map(attribute='avg_views')|max %}
-            {% for label, stats in trends.recent_patterns.items() %}
-            <div class="trend-bar-row">
-                <div class="bar-label">
-                    <strong>{{ label }}</strong>
-                    <span class="bar-meta">{{ stats.count }} videos</span>
+    </div>
+
+    <!-- RIGHT COLUMN: Data & Charts -->
+    <div class="trends-col-data">
+
+        {% if trends.recent_breakouts %}
+        <section class="trend-card">
+            <h2>Recent Breakouts (90 Days)</h2>
+            <p class="trend-subtitle">2x+ avg across all channels</p>
+            <div class="trend-list">
+                {% for b in trends.recent_breakouts[:8] %}
+                <div class="trend-list-item">
+                    <div class="trend-item-title">
+                        {{ b.title[:50] }}
+                        <span class="source-tag">{{ b.source }}</span>
+                    </div>
+                    <div class="trend-item-stats">
+                        <span>{{ "{:,}".format(b.views) }}</span>
+                    </div>
                 </div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_recent_views * 100)|round }}%"></div>
-                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
-                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.hot_keywords %}
-    <section class="trend-card full-width">
-        <h2>Hot Keywords</h2>
-        <p class="trend-subtitle">Most common keywords across all channels, ranked by average views</p>
-        <div class="keyword-grid">
-            {% for kw, data in trends.hot_keywords.items() %}
-            <div class="keyword-pill">
-                <span class="kw-word">{{ kw }}</span>
-                <span class="kw-stats">{{ data.count }} videos &middot; {{ "{:,}".format(data.avg_views) }} avg</span>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.competitor_summary %}
-    <section class="trend-card full-width">
-        <h2>Competitor Comparison</h2>
-        <p class="trend-subtitle">How your competitors stack up</p>
-        <div class="monthly-table-wrapper">
-            <table class="monthly-table">
-                <thead>
-                    <tr>
-                        <th>Channel</th>
-                        <th>Category</th>
-                        <th>Videos</th>
-                        <th>Avg Views</th>
-                        <th>Avg Engagement</th>
-                        <th>Recent (90d)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr style="font-weight:600">
-                        <td>You</td>
-                        <td>—</td>
-                        <td>{{ trends.own_video_count }}</td>
-                        <td>{{ "{:,}".format(trends.own_avg_views) }}</td>
-                        <td>—</td>
-                        <td>—</td>
-                    </tr>
-                    {% for c in trends.competitor_summary %}
-                    <tr>
-                        <td>{{ c.name }}</td>
-                        <td><span class="badge category-badge">{{ c.category }}</span></td>
-                        <td>{{ c.total_videos }}</td>
-                        <td>{{ "{:,}".format(c.avg_views) }}</td>
-                        <td>{{ c.avg_engagement }}%</td>
-                        <td>{{ c.recent_count }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.publish_days %}
-    <section class="trend-card">
-        <h2>Best Days to Publish</h2>
-        <p class="trend-subtitle">Your videos — average views by day of week</p>
-        <div class="trend-bars">
-            {% set max_day_views = trends.publish_days.values()|map(attribute='avg_views')|max %}
-            {% for day, stats in trends.publish_days.items() %}
-            <div class="trend-bar-row">
-                <div class="bar-label">
-                    <strong>{{ day }}</strong>
-                    <span class="bar-meta">{{ stats.count }} videos</span>
-                </div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_day_views * 100)|round }}%"></div>
-                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.title_length %}
-    <section class="trend-card">
-        <h2>Title Length Impact</h2>
-        <p class="trend-subtitle">Cross-channel — shorter or longer titles?</p>
-        <div class="trend-bars">
-            {% set max_tl_views = trends.title_length.values()|map(attribute='avg_views')|max %}
-            {% for label, stats in trends.title_length.items() %}
-            <div class="trend-bar-row">
-                <div class="bar-label">
-                    <strong>{{ label }}</strong>
-                    <span class="bar-meta">{{ stats.count }} videos</span>
-                </div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_tl_views * 100)|round }}%"></div>
-                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.breakout_hits %}
-    <section class="trend-card full-width">
-        <h2>Your Breakout Hits</h2>
-        <p class="trend-subtitle">Your videos with 2x+ your average views</p>
-        <div class="trend-list">
-            {% for b in trends.breakout_hits %}
-            <div class="trend-list-item">
-                <div class="trend-item-title">{{ b.title }}</div>
-                <div class="trend-item-stats">
-                    <span class="stat-pill hit">{{ b.multiplier }}x avg</span>
-                    <span>{{ "{:,}".format(b.views) }} views</span>
-                    <span>{{ b.engagement }}% eng</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.hidden_gems %}
-    <section class="trend-card full-width">
-        <h2>Hidden Gems</h2>
-        <p class="trend-subtitle">High engagement but below-median views — topics your audience loves but didn't find</p>
-        <div class="trend-list">
-            {% for g in trends.hidden_gems %}
-            <div class="trend-list-item">
-                <div class="trend-item-title">{{ g.title }}</div>
-                <div class="trend-item-stats">
-                    <span class="stat-pill gem">{{ g.engagement }}% eng</span>
-                    <span>{{ "{:,}".format(g.views) }} views</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    {% if trends.monthly %}
-    <section class="trend-card full-width">
-        <h2>Monthly Performance</h2>
-        <p class="trend-subtitle">Your upload frequency and performance over time
-        {% if trends.avg_uploads_per_month %}
-         — avg <strong>{{ trends.avg_uploads_per_month }} videos/month</strong>
+        </section>
         {% endif %}
-        </p>
-        <div class="monthly-table-wrapper">
-            <table class="monthly-table">
-                <thead>
-                    <tr>
-                        <th>Month</th>
-                        <th>Videos</th>
-                        <th>Total Views</th>
-                        <th>Avg Views</th>
-                        <th>Avg Engagement</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for m in trends.monthly|reverse %}
-                    <tr>
-                        <td>{{ m.month }}</td>
-                        <td>{{ m.videos_published }}</td>
-                        <td>{{ "{:,}".format(m.total_views) }}</td>
-                        <td>{{ "{:,}".format(m.avg_views) }}</td>
-                        <td>{{ m.avg_engagement }}%</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
-    {% endif %}
 
+        {% if trends.title_patterns %}
+        <section class="trend-card">
+            <h2>Title Format Performance</h2>
+            <p class="trend-subtitle">Cross-channel ({{ trends.total_video_count }} videos)</p>
+            <div class="trend-bars">
+                {% set max_views = trends.title_patterns.values()|map(attribute='avg_views')|max %}
+                {% for label, stats in trends.title_patterns.items() %}
+                <div class="trend-bar-row">
+                    <div class="bar-label">
+                        <strong>{{ label }}</strong>
+                        <span class="bar-meta">{{ stats.count }}</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill {% if stats.avg_views > trends.overall_avg_views %}bar-above{% else %}bar-below{% endif %}"
+                             style="width: {{ (stats.avg_views / max_views * 100)|round }}%"></div>
+                        <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.hot_keywords %}
+        <section class="trend-card">
+            <h2>Hot Keywords</h2>
+            <div class="keyword-grid">
+                {% for kw, data in trends.hot_keywords.items() %}
+                <div class="keyword-pill">
+                    <span class="kw-word">{{ kw }}</span>
+                    <span class="kw-stats">{{ data.count }} &middot; {{ "{:,}".format(data.avg_views) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.publish_days %}
+        <section class="trend-card">
+            <h2>Best Days to Publish</h2>
+            <div class="trend-bars">
+                {% set max_day_views = trends.publish_days.values()|map(attribute='avg_views')|max %}
+                {% for day, stats in trends.publish_days.items() %}
+                <div class="trend-bar-row">
+                    <div class="bar-label">
+                        <strong>{{ day }}</strong>
+                        <span class="bar-meta">{{ stats.count }}</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: {{ (stats.avg_views / max_day_views * 100)|round }}%"></div>
+                        <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.title_length %}
+        <section class="trend-card">
+            <h2>Title Length</h2>
+            <div class="trend-bars">
+                {% set max_tl_views = trends.title_length.values()|map(attribute='avg_views')|max %}
+                {% for label, stats in trends.title_length.items() %}
+                <div class="trend-bar-row">
+                    <div class="bar-label">
+                        <strong>{{ label }}</strong>
+                        <span class="bar-meta">{{ stats.count }}</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: {{ (stats.avg_views / max_tl_views * 100)|round }}%"></div>
+                        <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.competitor_summary %}
+        <section class="trend-card">
+            <h2>Competitor Comparison</h2>
+            <div class="monthly-table-wrapper">
+                <table class="monthly-table">
+                    <thead>
+                        <tr>
+                            <th>Channel</th>
+                            <th>Avg Views</th>
+                            <th>Eng</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="font-weight:600">
+                            <td>You</td>
+                            <td>{{ "{:,}".format(trends.own_avg_views) }}</td>
+                            <td>{{ avg_engagement }}%</td>
+                        </tr>
+                        {% for c in trends.competitor_summary %}
+                        <tr>
+                            <td>{{ c.name }}</td>
+                            <td>{{ "{:,}".format(c.avg_views) }}</td>
+                            <td>{{ c.avg_engagement }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.breakout_hits %}
+        <section class="trend-card">
+            <h2>Your Breakout Hits</h2>
+            <div class="trend-list">
+                {% for b in trends.breakout_hits[:6] %}
+                <div class="trend-list-item">
+                    <div class="trend-item-title">{{ b.title[:45] }}</div>
+                    <div class="trend-item-stats">
+                        <span class="stat-pill hit">{{ b.multiplier }}x</span>
+                        <span>{{ "{:,}".format(b.views) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.hidden_gems %}
+        <section class="trend-card">
+            <h2>Hidden Gems</h2>
+            <p class="trend-subtitle">High engagement, low views</p>
+            <div class="trend-list">
+                {% for g in trends.hidden_gems[:6] %}
+                <div class="trend-list-item">
+                    <div class="trend-item-title">{{ g.title[:45] }}</div>
+                    <div class="trend-item-stats">
+                        <span class="stat-pill gem">{{ g.engagement }}%</span>
+                        <span>{{ "{:,}".format(g.views) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+/* --- AI Report --- */
 const reportBtn = document.getElementById("generate-report-btn");
 const reportLoading = document.getElementById("report-loading");
 const reportError = document.getElementById("report-error");
@@ -469,58 +394,37 @@ reportBtn.addEventListener("click", async () => {
     reportBtn.textContent = "Regenerate Report";
 });
 
-function esc(text) {
-    const d = document.createElement("div");
-    d.textContent = text;
-    return d.innerHTML;
-}
-
 function renderReport(data) {
-    // Landscape
     document.getElementById("report-landscape").innerHTML = esc(data.current_landscape || "").replace(/\n/g, "<br>");
-
-    // Topic opportunities
     const topics = data.topic_opportunities || [];
     document.getElementById("report-topics").innerHTML = topics.map(t =>
         `<div class="report-topic-card">
             <div class="topic-header"><strong>${esc(t.topic)}</strong><span class="badge category-badge">${esc(t.format)}</span></div>
             <p>${esc(t.why)}</p>
-        </div>`
-    ).join("");
-
-    // Title trends
+        </div>`).join("");
     document.getElementById("report-title-summary").innerHTML = esc(data.title_trends?.summary || "").replace(/\n/g, "<br>");
     document.getElementById("report-title-tactics").innerHTML = (data.title_trends?.tactics || []).map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
     document.getElementById("report-title-avoid").innerHTML = (data.title_trends?.avoid || []).map((t, i) =>
         `<div class="plan-option avoid-item"><span class="option-num avoid-num">${i+1}</span> ${esc(t)}</div>`).join("");
-
-    // Thumbnail trends
     document.getElementById("report-thumb-summary").innerHTML = esc(data.thumbnail_trends?.summary || "").replace(/\n/g, "<br>");
     document.getElementById("report-thumb-tactics").innerHTML = (data.thumbnail_trends?.tactics || []).map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
     document.getElementById("report-thumb-examples").innerHTML = (data.thumbnail_trends?.examples || []).map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
-
-    // Format recommendations
     const formats = data.format_recommendations || [];
     document.getElementById("report-formats").innerHTML = formats.map(f =>
         `<div class="report-topic-card">
             <div class="topic-header"><strong>${esc(f.format)}</strong></div>
             <p><strong>Why:</strong> ${esc(f.why)}</p>
             <p><strong>Tip:</strong> ${esc(f.tip)}</p>
-        </div>`
-    ).join("");
-
-    // Competitor insights
+        </div>`).join("");
     document.getElementById("report-comp-insights").innerHTML = esc(data.competitor_insights || "").replace(/\n/g, "<br>");
-
-    // Action plan
     document.getElementById("report-actions").innerHTML = (data.action_plan || []).map((a, i) =>
         `<div class="plan-option action-item"><span class="option-num">${i+1}</span> ${esc(a)}</div>`).join("");
 }
 
-/* --- Video search filter --- */
+/* --- Video search --- */
 document.getElementById("video-search").addEventListener("input", (e) => {
     const q = e.target.value.toLowerCase();
     document.querySelectorAll("#video-list .trend-video-item").forEach(el => {
@@ -552,16 +456,15 @@ function showAnalysis(data, title, videoId) {
         analysisResults.style.display = "block";
     }
     analysisLoading.style.display = "none";
-    analysisResults.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-/* Own videos */
 document.querySelectorAll(".own-video-clickable").forEach(el => {
     el.addEventListener("click", async () => {
         analysisResults.style.display = "none";
         analysisError.style.display = "none";
         analysisLoading.style.display = "block";
-        analysisLoading.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.scrollTo({ top: 0, behavior: "smooth" });
         try {
             const resp = await fetch("/api/analyze-own-video", {
                 method: "POST",
@@ -577,13 +480,12 @@ document.querySelectorAll(".own-video-clickable").forEach(el => {
     });
 });
 
-/* Competitor videos */
 document.querySelectorAll(".comp-video-clickable").forEach(el => {
     el.addEventListener("click", async () => {
         analysisResults.style.display = "none";
         analysisError.style.display = "none";
         analysisLoading.style.display = "block";
-        analysisLoading.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.scrollTo({ top: 0, behavior: "smooth" });
         try {
             const resp = await fetch("/api/analyze-competitor-video", {
                 method: "POST",

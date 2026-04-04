@@ -251,17 +251,75 @@ def api_chat():
 def trends_page():
     if not video_cache:
         return redirect(url_for("index"))
-    sorted_videos = sorted(video_cache, key=lambda v: v["view_count"], reverse=True)
+
+    from datetime import datetime, timedelta, timezone
+    cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
+
+    # Past-year videos for baseline
+    year_videos = []
+    for v in video_cache:
+        try:
+            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+            if dt >= cutoff_1y:
+                year_videos.append(v)
+        except (ValueError, KeyError):
+            pass
+
+    year_avg_views = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
+
+    # Sort own videos by publish date (most recent first), add score
+    dated_videos = []
+    for v in video_cache:
+        try:
+            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+            vc = dict(v)
+            vc["_date"] = dt
+            vc["_score"] = round(v["view_count"] / year_avg_views, 1) if year_avg_views else 0
+            dated_videos.append(vc)
+        except (ValueError, KeyError):
+            dated_videos.append(dict(v, _date=None, _score=0))
+
+    dated_videos.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    # Competitor videos: sort by date, keep top recent performers (8 per channel)
+    scored_competitors = []
+    for comp in competitors_cache:
+        vids = comp.get("videos", [])
+        if not vids:
+            scored_competitors.append(comp)
+            continue
+        comp_avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
+        # Sort by date, most recent first
+        dated_comp = []
+        for v in vids:
+            try:
+                dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
+                vc = dict(v)
+                vc["_date"] = dt
+                vc["_score"] = round(v["view_count"] / comp_avg, 1) if comp_avg else 0
+                dated_comp.append(vc)
+            except (ValueError, KeyError):
+                dated_comp.append(dict(v, _date=None, _score=0))
+        dated_comp.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        # Keep 8 most recent, but prioritize high performers
+        recent = dated_comp[:20]
+        recent.sort(key=lambda v: v["view_count"], reverse=True)
+        top_recent = recent[:8]
+        top_recent.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        scored_competitors.append({**comp, "scored_videos": top_recent, "avg_views": comp_avg})
+
     total_views = sum(v["view_count"] for v in video_cache)
     avg_engagement = round(sum(v["engagement_rate"] for v in video_cache) / len(video_cache), 2)
     trends_data = analyze_trends(video_cache, competitors_cache)
+
     return render_template("trends.html", trends=trends_data,
                            total_videos=len(video_cache),
                            competitor_count=len(competitors_cache),
-                           videos=sorted_videos,
+                           videos=dated_videos,
                            total_views=total_views,
                            avg_engagement=avg_engagement,
-                           competitors=competitors_cache)
+                           year_avg_views=year_avg_views,
+                           competitors=scored_competitors)
 
 
 @app.route("/planner")
