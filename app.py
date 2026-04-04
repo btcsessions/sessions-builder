@@ -109,9 +109,21 @@ competitors_cache = load_competitors()
 
 @app.route("/")
 def index():
-    if video_cache:
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("settings_page"))
+    if not video_cache:
+        return redirect(url_for("settings_page"))
+
+    sorted_videos = sorted(video_cache, key=lambda v: v["view_count"], reverse=True)
+    total_views = sum(v["view_count"] for v in video_cache)
+    avg_engagement = round(sum(v["engagement_rate"] for v in video_cache) / len(video_cache), 2)
+
+    return render_template(
+        "workspace.html",
+        videos=sorted_videos,
+        total_views=total_views,
+        avg_engagement=avg_engagement,
+        competitors=competitors_cache,
+        chat_history=chat_history,
+    )
 
 
 @app.route("/settings")

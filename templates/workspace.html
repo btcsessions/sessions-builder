@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block title %}YouTube Planner{% endblock %}
+
+{% block content %}
+<div class="workspace">
+
+    <!-- LEFT SIDEBAR: Videos + Competitors -->
+    <aside class="ws-sidebar" id="ws-sidebar">
+        <div class="sidebar-toggle-area">
+            <button id="sidebar-collapse" class="btn small" title="Toggle sidebar">&#9776;</button>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" data-toggle="my-videos">
+                <h3>My Videos <span class="section-count">{{ videos|length }}</span></h3>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section-body" id="my-videos">
+                <div class="sidebar-stats">
+                    <span>{{ "{:,}".format(total_views) }} views</span>
+                    <span>{{ avg_engagement }}% avg eng</span>
+                </div>
+                <input type="text" id="video-search" class="sidebar-search" placeholder="Filter videos...">
+                <div class="sidebar-video-list" id="video-list">
+                    {% for video in videos %}
+                    <div class="sidebar-video" data-title="{{ video.title|lower }}">
+                        <a href="https://youtube.com/watch?v={{ video.video_id }}" target="_blank" class="sv-title">{{ video.title[:55] }}</a>
+                        <div class="sv-stats">
+                            <span>{{ "{:,}".format(video.view_count) }} views</span>
+                            <span>{{ video.engagement_rate }}%</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {% if competitors %}
+        {% for comp in competitors %}
+        <div class="sidebar-section">
+            <div class="sidebar-section-header" data-toggle="comp-{{ loop.index }}">
+                <h3>{{ comp.name }} <span class="section-count badge category-badge">{{ comp.category }}</span></h3>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section-body collapsed" id="comp-{{ loop.index }}">
+                <div class="sidebar-stats">
+                    <span>{{ comp.videos|length }} videos</span>
+                    {% if comp.videos %}
+                    <span>{{ "{:,}".format((comp.videos|map(attribute='view_count')|sum // comp.videos|length)) }} avg views</span>
+                    {% endif %}
+                </div>
+                <div class="sidebar-video-list">
+                    {% for v in comp.videos[:15] %}
+                    <div class="sidebar-video">
+                        <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank" class="sv-title">{{ v.title[:55] }}</a>
+                        <div class="sv-stats">
+                            <span>{{ "{:,}".format(v.view_count) }} views</span>
+                            <span>{{ v.engagement_rate }}%</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </aside>
+
+    <!-- CENTER: Video Planner -->
+    <section class="ws-center">
+        <div class="planner-header">
+            <h2>Plan a Video</h2>
+        </div>
+
+        <form id="plan-form" class="ws-plan-form">
+            <div class="plan-form-row">
+                <div class="form-group compact">
+                    <label for="video-type">Type</label>
+                    <select id="video-type">
+                        <option value="tutorial">Tutorial</option>
+                        <option value="first impressions">First Impressions</option>
+                        <option value="listicle">Listicle</option>
+                    </select>
+                </div>
+                <div class="form-group compact grow">
+                    <label for="video-topic">Topic</label>
+                    <input type="text" id="video-topic" placeholder="e.g. Setting up a Bitcoin full node on a Raspberry Pi" required autocomplete="off">
+                </div>
+            </div>
+
+            <div class="plan-form-row">
+                <div class="form-group compact grow">
+                    <label>Supporting Links</label>
+                    <div id="links-container">
+                        <div class="multi-input-row">
+                            <input type="url" class="supporting-link" placeholder="https://...">
+                            <button type="button" class="btn small add-link-btn">+</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group compact grow">
+                    <label>Competitor Videos</label>
+                    <div id="competitors-container">
+                        <div class="multi-input-row">
+                            <input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=...">
+                            <button type="button" class="btn small add-competitor-btn">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group compact">
+                <label for="video-notes">Notes</label>
+                <textarea id="video-notes" rows="2" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
+            </div>
+
+            <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
+        </form>
+
+        <div id="plan-loading" class="plan-loading" style="display:none">
+            <p>Generating your video plan...</p>
+        </div>
+
+        <div id="plan-error" class="alert error" style="display:none"></div>
+
+        <div id="plan-results" class="plan-results" style="display:none">
+            <section class="plan-card">
+                <h2>Title Options</h2>
+                <div id="plan-titles" class="plan-list"></div>
+            </section>
+
+            <section class="plan-card">
+                <h2>Thumbnail Ideas</h2>
+                <div id="plan-thumbnails" class="plan-list"></div>
+            </section>
+
+            <section class="plan-card">
+                <h2>Intro Hook</h2>
+                <div id="plan-hook" class="plan-text"></div>
+            </section>
+
+            <section class="plan-card">
+                <h2>Video Outline</h2>
+                <div id="plan-outline" class="plan-outline"></div>
+            </section>
+
+            <section class="plan-card">
+                <h2>Tags</h2>
+                <div id="plan-tags" class="plan-tags"></div>
+            </section>
+
+            <section class="plan-card">
+                <h2>Description</h2>
+                <div id="plan-description" class="plan-text"></div>
+            </section>
+        </div>
+    </section>
+
+    <!-- RIGHT: Brainstorm Chat -->
+    <aside class="ws-chat">
+        <div class="chat-header">
+            <h3>AI Brainstorm</h3>
+            <button id="clear-chat" class="btn small" title="Clear chat">Clear</button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            {% if not chat_history %}
+            <div class="chat-welcome">
+                <p>Ask me anything:</p>
+                <ul>
+                    <li>"What topics get the most views?"</li>
+                    <li>"Suggest 5 video ideas"</li>
+                    <li>"What do my breakout hits have in common?"</li>
+                </ul>
+            </div>
+            {% endif %}
+            {% for msg in chat_history %}
+            <div class="chat-msg {{ msg.role }}">
+                <div class="msg-content">{{ msg.content }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <form id="chat-form" class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Ask about your videos..." autocomplete="off">
+            <button type="submit" class="btn primary">Send</button>
+        </form>
+    </aside>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
+<script>
+/* --- Planner logic --- */
+const form = document.getElementById("plan-form");
+const generateBtn = document.getElementById("generate-btn");
+const loading = document.getElementById("plan-loading");
+const planError = document.getElementById("plan-error");
+const results = document.getElementById("plan-results");
+
+document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("add-link-btn")) {
+        const row = document.createElement("div");
+        row.className = "multi-input-row";
+        row.innerHTML = '<input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small remove-row-btn">-</button>';
+        document.getElementById("links-container").appendChild(row);
+    }
+    if (e.target.classList.contains("add-competitor-btn")) {
+        const row = document.createElement("div");
+        row.className = "multi-input-row";
+        row.innerHTML = '<input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small remove-row-btn">-</button>';
+        document.getElementById("competitors-container").appendChild(row);
+    }
+    if (e.target.classList.contains("remove-row-btn")) {
+        e.target.parentElement.remove();
+    }
+});
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const videoType = document.getElementById("video-type").value;
+    const topic = document.getElementById("video-topic").value.trim();
+    if (!topic) return;
+
+    const links = [...document.querySelectorAll(".supporting-link")].map(el => el.value.trim()).filter(Boolean);
+    const competitors = [...document.querySelectorAll(".competitor-link")].map(el => el.value.trim()).filter(Boolean);
+    const notes = document.getElementById("video-notes").value.trim();
+
+    generateBtn.disabled = true;
+    loading.style.display = "block";
+    planError.style.display = "none";
+    results.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/generate-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ video_type: videoType, topic, links, competitors, notes }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            planError.textContent = data.error;
+            planError.style.display = "block";
+        } else {
+            renderPlan(data);
+            results.style.display = "block";
+        }
+    } catch (err) {
+        planError.textContent = "Failed: " + err.message;
+        planError.style.display = "block";
+    }
+    loading.style.display = "none";
+    generateBtn.disabled = false;
+});
+
+function renderPlan(plan) {
+    document.getElementById("plan-titles").innerHTML = plan.titles.map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
+    document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
+    document.getElementById("plan-hook").textContent = plan.intro_hook;
+    document.getElementById("plan-outline").innerHTML = plan.outline.map(s => {
+        const pts = s.points.map(p => `<li>${esc(p)}</li>`).join("");
+        return `<div class="outline-section"><div class="outline-header"><strong>${esc(s.section)}</strong><span class="duration">${esc(s.duration_hint)}</span></div><ul>${pts}</ul></div>`;
+    }).join("");
+    document.getElementById("plan-tags").innerHTML = plan.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("");
+    document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
+}
+
+function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+/* --- Sidebar toggling --- */
+document.querySelectorAll(".sidebar-section-header").forEach(header => {
+    header.addEventListener("click", () => {
+        const targetId = header.dataset.toggle;
+        const body = document.getElementById(targetId);
+        body.classList.toggle("collapsed");
+        header.querySelector(".chevron").classList.toggle("collapsed");
+    });
+});
+
+document.getElementById("sidebar-collapse").addEventListener("click", () => {
+    document.getElementById("ws-sidebar").classList.toggle("sidebar-hidden");
+});
+
+/* --- Video search filter --- */
+document.getElementById("video-search").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll("#video-list .sidebar-video").forEach(el => {
+        el.style.display = el.dataset.title.includes(q) ? "" : "none";
+    });
+});
+</script>
+{% endblock %}
