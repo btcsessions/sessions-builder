@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Plan Video - YouTube Planner{% endblock %}
+
+{% block content %}
+<div class="planner-input">
+    <h1>Plan a Video</h1>
+    <p>Describe your video idea and AI will generate a full production plan.</p>
+    <form id="plan-form">
+        <div class="idea-row">
+            <input type="text" id="video-idea" placeholder="e.g. How to set up a Bitcoin full node on a Raspberry Pi" autocomplete="off">
+            <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
+        </div>
+    </form>
+</div>
+
+<div id="plan-loading" class="plan-loading" style="display:none">
+    <p>Generating your video plan...</p>
+</div>
+
+<div id="plan-error" class="alert error" style="display:none"></div>
+
+<div id="plan-results" class="plan-results" style="display:none">
+
+    <section class="plan-card">
+        <h2>Title Options</h2>
+        <div id="plan-titles" class="plan-list"></div>
+    </section>
+
+    <section class="plan-card">
+        <h2>Thumbnail Ideas</h2>
+        <div id="plan-thumbnails" class="plan-list"></div>
+    </section>
+
+    <section class="plan-card">
+        <h2>Intro Hook</h2>
+        <div id="plan-hook" class="plan-text"></div>
+    </section>
+
+    <section class="plan-card">
+        <h2>Video Outline</h2>
+        <div id="plan-outline" class="plan-outline"></div>
+    </section>
+
+    <section class="plan-card">
+        <h2>Tags</h2>
+        <div id="plan-tags" class="plan-tags"></div>
+    </section>
+
+    <section class="plan-card">
+        <h2>Description</h2>
+        <div id="plan-description" class="plan-text"></div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const form = document.getElementById("plan-form");
+const ideaInput = document.getElementById("video-idea");
+const generateBtn = document.getElementById("generate-btn");
+const loading = document.getElementById("plan-loading");
+const error = document.getElementById("plan-error");
+const results = document.getElementById("plan-results");
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const idea = ideaInput.value.trim();
+    if (!idea) return;
+
+    generateBtn.disabled = true;
+    loading.style.display = "block";
+    error.style.display = "none";
+    results.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/generate-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idea }),
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+            error.textContent = data.error;
+            error.style.display = "block";
+        } else {
+            renderPlan(data);
+            results.style.display = "block";
+        }
+    } catch (err) {
+        error.textContent = "Failed: " + err.message;
+        error.style.display = "block";
+    }
+
+    loading.style.display = "none";
+    generateBtn.disabled = false;
+});
+
+function renderPlan(plan) {
+    // Titles
+    const titlesEl = document.getElementById("plan-titles");
+    titlesEl.innerHTML = plan.titles.map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`
+    ).join("");
+
+    // Thumbnails
+    const thumbsEl = document.getElementById("plan-thumbnails");
+    thumbsEl.innerHTML = plan.thumbnail_ideas.map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`
+    ).join("");
+
+    // Hook
+    document.getElementById("plan-hook").textContent = plan.intro_hook;
+
+    // Outline
+    const outlineEl = document.getElementById("plan-outline");
+    outlineEl.innerHTML = plan.outline.map(section => {
+        const points = section.points.map(p => `<li>${esc(p)}</li>`).join("");
+        return `<div class="outline-section">
+            <div class="outline-header">
+                <strong>${esc(section.section)}</strong>
+                <span class="duration">${esc(section.duration_hint)}</span>
+            </div>
+            <ul>${points}</ul>
+        </div>`;
+    }).join("");
+
+    // Tags
+    const tagsEl = document.getElementById("plan-tags");
+    tagsEl.innerHTML = plan.tags.map(t =>
+        `<span class="tag">${esc(t)}</span>`
+    ).join("");
+
+    // Description
+    document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
+}
+
+function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
+</script>
+{% endblock %}

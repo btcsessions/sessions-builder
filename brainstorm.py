@@ -81,3 +81,63 @@ def chat_with_claude(
     )
 
     return response.content[0].text
+
+
+def generate_video_plan(
+    video_idea: str,
+    video_data: list[dict],
+    api_key: str,
+) -> dict:
+    """Generate a full video plan with title, thumbnail, outline, etc."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Build a list of past video titles for reference links
+    past_titles = ""
+    if video_data:
+        entries = []
+        for v in video_data:
+            entries.append(f"- \"{v['title']}\" ({v['view_count']:,} views) https://youtube.com/watch?v={v['video_id']}")
+        past_titles = "\n".join(entries)
+
+    channel_context = _build_system_prompt(video_data)
+
+    system = f"""{channel_context}
+
+You are now generating a complete video production plan. You must respond with ONLY valid JSON matching this exact structure (no markdown, no code fences):
+
+{{
+  "titles": ["title option 1", "title option 2", "title option 3"],
+  "thumbnail_ideas": ["idea 1", "idea 2", "idea 3"],
+  "intro_hook": "A compelling 2-3 sentence opening hook to grab viewers in the first 10 seconds",
+  "outline": [
+    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~2 min"}},
+    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~3 min"}}
+  ],
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"],
+  "description": "Full YouTube description with summary and links to referenced past tutorials if relevant"
+}}
+
+IMPORTANT RULES:
+- Suggest 3 title options optimized for CTR and YouTube search
+- Thumbnail ideas should describe the visual concept, text overlay, and mood
+- The outline should be a realistic video skeleton with timing hints
+- Tags should be relevant for YouTube SEO (8-12 tags)
+- The description should be 3-5 paragraphs, include relevant links to past tutorials from the channel when applicable
+- Base recommendations on what has performed well in the channel data
+
+Here are the creator's past videos for reference links:
+{past_titles}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=3000,
+        system=system,
+        messages=[{"role": "user", "content": f"Generate a full video plan for this idea: {video_idea}"}],
+    )
+
+    import json
+    text = response.content[0].text.strip()
+    # Handle if Claude wraps in code fences despite instructions
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)

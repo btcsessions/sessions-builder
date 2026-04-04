@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id
-from brainstorm import chat_with_claude
+from brainstorm import chat_with_claude, generate_video_plan
 
 load_dotenv()
 
@@ -176,6 +176,30 @@ def api_chat():
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
         return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/planner")
+def planner():
+    return render_template("planner.html")
+
+
+@app.route("/api/generate-plan", methods=["POST"])
+def api_generate_plan():
+    data = request.get_json()
+    idea = data.get("idea", "").strip()
+    if not idea:
+        return jsonify({"error": "Video idea is required"}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured. Set it in Settings."}), 400
+
+    try:
+        plan = generate_video_plan(idea, video_cache, api_key)
+        return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
