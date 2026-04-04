@@ -42,29 +42,39 @@ def fetch_btc_prices(days: int = 730) -> dict:
         except (json.JSONDecodeError, IOError):
             pass
 
-    # Try CoinGecko first, then CoinCap for historical data
-    prices = _fetch_coingecko_history(days)
-    if not prices:
-        prices = _fetch_coincap_history()
+    # Try multiple sources for historical data until one works
+    prices = {}
+    for fetch_fn, label in [
+        (_fetch_coingecko_history, "CoinGecko"),
+        (_fetch_coincap_history, "CoinCap"),
+        (lambda: _fetch_binance_history(), "Binance"),
+        (_fetch_coincap_history_chunks, "CoinCap chunks"),
+    ]:
+        if len(prices) >= 200:
+            break
+        try:
+            if label == "CoinGecko":
+                result = fetch_fn(days)
+            else:
+                result = fetch_fn()
+            if len(result) > len(prices):
+                prices = result
+                print(f"[Market] Best source so far: {label} with {len(prices)} days")
+        except Exception as e:
+            print(f"[Market] {label} failed: {e}")
 
-    # If historical fetch failed, try current price endpoints as fallback
-    if not prices:
-        prices = _load_cached_prices()
-        if prices:
-            print(f"[Market] Using {len(prices)} cached price entries")
+    # If all historical fetches failed, use cache + current price
+    if len(prices) < 200:
+        cached = _load_cached_prices()
+        if len(cached) > len(prices):
+            print(f"[Market] Using {len(cached)} cached price entries")
+            prices = cached
         current = _fetch_current_price()
         if current:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             prices[today] = current
 
-    # If we still have very little data, try to build history from CoinCap daily endpoint
-    if len(prices) < 200:
-        print(f"[Market] Only {len(prices)} days of data — trying to build history...")
-        history = _fetch_coincap_history_chunks()
-        if len(history) > len(prices):
-            history.update(prices)  # Keep any fresh current price
-            prices = history
-            print(f"[Market] Built up to {len(prices)} days of price history")
+    print(f"[Market] Final result: {len(prices)} days of price data")
 
     if prices:
         _ensure_data_dir()
@@ -166,6 +176,41 @@ def _fetch_coincap_history_chunks() -> dict:
             print(f"[Market] CoinCap chunk {i+1} failed: {e}")
 
         time.sleep(1)  # Be polite to the API
+
+    return prices
+
+
+def _fetch_binance_history() -> dict:
+    """Fetch historical daily prices from Binance public API (no key needed)."""
+    prices = {}
+    now_ms = int(time.time() * 1000)
+
+    # Binance returns max 1000 candles per request — fetch in two chunks
+    for i in range(2):
+        end_ms = now_ms - (i * 1000 * 86400 * 1000)
+        start_ms = end_ms - (1000 * 86400 * 1000)
+        url = (
+            f"https://api.binance.com/api/v3/klines"
+            f"?symbol=BTCUSDT&interval=1d&startTime={start_ms}&endTime={end_ms}&limit=1000"
+        )
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode())
+
+            for candle in data:
+                # candle: [open_time, open, high, low, close, ...]
+                dt = datetime.fromtimestamp(candle[0] / 1000, tz=timezone.utc)
+                date_str = dt.strftime("%Y-%m-%d")
+                prices[date_str] = round(float(candle[4]), 2)  # close price
+
+            print(f"[Market] Binance chunk {i+1}: got {len(data)} daily candles")
+        except Exception as e:
+            print(f"[Market] Binance chunk {i+1} failed: {e}")
+
+        time.sleep(1)
 
     return prices
 
