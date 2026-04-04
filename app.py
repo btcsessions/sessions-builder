@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels
 from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_score,
                     record_snapshot, compute_velocity, compute_longevity_from_snapshots,
                     get_current_market_info, get_market_summary)
@@ -624,6 +624,32 @@ def api_refresh_competitors():
     if errors:
         return jsonify({"ok": True, "warnings": errors})
     return jsonify({"ok": True})
+
+
+@app.route("/api/suggest-channels", methods=["POST"])
+def api_suggest_channels():
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    if not video_cache:
+        return jsonify({"error": "No videos loaded. Fetch your playlist first."}), 400
+
+    try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        result = suggest_channels(
+            video_data=video_cache,
+            competitors_data=competitors_cache,
+            api_key=api_key,
+            market_data=market_data,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/oauth/connect")

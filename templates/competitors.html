@@ -32,6 +32,24 @@
             <button id="refresh-all-btn" class="btn small">Refresh All</button>
         </div>
         <div id="comp-status" class="form-hint"></div>
+
+        <hr class="settings-divider">
+        <h3>Discover Channels</h3>
+        <p class="form-hint">AI-powered suggestions based on your content and what's doing well right now.</p>
+        <button id="discover-btn" class="btn secondary">Discover Channels</button>
+        <div id="discover-results" style="display:none; margin-top:1rem;">
+            <div id="discover-loading" class="plan-loading" style="display:none">Finding channels...</div>
+
+            <div id="crypto-suggestions" style="display:none">
+                <h3 style="color:var(--accent); margin-bottom:0.5rem;">Bitcoin / Crypto</h3>
+                <div id="crypto-list" class="suggestions-list"></div>
+            </div>
+
+            <div id="tech-suggestions" style="display:none; margin-top:1rem;">
+                <h3 style="color:var(--accent-blue); margin-bottom:0.5rem;">Tech / Format Inspiration</h3>
+                <div id="tech-list" class="suggestions-list"></div>
+            </div>
+        </div>
     </div>
 
     <div class="competitors-list">
@@ -125,6 +143,89 @@ document.querySelectorAll(".remove-comp-btn").forEach(btn => {
         });
         btn.closest(".competitor-card").remove();
     });
+});
+
+// Discover channels
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function renderSuggestion(ch) {
+    return `<div class="suggestion-card">
+        <div class="suggestion-header">
+            <strong>${esc(ch.name)}</strong>
+            <span class="suggestion-handle">${esc(ch.handle)}</span>
+        </div>
+        <p class="suggestion-why">${esc(ch.why)}</p>
+        <p class="suggestion-learn"><span style="color:var(--accent);">Learn:</span> ${esc(ch.learn)}</p>
+        <button class="btn small add-suggested-btn"
+                data-handle="${esc(ch.handle)}"
+                data-name="${esc(ch.name)}">+ Add</button>
+    </div>`;
+}
+
+document.getElementById("discover-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("discover-btn");
+    const results = document.getElementById("discover-results");
+    const loading = document.getElementById("discover-loading");
+    btn.disabled = true;
+    btn.textContent = "Searching...";
+    results.style.display = "block";
+    loading.style.display = "block";
+    document.getElementById("crypto-suggestions").style.display = "none";
+    document.getElementById("tech-suggestions").style.display = "none";
+
+    try {
+        const resp = await fetch("/api/suggest-channels", { method: "POST" });
+        const data = await resp.json();
+        loading.style.display = "none";
+
+        if (data.error) {
+            loading.style.display = "block";
+            loading.textContent = data.error;
+        } else {
+            if (data.crypto_channels && data.crypto_channels.length) {
+                document.getElementById("crypto-list").innerHTML = data.crypto_channels.map(renderSuggestion).join("");
+                document.getElementById("crypto-suggestions").style.display = "block";
+            }
+            if (data.tech_channels && data.tech_channels.length) {
+                document.getElementById("tech-list").innerHTML = data.tech_channels.map(renderSuggestion).join("");
+                document.getElementById("tech-suggestions").style.display = "block";
+            }
+            // Wire up add buttons
+            document.querySelectorAll(".add-suggested-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    const handle = btn.dataset.handle;
+                    const name = btn.dataset.name;
+                    const isCrypto = btn.closest("#crypto-suggestions") !== null;
+                    const category = isCrypto ? "Bitcoin/Crypto" : "Mainstream Tech";
+                    const url = "https://youtube.com/" + handle;
+                    btn.disabled = true;
+                    btn.textContent = "Adding...";
+                    try {
+                        const resp = await fetch("/api/competitors/add", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ url, category, custom_label: "" }),
+                        });
+                        const result = await resp.json();
+                        if (result.error) {
+                            btn.textContent = result.error.length > 30 ? "Error" : result.error;
+                            btn.style.borderColor = "#aa5555";
+                        } else {
+                            btn.textContent = "Added!";
+                            btn.style.borderColor = "var(--accent)";
+                            btn.style.color = "var(--accent)";
+                        }
+                    } catch (err) {
+                        btn.textContent = "Failed";
+                    }
+                });
+            });
+        }
+    } catch (err) {
+        loading.textContent = "Failed: " + err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = "Discover Channels";
 });
 
 document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {

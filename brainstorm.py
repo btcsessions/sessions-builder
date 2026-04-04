@@ -681,3 +681,72 @@ RULES:
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
+
+
+def suggest_channels(
+    video_data: list[dict],
+    competitors_data: list[dict],
+    api_key: str,
+    market_data: dict = None,
+) -> dict:
+    """Suggest YouTube channels to follow for inspiration."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    topic_sample = "\n".join(
+        f"  - {v['title'][:70]}" for v in video_data[:15]
+    )
+
+    existing = [c["name"] for c in competitors_data] if competitors_data else []
+    existing_str = ", ".join(existing) if existing else "None"
+
+    market_section = _build_market_section(market_data)
+
+    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech creator wants to discover new channels to learn from — both crypto-native channels and mainstream tech channels that are currently doing well.
+
+**The Creator's Recent Content:**
+{topic_sample}
+
+**Channels Already Tracked:** {existing_str}
+{market_section}
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "crypto_channels": [
+    {{
+      "name": "Channel Name",
+      "handle": "@handle",
+      "why": "1 sentence on why they're worth watching right now",
+      "learn": "What specific tactic or approach to study"
+    }}
+  ],
+  "tech_channels": [
+    {{
+      "name": "Channel Name",
+      "handle": "@handle",
+      "why": "1 sentence on why they're worth watching right now",
+      "learn": "What specific tactic or approach to study"
+    }}
+  ]
+}}
+
+RULES:
+- Suggest 5-6 crypto/bitcoin channels and 4-5 mainstream tech channels
+- Do NOT suggest channels already tracked: {existing_str}
+- Focus on channels that are CURRENTLY doing well — growing, getting high engagement, producing consistently
+- For crypto channels: include bitcoin-focused, privacy/freedom tech, and broader crypto education channels
+- For tech channels: include channels whose format, editing, storytelling, or thumbnail strategy could be studied — even if their topic is completely different (hardware reviews, app reviews, explainers, etc.)
+- The handle should be their actual YouTube @handle if you know it, otherwise best guess
+- Be specific about what to learn from each — not generic praise
+- Prioritize channels with strong recent momentum over legacy channels coasting on old subscribers"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[{"role": "user", "content": "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them."}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
