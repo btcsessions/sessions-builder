@@ -20,6 +20,8 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
                 v_copy = dict(v)
                 v_copy["_source"] = comp.get("name", "Unknown")
                 v_copy["_category"] = comp.get("category", "Unknown")
+                v_copy["_channel_id"] = comp.get("channel_id", "")
+                v_copy["_channel_category"] = comp.get("category", "Unknown")
                 all_videos.append(v_copy)
 
     # --- Own channel stats ---
