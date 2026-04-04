@@ -1,4 +1,5 @@
 import os
+import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id
@@ -7,20 +8,71 @@ from brainstorm import chat_with_claude
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "yt-planner-secret-key")
 
-# In-memory store (single-user tool)
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
+
+# In-memory store
 video_cache = []
 chat_history = []
-playlist_info = {}  # stores playlist_id and google_key for refresh
+playlist_info = {}
+
+
+def _ensure_data_dir():
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+
+def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=""):
+    _ensure_data_dir()
+    settings = {
+        "playlist_id": playlist_id,
+        "playlist_url": playlist_url,
+        "google_key": google_key,
+        "anthropic_key": anthropic_key,
+    }
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+
+
+def load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def save_video_cache(videos: list):
+    _ensure_data_dir()
+    with open(CACHE_FILE, "w") as f:
+        json.dump(videos, f)
+
+
+def load_video_cache() -> list:
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE) as f:
+            return json.load(f)
+    return []
+
+
+# Load persisted data on startup
+_saved = load_settings()
+playlist_info = {
+    "playlist_id": _saved.get("playlist_id", ""),
+    "google_key": _saved.get("google_key", ""),
+}
+video_cache = load_video_cache()
 
 
 @app.route("/")
 def index():
+    settings = load_settings()
     return render_template(
         "index.html",
-        google_key=os.environ.get("GOOGLE_API_KEY", ""),
-        anthropic_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        google_key=settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", ""),
+        anthropic_key=settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
+        playlist_url=settings.get("playlist_url", ""),
         has_videos=len(video_cache) > 0,
     )
 
@@ -39,25 +91,27 @@ def fetch():
             error="Playlist URL and Google API key are required.",
             google_key=google_key,
             anthropic_key=anthropic_key,
+            playlist_url=playlist_url,
             has_videos=False,
         )
-
-    # Store Anthropic key in session
-    if anthropic_key:
-        session["anthropic_key"] = anthropic_key
 
     try:
         playlist_id = parse_playlist_id(playlist_url)
         video_cache = fetch_playlist_videos(playlist_id, google_key)
         playlist_info["playlist_id"] = playlist_id
         playlist_info["google_key"] = google_key
-        chat_history = []  # Reset chat on new playlist load
+        chat_history = []
+
+        # Persist everything
+        save_settings(playlist_id, google_key, anthropic_key, playlist_url)
+        save_video_cache(video_cache)
     except Exception as e:
         return render_template(
             "index.html",
             error=f"Failed to fetch playlist: {e}",
             google_key=google_key,
             anthropic_key=anthropic_key,
+            playlist_url=playlist_url,
             has_videos=False,
         )
 
@@ -105,7 +159,8 @@ def api_chat():
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
-    api_key = session.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return jsonify({"error": "Anthropic API key not configured. Go back to the home page to set it."}), 400
 
