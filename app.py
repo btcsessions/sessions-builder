@@ -545,6 +545,22 @@ def api_generate_plan():
 
 @app.route("/competitors")
 def competitors_page():
+    # Backfill avatars for channels that don't have one yet
+    settings = load_settings()
+    google_key = settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", "")
+    if google_key:
+        needs_save = False
+        for comp in competitors_cache:
+            if not comp.get("avatar_url"):
+                try:
+                    from youtube import resolve_channel_id
+                    _, _, avatar = resolve_channel_id(comp["url"], google_key)
+                    comp["avatar_url"] = avatar
+                    needs_save = True
+                except Exception:
+                    pass
+        if needs_save:
+            save_competitors(competitors_cache)
     return render_template("competitors.html", competitors=competitors_cache)
 
 

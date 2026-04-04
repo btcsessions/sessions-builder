@@ -70,7 +70,7 @@ def resolve_channel_id(channel_input: str, api_key: str) -> tuple[str, str, str]
 
     snippet = items[0]["snippet"]
     thumbs = snippet.get("thumbnails", {})
-    avatar_url = (thumbs.get("default") or thumbs.get("medium") or {}).get("url", "")
+    avatar_url = (thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url", "")
 
     return items[0]["id"], snippet["title"], avatar_url
 

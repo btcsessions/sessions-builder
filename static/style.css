@@ -734,24 +734,25 @@ tr:hover { background: var(--surface2); }
 .insp-channel-row:last-child { border-bottom: none; }
 .insp-channel-row:hover { background: var(--surface2); }
 .insp-avatar {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     flex-shrink: 0;
     object-fit: cover;
+    border: 2px solid var(--border);
 }
 .insp-avatar-placeholder {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--surface2);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: 'Anton', sans-serif;
-    font-size: 1rem;
+    font-size: 1.1rem;
     color: var(--text-muted);
 }
 .insp-channel-info {
