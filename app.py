@@ -106,6 +106,18 @@ video_cache = load_video_cache()
 analytics_cache = load_analytics()
 competitors_cache = load_competitors()
 
+# Auto-refresh competitors on startup
+_google_key = _saved.get("google_key", "")
+if _google_key and competitors_cache:
+    for _comp in competitors_cache:
+        try:
+            _result = fetch_channel_videos(_comp["url"], _google_key, max_videos=30)
+            _comp["videos"] = _result["videos"]
+            _comp["name"] = _result["channel_title"]
+        except Exception:
+            pass
+    save_competitors(competitors_cache)
+
 
 @app.route("/")
 def index():
