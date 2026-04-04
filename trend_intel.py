@@ -257,8 +257,8 @@ def _fetch_stacker_news_top() -> list[dict]:
     """Get top posts from stacker.news via GraphQL API."""
     query = {
         "query": """
-            {
-                items(sort: "top", when: "week", limit: 12) {
+            query TopItems($sort: String, $when: String, $limit: Limit) {
+                items(sort: $sort, when: $when, limit: $limit) {
                     items {
                         title
                         url
@@ -270,7 +270,12 @@ def _fetch_stacker_news_top() -> list[dict]:
                     }
                 }
             }
-        """
+        """,
+        "variables": {
+            "sort": "top",
+            "when": "week",
+            "limit": 12,
+        },
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
