@@ -574,6 +574,7 @@ def api_add_competitor():
             "url": channel_url,
             "channel_id": result["channel_id"],
             "category": label,
+            "avatar_url": result.get("avatar_url", ""),
             "videos": result["videos"],
         }
 
@@ -603,6 +604,22 @@ def api_remove_competitor():
     return jsonify({"ok": True})
 
 
+@app.route("/api/competitors/update-category", methods=["POST"])
+def api_update_competitor_category():
+    global competitors_cache
+    data = request.get_json()
+    channel_id = data.get("channel_id", "")
+    category = data.get("category", "").strip()
+    if not channel_id or not category:
+        return jsonify({"error": "channel_id and category required"}), 400
+    for comp in competitors_cache:
+        if comp["channel_id"] == channel_id:
+            comp["category"] = category
+            break
+    save_competitors(competitors_cache)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/competitors/refresh", methods=["POST"])
 def api_refresh_competitors():
     global competitors_cache
@@ -617,6 +634,7 @@ def api_refresh_competitors():
             result = fetch_channel_videos(comp["url"], google_key, max_videos=30)
             comp["videos"] = result["videos"]
             comp["name"] = result["channel_title"]
+            comp["avatar_url"] = result.get("avatar_url", "")
         except Exception as e:
             errors.append(f"{comp['name']}: {e}")
 

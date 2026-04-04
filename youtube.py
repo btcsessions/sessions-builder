@@ -52,8 +52,8 @@ def parse_channel_input(url_or_id: str) -> dict:
     raise ValueError(f"Could not parse channel from: {url_or_id}")
 
 
-def resolve_channel_id(channel_input: str, api_key: str) -> tuple[str, str]:
-    """Resolve a channel URL/handle/ID to (channel_id, channel_title)."""
+def resolve_channel_id(channel_input: str, api_key: str) -> tuple[str, str, str]:
+    """Resolve a channel URL/handle/ID to (channel_id, channel_title, avatar_url)."""
     youtube = build("youtube", "v3", developerKey=api_key)
     parsed = parse_channel_input(channel_input)
 
@@ -68,7 +68,11 @@ def resolve_channel_id(channel_input: str, api_key: str) -> tuple[str, str]:
     if not items:
         raise ValueError(f"Channel not found: {channel_input}")
 
-    return items[0]["id"], items[0]["snippet"]["title"]
+    snippet = items[0]["snippet"]
+    thumbs = snippet.get("thumbnails", {})
+    avatar_url = (thumbs.get("default") or thumbs.get("medium") or {}).get("url", "")
+
+    return items[0]["id"], snippet["title"], avatar_url
 
 
 def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30) -> dict:
@@ -76,7 +80,7 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
 
     Returns {"channel_id": ..., "channel_title": ..., "videos": [...]}.
     """
-    channel_id, channel_title = resolve_channel_id(channel_input, api_key)
+    channel_id, channel_title, avatar_url = resolve_channel_id(channel_input, api_key)
 
     # The uploads playlist is the channel ID with "UC" replaced by "UU"
     uploads_playlist = "UU" + channel_id[2:]
@@ -155,6 +159,7 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
     return {
         "channel_id": channel_id,
         "channel_title": channel_title,
+        "avatar_url": avatar_url,
         "videos": videos,
     }
 

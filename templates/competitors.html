@@ -4,115 +4,109 @@
 {% block content %}
 <div class="hero">
     <h1>Inspiration Channels</h1>
-    <p>Track channels you draw inspiration from to learn from their content strategy.</p>
 </div>
 
-<div class="competitors-layout">
-    <div class="add-competitor-form setup-form">
-        <h3>Add a Channel</h3>
-        <div class="form-group">
-            <label for="comp-url">Channel URL or Handle</label>
-            <input type="text" id="comp-url" placeholder="https://youtube.com/@channelname or @handle">
+<div class="inspiration-layout">
+    <!-- LEFT: My Channels -->
+    <div class="insp-col">
+        <div class="insp-col-header">
+            <h2>My Channels</h2>
+            <div style="display:flex; gap:0.4rem;">
+                <button id="refresh-all-btn" class="btn small">Refresh All</button>
+            </div>
         </div>
-        <div class="form-group">
-            <label for="comp-category">Category</label>
-            <select id="comp-category">
-                <option value="Mainstream Tech">Mainstream Tech</option>
+
+        <!-- Add form -->
+        <div class="insp-add-form">
+            <input type="text" id="comp-url" placeholder="@handle or channel URL" class="insp-add-input">
+            <select id="comp-category" class="insp-add-select">
                 <option value="Bitcoin/Crypto">Bitcoin/Crypto</option>
                 <option value="Freedom Tech">Freedom Tech</option>
+                <option value="Mainstream Tech">Mainstream Tech</option>
                 <option value="custom">Custom...</option>
             </select>
+            <input type="text" id="comp-custom-label" class="insp-add-input" placeholder="Custom label" style="display:none">
+            <button id="add-comp-btn" class="btn small primary">Add</button>
         </div>
-        <div class="form-group" id="custom-label-group" style="display:none">
-            <label for="comp-custom-label">Custom Label</label>
-            <input type="text" id="comp-custom-label" placeholder="e.g. Finance, Prepper, Privacy">
-        </div>
-        <div class="form-actions">
-            <button id="add-comp-btn" class="btn primary">Add Channel</button>
-            <button id="refresh-all-btn" class="btn small">Refresh All</button>
-        </div>
-        <div id="comp-status" class="form-hint"></div>
+        <div id="comp-status" class="form-hint" style="padding:0 0.75rem;"></div>
 
-        <hr class="settings-divider">
-        <h3>Discover Channels</h3>
-        <p class="form-hint">AI-powered suggestions based on your content and what's doing well right now.</p>
-        <button id="discover-btn" class="btn secondary">Discover Channels</button>
-        <div id="discover-results" style="display:none; margin-top:1rem;">
-            <div id="discover-loading" class="plan-loading" style="display:none">Finding channels...</div>
-
-            <div id="crypto-suggestions" style="display:none">
-                <h3 style="color:var(--accent); margin-bottom:0.5rem;">Bitcoin / Crypto</h3>
-                <div id="crypto-list" class="suggestions-list"></div>
+        <!-- Channel list -->
+        <div class="insp-channel-list">
+            {% if not competitors %}
+            <div class="sidebar-empty">
+                <p>No channels added yet.</p>
             </div>
+            {% endif %}
 
-            <div id="tech-suggestions" style="display:none; margin-top:1rem;">
-                <h3 style="color:var(--accent-blue); margin-bottom:0.5rem;">Tech / Format Inspiration</h3>
-                <div id="tech-list" class="suggestions-list"></div>
+            {% for comp in competitors %}
+            <div class="insp-channel-row" data-channel-id="{{ comp.channel_id }}">
+                {% if comp.avatar_url %}
+                <img src="{{ comp.avatar_url }}" alt="" class="insp-avatar">
+                {% else %}
+                <div class="insp-avatar-placeholder">{{ comp.name[0] }}</div>
+                {% endif %}
+                <div class="insp-channel-info">
+                    <span class="insp-channel-name">{{ comp.name }}</span>
+                    <span class="insp-channel-meta">{{ comp.videos|length }} videos
+                        {% if comp.videos %}&middot; {{ "{:,}".format((comp.videos|map(attribute='view_count')|sum // comp.videos|length)) }} avg{% endif %}
+                    </span>
+                </div>
+                <select class="insp-cat-select" data-channel-id="{{ comp.channel_id }}">
+                    <option value="Bitcoin/Crypto" {% if comp.category == 'Bitcoin/Crypto' %}selected{% endif %}>Bitcoin/Crypto</option>
+                    <option value="Freedom Tech" {% if comp.category == 'Freedom Tech' %}selected{% endif %}>Freedom Tech</option>
+                    <option value="Mainstream Tech" {% if comp.category == 'Mainstream Tech' %}selected{% endif %}>Mainstream Tech</option>
+                </select>
+                <button class="btn small remove-comp-btn" data-channel-id="{{ comp.channel_id }}" title="Remove">&#10005;</button>
             </div>
+            {% endfor %}
         </div>
     </div>
 
-    <div class="competitors-list">
-        {% if not competitors %}
-        <div class="empty-state">
-            <p>No inspiration channels added yet. Add one to get started.</p>
+    <!-- RIGHT: Discover -->
+    <div class="insp-col">
+        <div class="insp-col-header">
+            <h2>Discover</h2>
+            <button id="discover-btn" class="btn small secondary">Refresh</button>
         </div>
-        {% endif %}
 
-        {% for comp in competitors %}
-        <div class="competitor-card" data-channel-id="{{ comp.channel_id }}">
-            <div class="comp-header">
-                <div>
-                    <h3>{{ comp.name }}</h3>
-                    <span class="badge category-badge">{{ comp.category }}</span>
-                </div>
-                <button class="btn small remove-comp-btn" data-channel-id="{{ comp.channel_id }}">Remove</button>
-            </div>
-            <div class="comp-stats">
-                <span>{{ comp.videos|length }} videos tracked</span>
-                {% if comp.videos %}
-                <span>Avg {{ "{:,}".format((comp.videos|map(attribute='view_count')|sum // comp.videos|length)) }} views</span>
-                {% endif %}
-            </div>
-            {% if comp.videos %}
-            <div class="comp-top-videos">
-                <strong>Top 5:</strong>
-                {% for v in comp.videos[:5] %}
-                <div class="comp-video-row">
-                    <a href="https://youtube.com/watch?v={{ v.video_id }}" target="_blank">{{ v.title[:60] }}</a>
-                    <span class="comp-video-stats">{{ "{:,}".format(v.view_count) }} views</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
+        <div id="discover-loading" class="plan-loading">Finding channels...</div>
+        <div id="discover-error" style="display:none" class="form-hint"></div>
+
+        <div id="crypto-suggestions" style="display:none">
+            <div class="insp-discover-label" style="color:var(--accent);">Bitcoin / Crypto</div>
+            <div id="crypto-list" class="insp-discover-list"></div>
         </div>
-        {% endfor %}
+
+        <div id="tech-suggestions" style="display:none; margin-top:0.5rem;">
+            <div class="insp-discover-label" style="color:var(--accent-blue);">Tech / Format Inspiration</div>
+            <div id="tech-list" class="insp-discover-list"></div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+// Category select toggle for custom
 const categorySelect = document.getElementById("comp-category");
-const customGroup = document.getElementById("custom-label-group");
+const customInput = document.getElementById("comp-custom-label");
 categorySelect.addEventListener("change", () => {
-    customGroup.style.display = categorySelect.value === "custom" ? "block" : "none";
+    customInput.style.display = categorySelect.value === "custom" ? "block" : "none";
 });
 
+// Add channel
 const addBtn = document.getElementById("add-comp-btn");
 const status = document.getElementById("comp-status");
-
 addBtn.addEventListener("click", async () => {
     const url = document.getElementById("comp-url").value.trim();
     const category = categorySelect.value;
-    const customLabel = document.getElementById("comp-custom-label").value.trim();
-
-    if (!url) { status.textContent = "Enter a channel URL."; return; }
-
+    const customLabel = customInput.value.trim();
+    if (!url) { status.textContent = "Enter a channel URL or handle."; return; }
     addBtn.disabled = true;
     addBtn.textContent = "Adding...";
     status.textContent = "";
-
     try {
         const resp = await fetch("/api/competitors/add", {
             method: "POST",
@@ -120,56 +114,110 @@ addBtn.addEventListener("click", async () => {
             body: JSON.stringify({ url, category, custom_label: customLabel }),
         });
         const data = await resp.json();
-        if (data.error) {
-            status.textContent = data.error;
-        } else {
-            location.reload();
-        }
-    } catch (err) {
-        status.textContent = "Failed: " + err.message;
-    }
+        if (data.error) { status.textContent = data.error; }
+        else { location.reload(); }
+    } catch (err) { status.textContent = "Failed: " + err.message; }
     addBtn.disabled = false;
-    addBtn.textContent = "Add Channel";
+    addBtn.textContent = "Add";
 });
 
+// Remove channel
 document.querySelectorAll(".remove-comp-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
-        const channelId = btn.dataset.channelId;
         btn.disabled = true;
         await fetch("/api/competitors/remove", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ channel_id: channelId }),
+            body: JSON.stringify({ channel_id: btn.dataset.channelId }),
         });
-        btn.closest(".competitor-card").remove();
+        btn.closest(".insp-channel-row").remove();
     });
 });
 
-// Discover channels
-function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+// Edit category
+document.querySelectorAll(".insp-cat-select").forEach(sel => {
+    sel.addEventListener("change", async () => {
+        await fetch("/api/competitors/update-category", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel_id: sel.dataset.channelId, category: sel.value }),
+        });
+        sel.style.borderColor = "var(--accent)";
+        setTimeout(() => sel.style.borderColor = "", 1000);
+    });
+});
 
-function renderSuggestion(ch) {
-    return `<div class="suggestion-card">
-        <div class="suggestion-header">
-            <strong>${esc(ch.name)}</strong>
-            <span class="suggestion-handle">${esc(ch.handle)}</span>
+// Refresh all
+document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Refreshing...";
+    try {
+        const resp = await fetch("/api/competitors/refresh", { method: "POST" });
+        const data = await resp.json();
+        if (data.warnings) { status.textContent = "Some errors: " + data.warnings.join(", "); }
+        else { location.reload(); }
+    } catch (err) { status.textContent = "Failed: " + err.message; }
+    btn.disabled = false;
+    btn.textContent = "Refresh All";
+});
+
+// Discover channels
+function renderSuggestion(ch, section) {
+    return `<div class="insp-discover-card">
+        <div class="insp-discover-info">
+            <div class="insp-discover-name">
+                <strong>${esc(ch.name)}</strong>
+                <span class="suggestion-handle">${esc(ch.handle)}</span>
+            </div>
+            <p class="insp-discover-why">${esc(ch.why)}</p>
+            <p class="insp-discover-learn"><span class="insp-learn-label">Learn:</span> ${esc(ch.learn)}</p>
         </div>
-        <p class="suggestion-why">${esc(ch.why)}</p>
-        <p class="suggestion-learn"><span style="color:var(--accent);">Learn:</span> ${esc(ch.learn)}</p>
-        <button class="btn small add-suggested-btn"
-                data-handle="${esc(ch.handle)}"
-                data-name="${esc(ch.name)}">+ Add</button>
+        <div class="insp-discover-actions">
+            <select class="insp-add-cat-select" data-handle="${esc(ch.handle)}">
+                <option value="Bitcoin/Crypto" ${section === 'crypto' ? 'selected' : ''}>Bitcoin/Crypto</option>
+                <option value="Freedom Tech">Freedom Tech</option>
+                <option value="Mainstream Tech" ${section === 'tech' ? 'selected' : ''}>Mainstream Tech</option>
+            </select>
+            <button class="btn small primary add-suggested-btn"
+                    data-handle="${esc(ch.handle)}">+ Add</button>
+        </div>
     </div>`;
 }
 
-document.getElementById("discover-btn").addEventListener("click", async () => {
-    const btn = document.getElementById("discover-btn");
-    const results = document.getElementById("discover-results");
+function wireAddButtons() {
+    document.querySelectorAll(".add-suggested-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const handle = btn.dataset.handle;
+            const catSelect = btn.closest(".insp-discover-card").querySelector(".insp-add-cat-select");
+            const category = catSelect.value;
+            const url = "https://youtube.com/" + handle;
+            btn.disabled = true;
+            btn.textContent = "Adding...";
+            try {
+                const resp = await fetch("/api/competitors/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, category, custom_label: "" }),
+                });
+                const result = await resp.json();
+                if (result.error) {
+                    btn.textContent = result.error.length > 25 ? "Already added" : result.error;
+                } else {
+                    btn.textContent = "Added!";
+                    btn.style.borderColor = "var(--accent)";
+                    btn.style.color = "var(--accent)";
+                }
+            } catch (err) { btn.textContent = "Failed"; }
+        });
+    });
+}
+
+async function loadDiscovery() {
     const loading = document.getElementById("discover-loading");
-    btn.disabled = true;
-    btn.textContent = "Searching...";
-    results.style.display = "block";
+    const errorEl = document.getElementById("discover-error");
     loading.style.display = "block";
+    errorEl.style.display = "none";
     document.getElementById("crypto-suggestions").style.display = "none";
     document.getElementById("tech-suggestions").style.display = "none";
 
@@ -179,73 +227,29 @@ document.getElementById("discover-btn").addEventListener("click", async () => {
         loading.style.display = "none";
 
         if (data.error) {
-            loading.style.display = "block";
-            loading.textContent = data.error;
+            errorEl.textContent = data.error;
+            errorEl.style.display = "block";
         } else {
             if (data.crypto_channels && data.crypto_channels.length) {
-                document.getElementById("crypto-list").innerHTML = data.crypto_channels.map(renderSuggestion).join("");
+                document.getElementById("crypto-list").innerHTML = data.crypto_channels.map(ch => renderSuggestion(ch, 'crypto')).join("");
                 document.getElementById("crypto-suggestions").style.display = "block";
             }
             if (data.tech_channels && data.tech_channels.length) {
-                document.getElementById("tech-list").innerHTML = data.tech_channels.map(renderSuggestion).join("");
+                document.getElementById("tech-list").innerHTML = data.tech_channels.map(ch => renderSuggestion(ch, 'tech')).join("");
                 document.getElementById("tech-suggestions").style.display = "block";
             }
-            // Wire up add buttons
-            document.querySelectorAll(".add-suggested-btn").forEach(btn => {
-                btn.addEventListener("click", async () => {
-                    const handle = btn.dataset.handle;
-                    const name = btn.dataset.name;
-                    const isCrypto = btn.closest("#crypto-suggestions") !== null;
-                    const category = isCrypto ? "Bitcoin/Crypto" : "Mainstream Tech";
-                    const url = "https://youtube.com/" + handle;
-                    btn.disabled = true;
-                    btn.textContent = "Adding...";
-                    try {
-                        const resp = await fetch("/api/competitors/add", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ url, category, custom_label: "" }),
-                        });
-                        const result = await resp.json();
-                        if (result.error) {
-                            btn.textContent = result.error.length > 30 ? "Error" : result.error;
-                            btn.style.borderColor = "#aa5555";
-                        } else {
-                            btn.textContent = "Added!";
-                            btn.style.borderColor = "var(--accent)";
-                            btn.style.color = "var(--accent)";
-                        }
-                    } catch (err) {
-                        btn.textContent = "Failed";
-                    }
-                });
-            });
+            wireAddButtons();
         }
     } catch (err) {
-        loading.textContent = "Failed: " + err.message;
+        loading.style.display = "none";
+        errorEl.textContent = "Failed to load: " + err.message;
+        errorEl.style.display = "block";
     }
-    btn.disabled = false;
-    btn.textContent = "Discover Channels";
-});
+}
 
-document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {
-    const btn = e.target;
-    btn.disabled = true;
-    btn.textContent = "Refreshing...";
-    status.textContent = "";
-    try {
-        const resp = await fetch("/api/competitors/refresh", { method: "POST" });
-        const data = await resp.json();
-        if (data.warnings) {
-            status.textContent = "Some errors: " + data.warnings.join(", ");
-        } else {
-            location.reload();
-        }
-    } catch (err) {
-        status.textContent = "Failed: " + err.message;
-    }
-    btn.disabled = false;
-    btn.textContent = "Refresh All";
-});
+// Auto-load on page open
+loadDiscovery();
+
+document.getElementById("discover-btn").addEventListener("click", () => loadDiscovery());
 </script>
 {% endblock %}
