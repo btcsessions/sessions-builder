@@ -207,7 +207,7 @@
                             {% else %}
                             <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
                             {% endif %}
-                            {% if video._market_phase == 'bull' %}<span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>{% elif video._market_phase == 'bear' %}<span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>{% endif %}
+                            {% if video._market_phase == 'bull' %}<span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>{% elif video._market_phase == 'bear' %}<span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>{% elif video._market_phase == 'sideways' %}<span class="market-text-badge sw-badge" title="Published during sideways market">SW</span>{% endif %}
                             {% if video._views_per_day > 0 %}
                             <span class="vpd-stat">{{ video._views_per_day|int }}/d</span>
                             {% endif %}
@@ -223,6 +223,7 @@
 
         <!-- Competitor Videos -->
         {% for comp in competitors %}
+        {% set is_crypto = comp.category in ['Bitcoin/Crypto', 'Freedom Tech'] %}
         <section class="trend-card">
             <h2>{{ comp.name }} <span class="badge category-badge">{{ comp.category }}</span></h2>
             <p class="trend-subtitle">Top recent performers &middot; {{ "{:,}".format(comp.avg_views) }} avg views</p>
@@ -247,10 +248,14 @@
                             {% elif v._score <= 0.5 %}
                             <span class="perf-badge badge-under">{{ v._score }}x</span>
                             {% endif %}
-                            {% if v._market_phase is defined and v._market_phase == 'bull' %}
-                            <span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>
-                            {% elif v._market_phase is defined and v._market_phase == 'bear' %}
-                            <span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>
+                            {% if is_crypto %}
+                                {% if v._market_phase is defined and v._market_phase == 'bull' %}
+                                <span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>
+                                {% elif v._market_phase is defined and v._market_phase == 'bear' %}
+                                <span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>
+                                {% elif v._market_phase is defined and v._market_phase == 'sideways' %}
+                                <span class="market-text-badge sw-badge" title="Published during sideways market">SW</span>
+                                {% endif %}
                             {% endif %}
                             {% if v._views_per_day is defined and v._views_per_day > 0 %}
                             <span class="vpd-stat">{{ v._views_per_day|int }}/d</span>

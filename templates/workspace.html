@@ -12,11 +12,14 @@
 
         <!-- My Recent Videos -->
         {% if recent_videos %}
-        <div class="sidebar-section-label">My Videos
+        <div class="sidebar-section-header-bar my-videos-header">
+            <span class="sidebar-section-title">My Videos</span>
             {% if market_info and market_info.phase == 'bull' %}
             <span class="market-phase-badge phase-bull">BULL</span>
             {% elif market_info and market_info.phase == 'bear' %}
             <span class="market-phase-badge phase-bear">BEAR</span>
+            {% elif market_info and market_info.phase == 'sideways' %}
+            <span class="market-phase-badge phase-sideways">SW</span>
             {% endif %}
         </div>
         <div class="sidebar-video-list">
@@ -55,6 +58,8 @@
                             <span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>
                             {% elif v._market_phase == 'bear' %}
                             <span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>
+                            {% elif v._market_phase == 'sideways' %}
+                            <span class="market-text-badge sw-badge" title="Published during sideways market">SW</span>
                             {% endif %}
                         </div>
                     </div>
@@ -66,7 +71,9 @@
 
         <!-- Inspiration Outliers -->
         {% if outliers %}
-        <div class="sidebar-section-label" style="margin-top:0.5rem">Inspiration</div>
+        <div class="sidebar-section-header-bar inspiration-header">
+            <span class="sidebar-section-title">Inspiration</span>
+        </div>
         <div class="sidebar-video-list">
             {% for v in outliers %}
             <div class="sidebar-video comp-video-clickable"

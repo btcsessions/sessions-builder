@@ -946,6 +946,7 @@ tr:hover { background: var(--surface2); }
 }
 .bull-badge { background: rgba(247, 147, 26, 0.15); color: var(--accent); }
 .bear-badge { background: rgba(126, 211, 242, 0.12); color: var(--accent-blue); }
+.sw-badge { background: var(--surface2); color: var(--text-muted); border: 1px dashed var(--text-muted); }
 .vpd-stat {
     font-size: 0.6rem;
     color: var(--text-muted);
@@ -1070,7 +1071,32 @@ tr:hover { background: var(--surface2); }
     align-items: center;
     gap: 0.5rem;
 }
+/* Distinct sidebar section headers */
+.sidebar-section-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+}
+.sidebar-section-header-bar .sidebar-section-title {
+    font-family: 'Anton', sans-serif;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text);
+}
+.my-videos-header {
+    border-bottom-color: var(--accent);
+    background: rgba(247, 147, 26, 0.05);
+}
+.inspiration-header {
+    border-bottom-color: var(--accent-blue);
+    background: rgba(126, 211, 242, 0.04);
+    margin-top: 0.25rem;
+}
 .ws-sidebar.sidebar-hidden .sidebar-section-label,
+.ws-sidebar.sidebar-hidden .sidebar-section-header-bar,
 .ws-sidebar.sidebar-hidden .sidebar-video-list,
 .ws-sidebar.sidebar-hidden .sidebar-empty {
     display: none;

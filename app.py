@@ -171,6 +171,7 @@ def index():
                 vc = dict(v)
                 vc["_channel"] = comp["name"]
                 vc["_channel_id"] = comp["channel_id"]
+                vc["_channel_category"] = comp.get("category", "")
                 vc["_ratio"] = round(ratio, 1)
                 try:
                     vc["_date"] = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
