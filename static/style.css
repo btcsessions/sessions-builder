@@ -964,6 +964,9 @@ tr:hover { background: var(--surface2); }
     height: calc(100vh - 45px);
     overflow: hidden;
 }
+.workspace.sidebar-collapsed {
+    grid-template-columns: 40px 1fr 340px;
+}
 @media (max-width: 1100px) {
     .workspace { grid-template-columns: 1fr 340px; }
     .ws-sidebar { display: none; }
@@ -980,13 +983,11 @@ tr:hover { background: var(--surface2); }
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    transition: width 0.2s, opacity 0.2s;
 }
-.ws-sidebar.sidebar-hidden {
-    width: 0;
-    overflow: hidden;
-    opacity: 0;
-    border: none;
+.ws-sidebar.sidebar-hidden .sidebar-video-list,
+.ws-sidebar.sidebar-hidden .sidebar-empty,
+.ws-sidebar.sidebar-hidden .sidebar-label {
+    display: none;
 }
 .sidebar-toggle-area { padding: 0.5rem 0.75rem; }
 .sidebar-section { border-bottom: 1px solid var(--border); }

@@ -314,6 +314,7 @@ function esc(text) {
 /* --- Sidebar toggling --- */
 document.getElementById("sidebar-collapse").addEventListener("click", () => {
     document.getElementById("ws-sidebar").classList.toggle("sidebar-hidden");
+    document.querySelector(".workspace").classList.toggle("sidebar-collapsed");
 });
 
 /* --- Competitor video analysis --- */
