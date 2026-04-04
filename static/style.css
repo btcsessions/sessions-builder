@@ -285,20 +285,36 @@ tr:hover { background: var(--surface2); }
 }
 .planner-input h1 { margin-bottom: 0.5rem; }
 .planner-input p { color: var(--text-muted); margin-bottom: 1.25rem; }
-.idea-row {
-    display: flex;
-    gap: 0.5rem;
-}
-.idea-row input {
-    flex: 1;
-    padding: 0.7rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+.plan-form {
+    max-width: 600px;
+    margin: 0 auto;
     background: var(--surface);
-    color: var(--text);
-    font-size: 1rem;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    text-align: left;
 }
-.idea-row input:focus { outline: none; border-color: var(--accent); }
+.plan-form select,
+.plan-form textarea {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+.plan-form select:focus,
+.plan-form textarea:focus { outline: none; border-color: var(--accent); }
+.plan-form textarea { resize: vertical; }
+.multi-input-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+}
+.multi-input-row input { flex: 1; }
+.multi-input-row .btn { flex-shrink: 0; }
 .plan-loading {
     text-align: center;
     padding: 2rem;

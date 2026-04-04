@@ -4,12 +4,48 @@
 {% block content %}
 <div class="planner-input">
     <h1>Plan a Video</h1>
-    <p>Describe your video idea and AI will generate a full production plan.</p>
-    <form id="plan-form">
-        <div class="idea-row">
-            <input type="text" id="video-idea" placeholder="e.g. How to set up a Bitcoin full node on a Raspberry Pi" autocomplete="off">
-            <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
+    <p>Fill in the details and AI will generate a full production plan.</p>
+    <form id="plan-form" class="plan-form">
+        <div class="form-group">
+            <label for="video-type">Type of Video</label>
+            <select id="video-type">
+                <option value="tutorial">Tutorial</option>
+                <option value="first impressions">First Impressions</option>
+                <option value="listicle">Listicle</option>
+            </select>
         </div>
+
+        <div class="form-group">
+            <label for="video-topic">Topic</label>
+            <input type="text" id="video-topic" placeholder="e.g. Setting up a Bitcoin full node on a Raspberry Pi" required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label>Supporting Links</label>
+            <div id="links-container">
+                <div class="multi-input-row">
+                    <input type="url" class="supporting-link" placeholder="https://...">
+                    <button type="button" class="btn small add-link-btn">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Competitor Videos</label>
+            <div id="competitors-container">
+                <div class="multi-input-row">
+                    <input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=...">
+                    <button type="button" class="btn small add-competitor-btn">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="video-notes">General Notes</label>
+            <textarea id="video-notes" rows="3" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
+        </div>
+
+        <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
     </form>
 </div>
 
@@ -57,16 +93,42 @@
 {% block scripts %}
 <script>
 const form = document.getElementById("plan-form");
-const ideaInput = document.getElementById("video-idea");
 const generateBtn = document.getElementById("generate-btn");
 const loading = document.getElementById("plan-loading");
 const error = document.getElementById("plan-error");
 const results = document.getElementById("plan-results");
 
+// Add/remove dynamic link rows
+document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("add-link-btn")) {
+        const row = document.createElement("div");
+        row.className = "multi-input-row";
+        row.innerHTML = '<input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small remove-row-btn">-</button>';
+        document.getElementById("links-container").appendChild(row);
+    }
+    if (e.target.classList.contains("add-competitor-btn")) {
+        const row = document.createElement("div");
+        row.className = "multi-input-row";
+        row.innerHTML = '<input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small remove-row-btn">-</button>';
+        document.getElementById("competitors-container").appendChild(row);
+    }
+    if (e.target.classList.contains("remove-row-btn")) {
+        e.target.parentElement.remove();
+    }
+});
+
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const idea = ideaInput.value.trim();
-    if (!idea) return;
+
+    const videoType = document.getElementById("video-type").value;
+    const topic = document.getElementById("video-topic").value.trim();
+    if (!topic) return;
+
+    const links = [...document.querySelectorAll(".supporting-link")]
+        .map(el => el.value.trim()).filter(Boolean);
+    const competitors = [...document.querySelectorAll(".competitor-link")]
+        .map(el => el.value.trim()).filter(Boolean);
+    const notes = document.getElementById("video-notes").value.trim();
 
     generateBtn.disabled = true;
     loading.style.display = "block";
@@ -77,7 +139,7 @@ form.addEventListener("submit", async (e) => {
         const resp = await fetch("/api/generate-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idea }),
+            body: JSON.stringify({ video_type: videoType, topic, links, competitors, notes }),
         });
         const data = await resp.json();
 
@@ -98,24 +160,17 @@ form.addEventListener("submit", async (e) => {
 });
 
 function renderPlan(plan) {
-    // Titles
-    const titlesEl = document.getElementById("plan-titles");
-    titlesEl.innerHTML = plan.titles.map((t, i) =>
+    document.getElementById("plan-titles").innerHTML = plan.titles.map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`
     ).join("");
 
-    // Thumbnails
-    const thumbsEl = document.getElementById("plan-thumbnails");
-    thumbsEl.innerHTML = plan.thumbnail_ideas.map((t, i) =>
+    document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`
     ).join("");
 
-    // Hook
     document.getElementById("plan-hook").textContent = plan.intro_hook;
 
-    // Outline
-    const outlineEl = document.getElementById("plan-outline");
-    outlineEl.innerHTML = plan.outline.map(section => {
+    document.getElementById("plan-outline").innerHTML = plan.outline.map(section => {
         const points = section.points.map(p => `<li>${esc(p)}</li>`).join("");
         return `<div class="outline-section">
             <div class="outline-header">
@@ -126,13 +181,10 @@ function renderPlan(plan) {
         </div>`;
     }).join("");
 
-    // Tags
-    const tagsEl = document.getElementById("plan-tags");
-    tagsEl.innerHTML = plan.tags.map(t =>
+    document.getElementById("plan-tags").innerHTML = plan.tags.map(t =>
         `<span class="tag">${esc(t)}</span>`
     ).join("");
 
-    // Description
     document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
 }
 

@@ -188,9 +188,14 @@ def planner():
 @app.route("/api/generate-plan", methods=["POST"])
 def api_generate_plan():
     data = request.get_json()
-    idea = data.get("idea", "").strip()
-    if not idea:
-        return jsonify({"error": "Video idea is required"}), 400
+    topic = data.get("topic", "").strip()
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    video_type = data.get("video_type", "tutorial")
+    links = data.get("links", [])
+    competitors = data.get("competitors", [])
+    notes = data.get("notes", "")
 
     settings = load_settings()
     api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -198,7 +203,15 @@ def api_generate_plan():
         return jsonify({"error": "Anthropic API key not configured. Set it in Settings."}), 400
 
     try:
-        plan = generate_video_plan(idea, video_cache, api_key)
+        plan = generate_video_plan(
+            video_type=video_type,
+            topic=topic,
+            links=links,
+            competitors=competitors,
+            notes=notes,
+            video_data=video_cache,
+            api_key=api_key,
+        )
         return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

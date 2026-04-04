@@ -84,7 +84,11 @@ def chat_with_claude(
 
 
 def generate_video_plan(
-    video_idea: str,
+    video_type: str,
+    topic: str,
+    links: list[str],
+    competitors: list[str],
+    notes: str,
     video_data: list[dict],
     api_key: str,
 ) -> dict:
@@ -100,6 +104,11 @@ def generate_video_plan(
         past_titles = "\n".join(entries)
 
     channel_context = _build_system_prompt(video_data)
+
+    # Build the user's input context
+    links_text = "\n".join(f"- {l}" for l in links) if links else "None provided"
+    competitors_text = "\n".join(f"- {c}" for c in competitors) if competitors else "None provided"
+    notes_text = notes if notes else "None"
 
     system = f"""{channel_context}
 
@@ -118,21 +127,41 @@ You are now generating a complete video production plan. You must respond with O
 }}
 
 IMPORTANT RULES:
+- This is a **{video_type}** video — tailor the structure, pacing, and tone accordingly
+- For tutorials: step-by-step structure, clear sections, practical focus
+- For first impressions: excitement/curiosity hook, unboxing flow, pros/cons, verdict
+- For listicles: numbered items, punchy transitions, teaser of best item early
 - Suggest 3 title options optimized for CTR and YouTube search
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
 - The description should be 3-5 paragraphs, include relevant links to past tutorials from the channel when applicable
+- If supporting links are provided, reference and incorporate them naturally in the outline and description
+- If competitor videos are provided, consider what works in those videos and differentiate
 - Base recommendations on what has performed well in the channel data
 
 Here are the creator's past videos for reference links:
 {past_titles}"""
 
+    user_msg = f"""Generate a full video plan:
+
+**Type:** {video_type}
+**Topic:** {topic}
+
+**Supporting Links:**
+{links_text}
+
+**Competitor Videos to Draw From:**
+{competitors_text}
+
+**General Notes:**
+{notes_text}"""
+
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=3000,
         system=system,
-        messages=[{"role": "user", "content": f"Generate a full video plan for this idea: {video_idea}"}],
+        messages=[{"role": "user", "content": user_msg}],
     )
 
     import json
