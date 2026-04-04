@@ -67,9 +67,16 @@ video_cache = load_video_cache()
 
 @app.route("/")
 def index():
+    if video_cache:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("settings_page"))
+
+
+@app.route("/settings")
+def settings_page():
     settings = load_settings()
     return render_template(
-        "index.html",
+        "settings.html",
         google_key=settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", ""),
         anthropic_key=settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
         playlist_url=settings.get("playlist_url", ""),
@@ -87,12 +94,12 @@ def fetch():
 
     if not playlist_url or not google_key:
         return render_template(
-            "index.html",
+            "settings.html",
             error="Playlist URL and Google API key are required.",
             google_key=google_key,
             anthropic_key=anthropic_key,
             playlist_url=playlist_url,
-            has_videos=False,
+            has_videos=len(video_cache) > 0,
         )
 
     try:
@@ -107,12 +114,12 @@ def fetch():
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
-            "index.html",
+            "settings.html",
             error=f"Failed to fetch playlist: {e}",
             google_key=google_key,
             anthropic_key=anthropic_key,
             playlist_url=playlist_url,
-            has_videos=False,
+            has_videos=len(video_cache) > 0,
         )
 
     return redirect(url_for("dashboard"))

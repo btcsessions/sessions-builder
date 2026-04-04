@@ -9,10 +9,8 @@
 <body>
     <nav>
         <a href="{{ url_for('index') }}" class="nav-brand">YT Planner</a>
-        {% if has_videos is not defined or has_videos %}
         <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        {% endif %}
-        <a href="{{ url_for('index') }}">Load Playlist</a>
+        <a href="{{ url_for('settings_page') }}">Settings</a>
         <button id="update-app-btn" class="btn small nav-update-btn" title="Check for app updates">Update App</button>
     </nav>
     <main>

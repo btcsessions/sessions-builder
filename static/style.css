@@ -60,6 +60,11 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
     border: 1px solid #662222;
     color: #ff8888;
 }
+.alert.success {
+    background: #1a3a1a;
+    border: 1px solid #226622;
+    color: #88ff88;
+}
 
 /* Form */
 .setup-form {

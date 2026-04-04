@@ -1,14 +1,18 @@
 {% extends "base.html" %}
-{% block title %}YouTube Planner - Load Playlist{% endblock %}
+{% block title %}Settings - YouTube Planner{% endblock %}
 
 {% block content %}
 <div class="hero">
-    <h1>YouTube Video Planner</h1>
-    <p>Load a playlist to analyze your video performance and brainstorm new ideas with AI.</p>
+    <h1>Settings</h1>
+    <p>Configure your API keys and playlist. Changes are saved locally.</p>
 </div>
 
 {% if error %}
 <div class="alert error">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="alert success">{{ success }}</div>
 {% endif %}
 
 <form action="{{ url_for('fetch') }}" method="post" class="setup-form">
@@ -38,6 +42,6 @@
         <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
     </div>
 
-    <button type="submit" class="btn primary">Load Playlist</button>
+    <button type="submit" class="btn primary">Save &amp; Reload Playlist</button>
 </form>
 {% endblock %}
