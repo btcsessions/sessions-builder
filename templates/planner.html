@@ -37,6 +37,13 @@
                         <span class="radio-card-desc">Full personal workflow or setup showcase</span>
                     </div>
                 </label>
+                <label class="radio-card">
+                    <input type="radio" name="video-type" value="first impressions">
+                    <div class="radio-card-body">
+                        <span class="radio-card-title">First Impressions</span>
+                        <span class="radio-card-desc">Unboxing or first look at a new product</span>
+                    </div>
+                </label>
             </div>
         </div>
 
@@ -153,6 +160,7 @@
                 <option value="comparison" {% if video._category == 'comparison' %}selected{% endif %}>Comparison</option>
                 <option value="list" {% if video._category == 'list' %}selected{% endif %}>List</option>
                 <option value="integrated setup" {% if video._category == 'integrated setup' %}selected{% endif %}>Integrated Setup</option>
+                <option value="first impressions" {% if video._category == 'first impressions' %}selected{% endif %}>First Impressions</option>
             </select>
         </div>
         {% endfor %}
