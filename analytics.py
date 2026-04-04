@@ -79,6 +79,8 @@ def fetch_channel_analytics(video_ids: list[str] = None) -> dict:
 
     end_date = datetime.now().strftime("%Y-%m-%d")
     start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    # Monthly queries need start date on the 1st of a month
+    month_start = (datetime.now() - timedelta(days=365)).replace(day=1).strftime("%Y-%m-%d")
 
     result = {}
 
@@ -149,7 +151,7 @@ def fetch_channel_analytics(video_ids: list[str] = None) -> dict:
     # Monthly trend (views + watch time by month)
     monthly_resp = yt_analytics.reports().query(
         ids="channel==MINE",
-        startDate=start_date,
+        startDate=month_start,
         endDate=end_date,
         metrics="views,estimatedMinutesWatched,subscribersGained",
         dimensions="month",
