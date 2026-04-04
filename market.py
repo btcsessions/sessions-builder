@@ -32,13 +32,16 @@ def _load_cached_prices() -> dict:
 
 def fetch_btc_prices(days: int = 730) -> dict:
     """Fetch daily BTC prices from CoinGecko. Returns {date_str: price}."""
-    # Check cache
+    # Check cache — only use it if it has enough data for the 200-day MA
     if os.path.exists(BTC_CACHE_FILE):
         try:
             with open(BTC_CACHE_FILE) as f:
                 cached = json.load(f)
-            if time.time() - cached.get("_fetched_at", 0) < BTC_CACHE_TTL:
-                return cached.get("prices", {})
+            cached_prices = cached.get("prices", {})
+            if (time.time() - cached.get("_fetched_at", 0) < BTC_CACHE_TTL
+                    and len(cached_prices) >= 200):
+                print(f"[Market] Using cached data: {len(cached_prices)} days")
+                return cached_prices
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -76,10 +79,12 @@ def fetch_btc_prices(days: int = 730) -> dict:
 
     print(f"[Market] Final result: {len(prices)} days of price data")
 
+    # Only cache with full TTL if we have enough data for the MA
     if prices:
         _ensure_data_dir()
+        ttl_marker = time.time() if len(prices) >= 200 else 0  # 0 = always retry
         with open(BTC_CACHE_FILE, "w") as f:
-            json.dump({"_fetched_at": time.time(), "prices": prices}, f)
+            json.dump({"_fetched_at": ttl_marker, "prices": prices}, f)
 
     return prices
 
