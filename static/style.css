@@ -873,6 +873,18 @@ tr:hover { background: var(--surface2); }
 .market-phase-pip.phase-bear { background: #3a1a1a; color: #ff6666; border: 1px solid #ff6666; }
 .market-phase-pip.phase-sideways { background: #2a2a1a; color: #dddd66; border: 1px dashed #dddd66; }
 .market-phase-pip.phase-unknown { background: var(--surface2); color: var(--text-muted); }
+
+/* Text-based market badges */
+.market-text-badge {
+    display: inline-block;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+}
+.bull-badge { background: #1a3a1a; color: #66ff66; }
+.bear-badge { background: #3a1a1a; color: #ff6666; }
 .vpd-stat {
     font-size: 0.6rem;
     color: var(--text-muted);
@@ -984,12 +996,24 @@ tr:hover { background: var(--surface2); }
     display: flex;
     flex-direction: column;
 }
+.sidebar-toggle-area { padding: 0.5rem 0.75rem; }
+.sidebar-section-label {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ws-sidebar.sidebar-hidden .sidebar-section-label,
 .ws-sidebar.sidebar-hidden .sidebar-video-list,
-.ws-sidebar.sidebar-hidden .sidebar-empty,
-.ws-sidebar.sidebar-hidden .sidebar-label {
+.ws-sidebar.sidebar-hidden .sidebar-empty {
     display: none;
 }
-.sidebar-toggle-area { padding: 0.5rem 0.75rem; }
 .sidebar-section { border-bottom: 1px solid var(--border); }
 .sidebar-section-header {
     display: flex;

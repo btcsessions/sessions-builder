@@ -4,14 +4,69 @@
 {% block content %}
 <div class="workspace">
 
-    <!-- LEFT SIDEBAR: Inspiration Outliers -->
+    <!-- LEFT SIDEBAR -->
     <aside class="ws-sidebar" id="ws-sidebar">
         <div class="sidebar-toggle-area">
             <button id="sidebar-collapse" class="btn small" title="Toggle sidebar">&#9776;</button>
-            <span class="sidebar-label">Inspiration</span>
         </div>
 
+        <!-- My Recent Videos -->
+        {% if recent_videos %}
+        <div class="sidebar-section-label">My Videos
+            {% if market_info and market_info.phase == 'bull' %}
+            <span class="market-phase-badge phase-bull">BULL</span>
+            {% elif market_info and market_info.phase == 'bear' %}
+            <span class="market-phase-badge phase-bear">BEAR</span>
+            {% endif %}
+        </div>
+        <div class="sidebar-video-list">
+            {% for v in recent_videos %}
+            <div class="sidebar-video own-video-clickable"
+                 data-video-id="{{ v.video_id }}"
+                 data-video-title="{{ v.title }}"
+                 data-thumb="{{ v.thumbnail_url or '' }}">
+                <div class="sv-thumb-row">
+                    {% if v.thumbnail_url %}
+                    <img src="{{ v.thumbnail_url }}" alt="" class="sv-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="sv-thumb-info">
+                        <span class="sv-title">{{ v.title[:50] }}</span>
+                        <div class="sv-stats">
+                            <span>{{ "{:,}".format(v.view_count) }}</span>
+                            {% if v._score >= 2 %}
+                            <span class="perf-badge badge-breakout" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% elif v._score >= 1.2 %}
+                            <span class="perf-badge badge-strong" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% elif v._score <= 0.5 %}
+                            <span class="perf-badge badge-under" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
+                            {% endif %}
+                            {% if v._market_score >= 2 %}
+                            <span class="perf-badge badge-breakout market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% elif v._market_score >= 1.2 %}
+                            <span class="perf-badge badge-strong market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% elif v._market_score <= 0.5 %}
+                            <span class="perf-badge badge-under market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% else %}
+                            <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
+                            {% endif %}
+                            {% if v._market_phase == 'bull' %}
+                            <span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>
+                            {% elif v._market_phase == 'bear' %}
+                            <span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Inspiration Outliers -->
         {% if outliers %}
+        <div class="sidebar-section-label" style="margin-top:0.5rem">Inspiration</div>
         <div class="sidebar-video-list">
             {% for v in outliers %}
             <div class="sidebar-video comp-video-clickable"
@@ -24,9 +79,9 @@
                     <img src="{{ v.thumbnail_url }}" alt="" class="sv-thumb" loading="lazy">
                     {% endif %}
                     <div class="sv-thumb-info">
-                        <span class="sv-title">{{ v.title[:55] }}</span>
+                        <span class="sv-title">{{ v.title[:50] }}</span>
                         <div class="sv-stats">
-                            <span>{{ "{:,}".format(v.view_count) }} views</span>
+                            <span>{{ "{:,}".format(v.view_count) }}</span>
                             <span class="perf-badge {% if v._ratio >= 2 %}badge-breakout{% else %}badge-strong{% endif %}">{{ v._ratio }}x</span>
                             <span class="sv-channel">{{ v._channel }}</span>
                         </div>
@@ -35,9 +90,9 @@
             </div>
             {% endfor %}
         </div>
-        {% else %}
+        {% elif not recent_videos %}
         <div class="sidebar-empty">
-            <p>No inspiration channels added yet.</p>
+            <p>No channels added yet.</p>
             <a href="/competitors" class="btn small">Add Channels</a>
         </div>
         {% endif %}
@@ -105,58 +160,6 @@
 
             <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
         </form>
-
-        <!-- My Recent Videos -->
-        {% if recent_videos %}
-        <div class="ws-recent-videos">
-            <div class="ws-recent-header">
-                <h3>My Recent Videos</h3>
-                {% if market_info and market_info.phase != 'unknown' %}
-                <span class="market-phase-badge phase-{{ market_info.phase }}">{% if market_info.phase == 'bull' %}▲{% elif market_info.phase == 'bear' %}▼{% else %}◆{% endif %} {{ market_info.phase|upper }}</span>
-                {% endif %}
-            </div>
-            <div class="ws-recent-list">
-                {% for v in recent_videos %}
-                <div class="ws-recent-item own-video-clickable"
-                     data-video-id="{{ v.video_id }}"
-                     data-video-title="{{ v.title }}"
-                     data-thumb="{{ v.thumbnail_url or '' }}">
-                    {% if v.thumbnail_url %}
-                    <img src="{{ v.thumbnail_url }}" alt="" class="ws-recent-thumb" loading="lazy">
-                    {% endif %}
-                    <div class="ws-recent-info">
-                        <span class="ws-recent-title">{{ v.title[:55] }}</span>
-                        <div class="ws-recent-stats">
-                            <span>{{ "{:,}".format(v.view_count) }} views</span>
-                            {% if v._score >= 2 %}
-                            <span class="perf-badge badge-breakout" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
-                            {% elif v._score >= 1.2 %}
-                            <span class="perf-badge badge-strong" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
-                            {% elif v._score <= 0.5 %}
-                            <span class="perf-badge badge-under" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
-                            {% else %}
-                            <span class="perf-badge badge-avg" title="Overall: {{ v._score }}x year avg">{{ v._score }}x</span>
-                            {% endif %}
-                            {% if v._market_score >= 2 %}
-                            <span class="perf-badge badge-breakout market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
-                            {% elif v._market_score >= 1.2 %}
-                            <span class="perf-badge badge-strong market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
-                            {% elif v._market_score <= 0.5 %}
-                            <span class="perf-badge badge-under market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
-                            {% else %}
-                            <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ v._market_score }}x {{ v._market_phase }} avg">{{ v._market_score }}x</span>
-                            {% endif %}
-                            <span class="market-phase-pip phase-{{ v._market_phase }}" title="{{ v._market_phase|capitalize }} market">{% if v._market_phase == 'bull' %}▲{% elif v._market_phase == 'bear' %}▼{% elif v._market_phase == 'sideways' %}◆{% else %}?{% endif %}</span>
-                            {% if v._category %}
-                            <span class="badge category-badge">{{ v._category|title }}</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
 
         <div id="plan-loading" class="plan-loading" style="display:none">
             <p>Generating your video plan...</p>
@@ -419,7 +422,6 @@ document.querySelectorAll(".own-video-clickable").forEach(el => {
 
         planForm.style.display = "none";
         planHeader.style.display = "none";
-        document.querySelector(".ws-recent-videos").style.display = "none";
         results.style.display = "none";
         planError.style.display = "none";
         analysisResults.style.display = "none";
@@ -453,8 +455,6 @@ document.getElementById("close-analysis").addEventListener("click", () => {
     analysisError.style.display = "none";
     planForm.style.display = "";
     planHeader.style.display = "";
-    const recentVids = document.querySelector(".ws-recent-videos");
-    if (recentVids) recentVids.style.display = "";
 });
 
 function renderAnalysis(data, title, videoId, thumbUrl) {

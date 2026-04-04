@@ -25,7 +25,7 @@
         </div>
         <div class="market-bar-item">
             <span class="market-label">Phase</span>
-            <span class="market-phase-badge phase-{{ market_info.phase }}">{% if market_info.phase == 'bull' %}▲{% elif market_info.phase == 'bear' %}▼{% elif market_info.phase == 'sideways' %}◆{% else %}?{% endif %} {{ market_info.phase|upper }}</span>
+            <span class="market-phase-badge phase-{{ market_info.phase }}">{{ market_info.phase|upper }}</span>
         </div>
         <div class="market-bar-item">
             <span class="market-label">Bull Avg</span>
@@ -207,7 +207,7 @@
                             {% else %}
                             <span class="perf-badge badge-avg market-adj-badge" title="Market-adjusted: {{ video._market_score }}x {{ video._market_phase }} avg">{{ video._market_score }}x</span>
                             {% endif %}
-                            <span class="market-phase-pip phase-{{ video._market_phase }}" title="{{ video._market_phase|capitalize }} market">{% if video._market_phase == 'bull' %}▲{% elif video._market_phase == 'bear' %}▼{% elif video._market_phase == 'sideways' %}◆{% else %}?{% endif %}</span>
+                            {% if video._market_phase == 'bull' %}<span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>{% elif video._market_phase == 'bear' %}<span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>{% endif %}
                             {% if video._views_per_day > 0 %}
                             <span class="vpd-stat">{{ video._views_per_day|int }}/d</span>
                             {% endif %}
@@ -247,8 +247,10 @@
                             {% elif v._score <= 0.5 %}
                             <span class="perf-badge badge-under">{{ v._score }}x</span>
                             {% endif %}
-                            {% if v._market_phase is defined %}
-                            <span class="market-phase-pip phase-{{ v._market_phase }}" title="{{ v._market_phase|capitalize }} market">{% if v._market_phase == 'bull' %}▲{% elif v._market_phase == 'bear' %}▼{% elif v._market_phase == 'sideways' %}◆{% else %}?{% endif %}</span>
+                            {% if v._market_phase is defined and v._market_phase == 'bull' %}
+                            <span class="market-text-badge bull-badge" title="Published during bull market">BULL</span>
+                            {% elif v._market_phase is defined and v._market_phase == 'bear' %}
+                            <span class="market-text-badge bear-badge" title="Published during bear market">BEAR</span>
                             {% endif %}
                             {% if v._views_per_day is defined and v._views_per_day > 0 %}
                             <span class="vpd-stat">{{ v._views_per_day|int }}/d</span>
