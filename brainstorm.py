@@ -3,6 +3,152 @@ import anthropic
 from trends import analyze_trends, trends_to_prompt_section
 
 
+def generate_trend_report(
+    video_data: list[dict],
+    competitors_data: list[dict],
+    trends_data: dict,
+    api_key: str,
+    analytics_data: dict = None,
+) -> dict:
+    """Generate an AI-powered trend report with actionable advice."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Build a data summary for Claude
+    own_avg = trends_data.get("own_avg_views", 0)
+    total_vids = trends_data.get("total_video_count", 0)
+    recent_count = trends_data.get("recent_video_count", 0)
+    recent_avg = trends_data.get("recent_avg_views", 0)
+
+    # Competitor summary
+    comp_lines = []
+    for cs in trends_data.get("competitor_summary", []):
+        comp_lines.append(
+            f"  - {cs['name']} ({cs['category']}): {cs['avg_views']:,} avg views, "
+            f"{cs['avg_engagement']}% eng, {cs['recent_count']} videos in last 90 days"
+        )
+    comp_section = "\n".join(comp_lines) if comp_lines else "  None tracked"
+
+    # Recent breakouts
+    breakout_lines = []
+    for rb in trends_data.get("recent_breakouts", [])[:8]:
+        breakout_lines.append(
+            f"  - \"{rb['title'][:60]}\" by {rb['source']} — {rb['views']:,} views ({rb['published']})"
+        )
+    breakout_section = "\n".join(breakout_lines) if breakout_lines else "  None"
+
+    # Hot keywords
+    kw_lines = []
+    for kw, data in list(trends_data.get("hot_keywords", {}).items())[:15]:
+        kw_lines.append(f"  - \"{kw}\": {data['count']} videos, {data['avg_views']:,} avg views")
+    kw_section = "\n".join(kw_lines) if kw_lines else "  None"
+
+    # Title pattern performance
+    pattern_lines = []
+    for label, stats in trends_data.get("title_patterns", {}).items():
+        pattern_lines.append(
+            f"  - {label}: {stats['avg_views']:,} avg views, {stats['count']} videos "
+            f"({stats['own_count']} yours, {stats['comp_count']} competitors)"
+        )
+    pattern_section = "\n".join(pattern_lines) if pattern_lines else "  None"
+
+    # Recent patterns
+    recent_pattern_lines = []
+    for label, stats in trends_data.get("recent_patterns", {}).items():
+        recent_pattern_lines.append(f"  - {label}: {stats['avg_views']:,} avg views, {stats['count']} videos")
+    recent_pattern_section = "\n".join(recent_pattern_lines) if recent_pattern_lines else "  None"
+
+    # Own breakouts
+    own_breakout_lines = []
+    for ob in trends_data.get("breakout_hits", [])[:5]:
+        own_breakout_lines.append(f"  - \"{ob['title'][:55]}\" — {ob['views']:,} views ({ob['multiplier']}x avg)")
+    own_breakout_section = "\n".join(own_breakout_lines) if own_breakout_lines else "  None"
+
+    # Hidden gems
+    gem_lines = []
+    for g in trends_data.get("hidden_gems", [])[:5]:
+        gem_lines.append(f"  - \"{g['title'][:55]}\" — {g['views']:,} views, {g['engagement']}% eng")
+    gem_section = "\n".join(gem_lines) if gem_lines else "  None"
+
+    system = """You are a YouTube content strategist specializing in current platform trends.
+You are analyzing data from a creator's channel AND their competitors to generate a comprehensive,
+actionable trend report focused on what's working RIGHT NOW.
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{
+  "current_landscape": "2-3 paragraph summary of what's happening across these channels right now — what formats are trending, what topics are hot, what patterns you see in the recent breakout hits",
+  "topic_opportunities": [
+    {"topic": "specific topic idea", "why": "why this is timely and has potential", "format": "suggested video format"},
+    ...5-7 topics
+  ],
+  "title_trends": {
+    "summary": "What title styles are currently driving the most clicks based on the data",
+    "tactics": ["specific title tactic 1 with example", "tactic 2 with example", "tactic 3 with example"],
+    "avoid": ["title pattern to avoid and why"]
+  },
+  "thumbnail_trends": {
+    "summary": "Current YouTube thumbnail trends that apply to this niche",
+    "tactics": ["specific thumbnail tactic 1", "tactic 2", "tactic 3"],
+    "examples": ["describe a thumbnail concept for a specific topic", "another concept"]
+  },
+  "format_recommendations": [
+    {"format": "video format type", "why": "why it's working now", "tip": "specific execution tip"},
+    ...3-5 formats
+  ],
+  "competitor_insights": "2-3 paragraph analysis of what competitors are doing well that the creator should learn from, and gaps they're leaving that the creator could fill",
+  "action_plan": ["immediate action 1 - most impactful thing to try next", "action 2", "action 3", "action 4", "action 5"]
+}
+
+RULES:
+- Be extremely specific — reference actual video titles and numbers from the data
+- Focus on CURRENT trends (last 90 days data) not historical
+- Thumbnail advice should reflect real YouTube trends (text overlays, facial expressions, contrast, etc.)
+- Topic opportunities should be timely and specific to this creator's niche
+- The action plan should be immediately actionable, not generic advice
+- Consider what's working for competitors that this creator hasn't tried yet"""
+
+    user_msg = f"""Here is the complete data for my channel and competitors:
+
+**MY CHANNEL:**
+- {trends_data.get('own_video_count', 0)} videos analyzed, {own_avg:,} avg views
+- Recent (90 days): {recent_count} videos, {recent_avg:,} avg views
+
+**COMPETITORS:**
+{comp_section}
+
+**TITLE FORMAT PERFORMANCE (all channels combined):**
+{pattern_section}
+
+**RECENT TITLE PATTERNS (last 90 days):**
+{recent_pattern_section}
+
+**HOT KEYWORDS (appearing in 3+ videos):**
+{kw_section}
+
+**RECENT BREAKOUT HITS (last 90 days, 2x+ above average):**
+{breakout_section}
+
+**MY BREAKOUT HITS:**
+{own_breakout_section}
+
+**MY HIDDEN GEMS (high engagement, low views):**
+{gem_section}
+
+Generate a comprehensive trend report with actionable advice for my next videos."""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def _build_competitors_section(competitors_data: list = None) -> str:
     if not competitors_data:
         return ""

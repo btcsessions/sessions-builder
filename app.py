@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
@@ -258,8 +258,10 @@ def api_chat():
 def trends_page():
     if not video_cache:
         return redirect(url_for("index"))
-    trends_data = analyze_trends(video_cache)
-    return render_template("trends.html", trends=trends_data, total_videos=len(video_cache))
+    trends_data = analyze_trends(video_cache, competitors_cache)
+    return render_template("trends.html", trends=trends_data,
+                           total_videos=len(video_cache),
+                           competitor_count=len(competitors_cache))
 
 
 @app.route("/planner")
@@ -432,6 +434,29 @@ def api_fetch_analytics():
         analytics_cache = fetch_channel_analytics()
         save_analytics(analytics_cache)
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/generate-trend-report", methods=["POST"])
+def api_generate_trend_report():
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not video_cache:
+        return jsonify({"error": "No video data available."}), 400
+
+    trends_data = analyze_trends(video_cache, competitors_cache)
+    try:
+        report = generate_trend_report(
+            video_data=video_cache,
+            competitors_data=competitors_cache,
+            trends_data=trends_data,
+            api_key=api_key,
+            analytics_data=analytics_cache,
+        )
+        return jsonify(report)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

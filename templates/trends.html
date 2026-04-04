@@ -4,22 +4,103 @@
 {% block content %}
 <div class="hero">
     <h1>Content Trends</h1>
-    <p>Patterns and insights from your {{ total_videos }} videos.</p>
+    <p>Cross-channel analysis: {{ total_videos }} of your videos + {{ competitor_count }} competitor channels.</p>
 </div>
 
+<!-- AI Trend Report -->
+<div class="trends-report-section">
+    <div class="report-header">
+        <h2>AI Trend Report</h2>
+        <button id="generate-report-btn" class="btn primary">Generate Report</button>
+    </div>
+    <div id="report-loading" class="plan-loading" style="display:none">
+        <p>Analyzing cross-channel trends and generating insights...</p>
+    </div>
+    <div id="report-error" class="alert error" style="display:none"></div>
+    <div id="report-results" style="display:none">
+
+        <section class="plan-card">
+            <h2>Current Landscape</h2>
+            <div id="report-landscape" class="plan-text"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Topic Opportunities</h2>
+            <div id="report-topics" class="report-topics"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Title Trends</h2>
+            <div id="report-title-summary" class="plan-text" style="margin-bottom:0.75rem"></div>
+            <strong class="report-sub">What's Working:</strong>
+            <div id="report-title-tactics" class="plan-list"></div>
+            <strong class="report-sub" style="margin-top:0.75rem;display:block">What to Avoid:</strong>
+            <div id="report-title-avoid" class="plan-list"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Thumbnail Trends</h2>
+            <div id="report-thumb-summary" class="plan-text" style="margin-bottom:0.75rem"></div>
+            <strong class="report-sub">Tactics:</strong>
+            <div id="report-thumb-tactics" class="plan-list"></div>
+            <strong class="report-sub" style="margin-top:0.75rem;display:block">Concepts to Try:</strong>
+            <div id="report-thumb-examples" class="plan-list"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Format Recommendations</h2>
+            <div id="report-formats" class="report-formats"></div>
+        </section>
+
+        <section class="plan-card">
+            <h2>Competitor Insights</h2>
+            <div id="report-comp-insights" class="plan-text"></div>
+        </section>
+
+        <section class="plan-card action-plan-card">
+            <h2>Action Plan</h2>
+            <div id="report-actions" class="plan-list"></div>
+        </section>
+    </div>
+</div>
+
+<hr class="settings-divider" style="margin:2rem 0">
+
 <div class="trends-grid">
+
+    {% if trends.recent_breakouts %}
+    <section class="trend-card full-width">
+        <h2>Recent Breakouts (Last 90 Days)</h2>
+        <p class="trend-subtitle">Videos across all channels that hit 2x+ the combined average ({{ "{:,}".format(trends.recent_avg_views) }} avg views)</p>
+        <div class="trend-list">
+            {% for b in trends.recent_breakouts %}
+            <div class="trend-list-item">
+                <div class="trend-item-title">
+                    {{ b.title }}
+                    <span class="source-tag">{{ b.source }}</span>
+                </div>
+                <div class="trend-item-stats">
+                    <span>{{ b.published }}</span>
+                    <span>{{ "{:,}".format(b.views) }} views</span>
+                    <span>{{ b.engagement }}% eng</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     {% if trends.title_patterns %}
     <section class="trend-card">
         <h2>Title Format Performance</h2>
-        <p class="trend-subtitle">Which title styles get the most views (channel avg: {{ "{:,}".format(trends.overall_avg_views) }})</p>
+        <p class="trend-subtitle">Cross-channel: {{ trends.total_video_count }} videos (avg {{ "{:,}".format(trends.overall_avg_views) }} views)</p>
         <div class="trend-bars">
             {% set max_views = trends.title_patterns.values()|map(attribute='avg_views')|max %}
             {% for label, stats in trends.title_patterns.items() %}
             <div class="trend-bar-row">
                 <div class="bar-label">
                     <strong>{{ label }}</strong>
-                    <span class="bar-meta">{{ stats.count }} videos, {{ stats.avg_engagement }}% eng</span>
+                    <span class="bar-meta">{{ stats.own_count }} yours + {{ stats.comp_count }} comp</span>
                 </div>
                 <div class="bar-track">
                     <div class="bar-fill {% if stats.avg_views > trends.overall_avg_views %}bar-above{% else %}bar-below{% endif %}"
@@ -33,10 +114,88 @@
     </section>
     {% endif %}
 
+    {% if trends.recent_patterns %}
+    <section class="trend-card">
+        <h2>Recent Format Trends (90 Days)</h2>
+        <p class="trend-subtitle">What title formats are trending now</p>
+        <div class="trend-bars">
+            {% set max_recent_views = trends.recent_patterns.values()|map(attribute='avg_views')|max %}
+            {% for label, stats in trends.recent_patterns.items() %}
+            <div class="trend-bar-row">
+                <div class="bar-label">
+                    <strong>{{ label }}</strong>
+                    <span class="bar-meta">{{ stats.count }} videos</span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ (stats.avg_views / max_recent_views * 100)|round }}%"></div>
+                    <span class="bar-value">{{ "{:,}".format(stats.avg_views) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.hot_keywords %}
+    <section class="trend-card full-width">
+        <h2>Hot Keywords</h2>
+        <p class="trend-subtitle">Most common keywords across all channels, ranked by average views</p>
+        <div class="keyword-grid">
+            {% for kw, data in trends.hot_keywords.items() %}
+            <div class="keyword-pill">
+                <span class="kw-word">{{ kw }}</span>
+                <span class="kw-stats">{{ data.count }} videos &middot; {{ "{:,}".format(data.avg_views) }} avg</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if trends.competitor_summary %}
+    <section class="trend-card full-width">
+        <h2>Competitor Comparison</h2>
+        <p class="trend-subtitle">How your competitors stack up</p>
+        <div class="monthly-table-wrapper">
+            <table class="monthly-table">
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Category</th>
+                        <th>Videos</th>
+                        <th>Avg Views</th>
+                        <th>Avg Engagement</th>
+                        <th>Recent (90d)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="font-weight:600">
+                        <td>You</td>
+                        <td>—</td>
+                        <td>{{ trends.own_video_count }}</td>
+                        <td>{{ "{:,}".format(trends.own_avg_views) }}</td>
+                        <td>—</td>
+                        <td>—</td>
+                    </tr>
+                    {% for c in trends.competitor_summary %}
+                    <tr>
+                        <td>{{ c.name }}</td>
+                        <td><span class="badge category-badge">{{ c.category }}</span></td>
+                        <td>{{ c.total_videos }}</td>
+                        <td>{{ "{:,}".format(c.avg_views) }}</td>
+                        <td>{{ c.avg_engagement }}%</td>
+                        <td>{{ c.recent_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
     {% if trends.publish_days %}
     <section class="trend-card">
         <h2>Best Days to Publish</h2>
-        <p class="trend-subtitle">Average views by day of week</p>
+        <p class="trend-subtitle">Your videos — average views by day of week</p>
         <div class="trend-bars">
             {% set max_day_views = trends.publish_days.values()|map(attribute='avg_views')|max %}
             {% for day, stats in trends.publish_days.items() %}
@@ -58,7 +217,7 @@
     {% if trends.title_length %}
     <section class="trend-card">
         <h2>Title Length Impact</h2>
-        <p class="trend-subtitle">Shorter or longer titles — which perform better?</p>
+        <p class="trend-subtitle">Cross-channel — shorter or longer titles?</p>
         <div class="trend-bars">
             {% set max_tl_views = trends.title_length.values()|map(attribute='avg_views')|max %}
             {% for label, stats in trends.title_length.items() %}
@@ -79,8 +238,8 @@
 
     {% if trends.breakout_hits %}
     <section class="trend-card full-width">
-        <h2>Breakout Hits</h2>
-        <p class="trend-subtitle">Videos that got 2x+ your average views — what do they have in common?</p>
+        <h2>Your Breakout Hits</h2>
+        <p class="trend-subtitle">Your videos with 2x+ your average views</p>
         <div class="trend-list">
             {% for b in trends.breakout_hits %}
             <div class="trend-list-item">
@@ -117,10 +276,11 @@
     {% if trends.monthly %}
     <section class="trend-card full-width">
         <h2>Monthly Performance</h2>
-        <p class="trend-subtitle">Upload frequency and performance over time</p>
+        <p class="trend-subtitle">Your upload frequency and performance over time
         {% if trends.avg_uploads_per_month %}
-        <p class="trend-subtitle">Average upload rate: <strong>{{ trends.avg_uploads_per_month }} videos/month</strong></p>
+         — avg <strong>{{ trends.avg_uploads_per_month }} videos/month</strong>
         {% endif %}
+        </p>
         <div class="monthly-table-wrapper">
             <table class="monthly-table">
                 <thead>
@@ -149,4 +309,93 @@
     {% endif %}
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const reportBtn = document.getElementById("generate-report-btn");
+const reportLoading = document.getElementById("report-loading");
+const reportError = document.getElementById("report-error");
+const reportResults = document.getElementById("report-results");
+
+reportBtn.addEventListener("click", async () => {
+    reportBtn.disabled = true;
+    reportBtn.textContent = "Generating...";
+    reportLoading.style.display = "block";
+    reportError.style.display = "none";
+    reportResults.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/generate-trend-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+        });
+        const data = await resp.json();
+        if (data.error) {
+            reportError.textContent = data.error;
+            reportError.style.display = "block";
+        } else {
+            renderReport(data);
+            reportResults.style.display = "block";
+        }
+    } catch (err) {
+        reportError.textContent = "Failed: " + err.message;
+        reportError.style.display = "block";
+    }
+    reportLoading.style.display = "none";
+    reportBtn.disabled = false;
+    reportBtn.textContent = "Regenerate Report";
+});
+
+function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+function renderReport(data) {
+    // Landscape
+    document.getElementById("report-landscape").innerHTML = esc(data.current_landscape || "").replace(/\n/g, "<br>");
+
+    // Topic opportunities
+    const topics = data.topic_opportunities || [];
+    document.getElementById("report-topics").innerHTML = topics.map(t =>
+        `<div class="report-topic-card">
+            <div class="topic-header"><strong>${esc(t.topic)}</strong><span class="badge category-badge">${esc(t.format)}</span></div>
+            <p>${esc(t.why)}</p>
+        </div>`
+    ).join("");
+
+    // Title trends
+    document.getElementById("report-title-summary").innerHTML = esc(data.title_trends?.summary || "").replace(/\n/g, "<br>");
+    document.getElementById("report-title-tactics").innerHTML = (data.title_trends?.tactics || []).map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+    document.getElementById("report-title-avoid").innerHTML = (data.title_trends?.avoid || []).map((t, i) =>
+        `<div class="plan-option avoid-item"><span class="option-num avoid-num">${i+1}</span> ${esc(t)}</div>`).join("");
+
+    // Thumbnail trends
+    document.getElementById("report-thumb-summary").innerHTML = esc(data.thumbnail_trends?.summary || "").replace(/\n/g, "<br>");
+    document.getElementById("report-thumb-tactics").innerHTML = (data.thumbnail_trends?.tactics || []).map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+    document.getElementById("report-thumb-examples").innerHTML = (data.thumbnail_trends?.examples || []).map((t, i) =>
+        `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+
+    // Format recommendations
+    const formats = data.format_recommendations || [];
+    document.getElementById("report-formats").innerHTML = formats.map(f =>
+        `<div class="report-topic-card">
+            <div class="topic-header"><strong>${esc(f.format)}</strong></div>
+            <p><strong>Why:</strong> ${esc(f.why)}</p>
+            <p><strong>Tip:</strong> ${esc(f.tip)}</p>
+        </div>`
+    ).join("");
+
+    // Competitor insights
+    document.getElementById("report-comp-insights").innerHTML = esc(data.competitor_insights || "").replace(/\n/g, "<br>");
+
+    // Action plan
+    document.getElementById("report-actions").innerHTML = (data.action_plan || []).map((a, i) =>
+        `<div class="plan-option action-item"><span class="option-num">${i+1}</span> ${esc(a)}</div>`).join("");
+}
+</script>
 {% endblock %}
