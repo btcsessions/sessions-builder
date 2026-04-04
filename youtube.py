@@ -130,7 +130,7 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
             duration_seconds = 0
             if m:
                 duration_seconds = int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + int(m.group(3) or 0)
-            if duration_seconds < 60:
+            if duration_seconds < 420:
                 continue
 
             stats = item["statistics"]
@@ -209,7 +209,7 @@ def fetch_playlist_videos(playlist_id: str, api_key: str) -> list[dict]:
             duration_seconds = 0
             if dm:
                 duration_seconds = int(dm.group(1) or 0) * 3600 + int(dm.group(2) or 0) * 60 + int(dm.group(3) or 0)
-            if duration_seconds < 60:
+            if duration_seconds < 420:
                 continue
 
             stats = item["statistics"]
