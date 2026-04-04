@@ -1,7 +1,6 @@
 from urllib.parse import urlparse, parse_qs
 from googleapiclient.discovery import build
 import re
-import isodate
 
 
 def parse_playlist_id(url_or_id: str) -> str:
@@ -127,10 +126,10 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
 
             # Skip Shorts (videos under 60 seconds)
             duration_str = item.get("contentDetails", {}).get("duration", "PT0S")
-            try:
-                duration_seconds = isodate.parse_duration(duration_str).total_seconds()
-            except Exception:
-                duration_seconds = 0
+            m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+            duration_seconds = 0
+            if m:
+                duration_seconds = int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + int(m.group(3) or 0)
             if duration_seconds < 60:
                 continue
 
