@@ -1028,23 +1028,33 @@ tr:hover { background: var(--surface2); }
     align-items: center;
 }
 .analysis-header h2 { font-size: 1.3rem; }
-.analysis-video-title-row {
+.analysis-video-hero {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 0.75rem 0;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 0.5rem;
-    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.analysis-thumb {
+    width: 180px;
+    min-width: 180px;
+    border-radius: 6px;
+}
+.analysis-video-hero-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 .analysis-video-title {
     font-size: 1rem;
     font-weight: 600;
     color: var(--accent);
-    flex: 1;
 }
 .analysis-yt-btn {
     white-space: nowrap;
     text-decoration: none;
     color: var(--text) !important;
+    align-self: flex-start;
 }
