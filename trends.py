@@ -86,8 +86,10 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
 
         # Find outliers per channel (2x that channel's own average)
         per_channel_outliers = {}
+        per_channel_avg = {}
         for source, vids in by_source.items():
             ch_avg = sum(v["view_count"] for v in vids) // len(vids)
+            per_channel_avg[source] = ch_avg
             outliers = [v for v in vids if v["view_count"] > ch_avg * 2]
             outliers.sort(key=lambda v: v["view_count"], reverse=True)
             if outliers:
@@ -114,6 +116,8 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
                 "published": v.get("published_at", "")[:10],
                 "thumbnail_url": v.get("thumbnail_url", ""),
                 "video_id": v.get("video_id", ""),
+                "market_phase": v.get("_market_phase", "unknown"),
+                "multiplier": round(v["view_count"] / max(per_channel_avg.get(v.get("_source", "You"), 1), 1), 1),
             }
             for v in recent_breakouts[:10]
         ]

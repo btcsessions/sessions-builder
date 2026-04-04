@@ -305,7 +305,7 @@
         {% if trends.recent_breakouts %}
         <section class="trend-card">
             <h2>Recent Outliers (90 Days)</h2>
-            <p class="trend-subtitle">2x+ avg across all channels</p>
+            <p class="trend-subtitle">2x+ each channel's own average</p>
             <div class="outlier-list">
                 {% for b in trends.recent_breakouts[:8] %}
                 <div class="outlier-item">
@@ -315,7 +315,15 @@
                     <div class="outlier-info">
                         <span class="outlier-title">{{ b.title[:55] }}</span>
                         <div class="outlier-stats">
+                            <span class="stat-pill hit">{{ b.multiplier }}x</span>
                             <span>{{ "{:,}".format(b.views) }}</span>
+                            {% if b.market_phase == 'bull' %}
+                            <span class="market-text-badge bull-badge">BULL</span>
+                            {% elif b.market_phase == 'bear' %}
+                            <span class="market-text-badge bear-badge">BEAR</span>
+                            {% elif b.market_phase == 'sideways' %}
+                            <span class="market-text-badge sw-badge">SW</span>
+                            {% endif %}
                             <span class="source-tag">{{ b.source }}</span>
                         </div>
                     </div>
