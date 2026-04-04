@@ -23,8 +23,11 @@
                 <input type="text" id="video-search" class="sidebar-search" placeholder="Filter videos...">
                 <div class="sidebar-video-list" id="video-list">
                     {% for video in videos %}
-                    <div class="sidebar-video" data-title="{{ video.title|lower }}">
-                        <a href="https://youtube.com/watch?v={{ video.video_id }}" target="_blank" class="sv-title">{{ video.title[:55] }}</a>
+                    <div class="sidebar-video own-video-clickable"
+                         data-title="{{ video.title|lower }}"
+                         data-video-id="{{ video.video_id }}"
+                         data-video-title="{{ video.title }}">
+                        <span class="sv-title">{{ video.title[:55] }}</span>
                         <div class="sv-stats">
                             <span>{{ "{:,}".format(video.view_count) }} views</span>
                             <span>{{ video.engagement_rate }}%</span>
@@ -187,7 +190,10 @@
                 <h2>Competitor Analysis</h2>
                 <button class="btn small" id="close-analysis">Back to Planner</button>
             </div>
-            <div id="analysis-video-title" class="analysis-video-title"></div>
+            <div class="analysis-video-title-row">
+                <div id="analysis-video-title" class="analysis-video-title"></div>
+                <a id="analysis-yt-link" href="#" target="_blank" class="btn small analysis-yt-btn">Watch on YouTube</a>
+            </div>
 
             <section class="plan-card">
                 <h2>Performance</h2>
@@ -360,47 +366,76 @@ document.getElementById("video-search").addEventListener("input", (e) => {
     });
 });
 
-/* --- Competitor video analysis --- */
+/* --- Video analysis (own + competitor) --- */
 const analysisLoading = document.getElementById("analysis-loading");
 const analysisError = document.getElementById("analysis-error");
 const analysisResults = document.getElementById("analysis-results");
 const planForm = document.getElementById("plan-form");
 const planHeader = document.querySelector(".planner-header");
 
+function showAnalysisLoading() {
+    planForm.style.display = "none";
+    planHeader.style.display = "none";
+    results.style.display = "none";
+    planError.style.display = "none";
+    analysisResults.style.display = "none";
+    analysisError.style.display = "none";
+    analysisLoading.style.display = "block";
+}
+
+function showAnalysisResult(data, title, videoId) {
+    if (data.error) {
+        analysisError.textContent = data.error;
+        analysisError.style.display = "block";
+    } else {
+        renderAnalysis(data, title, videoId);
+        analysisResults.style.display = "block";
+    }
+    analysisLoading.style.display = "none";
+}
+
+function showAnalysisError(msg) {
+    analysisError.textContent = msg;
+    analysisError.style.display = "block";
+    analysisLoading.style.display = "none";
+}
+
+/* Own videos */
+document.querySelectorAll(".own-video-clickable").forEach(el => {
+    el.addEventListener("click", async () => {
+        const videoId = el.dataset.videoId;
+        const title = el.dataset.videoTitle;
+        showAnalysisLoading();
+        try {
+            const resp = await fetch("/api/analyze-own-video", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ video_id: videoId }),
+            });
+            showAnalysisResult(await resp.json(), title, videoId);
+        } catch (err) {
+            showAnalysisError("Analysis failed: " + err.message);
+        }
+    });
+});
+
+/* Competitor videos */
 document.querySelectorAll(".comp-video-clickable").forEach(el => {
     el.addEventListener("click", async () => {
         const channelId = el.dataset.channelId;
         const videoId = el.dataset.videoId;
         const title = el.dataset.title;
-
-        // Hide planner, show analysis loading
-        planForm.style.display = "none";
-        planHeader.style.display = "none";
-        results.style.display = "none";
-        planError.style.display = "none";
-        analysisResults.style.display = "none";
-        analysisError.style.display = "none";
-        analysisLoading.style.display = "block";
-
+        showAnalysisLoading();
         try {
             const resp = await fetch("/api/analyze-competitor-video", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ channel_id: channelId, video_id: videoId }),
             });
-            const data = await resp.json();
-            if (data.error) {
-                analysisError.textContent = data.error;
-                analysisError.style.display = "block";
-            } else {
-                renderAnalysis(data, title);
-                analysisResults.style.display = "block";
-            }
+            showAnalysisResult(await resp.json(), title, videoId);
         } catch (err) {
-            analysisError.textContent = "Analysis failed: " + err.message;
-            analysisError.style.display = "block";
+            showAnalysisError("Analysis failed: " + err.message);
         }
-        analysisLoading.style.display = "none";
     });
 });
 
@@ -411,8 +446,9 @@ document.getElementById("close-analysis").addEventListener("click", () => {
     planHeader.style.display = "";
 });
 
-function renderAnalysis(data, title) {
+function renderAnalysis(data, title, videoId) {
     document.getElementById("analysis-video-title").textContent = title;
+    document.getElementById("analysis-yt-link").href = "https://youtube.com/watch?v=" + encodeURIComponent(videoId);
     document.getElementById("analysis-performance").textContent = data.performance_summary || "";
     document.getElementById("analysis-title").textContent = data.title_analysis || "";
     document.getElementById("analysis-topic").textContent = data.topic_analysis || "";

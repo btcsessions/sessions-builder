@@ -278,6 +278,106 @@ Here are the creator's past videos for reference links:
     return json.loads(text)
 
 
+def analyze_own_video(
+    video: dict,
+    video_data: list[dict],
+    api_key: str,
+    analytics_data: dict = None,
+    competitors_data: list = None,
+) -> dict:
+    """Analyze one of the creator's own videos with performance insights."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    avg_views = sum(v["view_count"] for v in video_data) // len(video_data) if video_data else 0
+    avg_engagement = round(sum(v["engagement_rate"] for v in video_data) / len(video_data), 2) if video_data else 0
+
+    # Performance classification
+    if avg_views > 0:
+        ratio = video["view_count"] / avg_views
+        if ratio >= 2:
+            performance = f"BREAKOUT ({ratio:.1f}x your channel average)"
+        elif ratio >= 1.2:
+            performance = f"STRONG (above average, {ratio:.1f}x)"
+        elif ratio <= 0.5:
+            performance = f"UNDERPERFORMED ({ratio:.1f}x your average)"
+        else:
+            performance = f"AVERAGE ({ratio:.1f}x)"
+    else:
+        performance = "UNKNOWN"
+
+    # Top and bottom for context
+    top5 = "\n".join(
+        f"  - \"{v['title'][:55]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+        for v in video_data[:5]
+    )
+    bottom5 = "\n".join(
+        f"  - \"{v['title'][:55]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+        for v in video_data[-5:]
+    )
+
+    # Analytics context for this video if available
+    analytics_note = ""
+    if analytics_data:
+        top_vids = analytics_data.get("top_videos", [])
+        for tv in top_vids:
+            if tv["video_id"] == video["video_id"]:
+                avg_pct = tv.get("avg_view_percentage", 0)
+                avg_dur = round(tv.get("avg_view_duration_seconds", 0) / 60, 1)
+                subs = tv.get("subscribers_gained", 0)
+                analytics_note = f"\n**Analytics Data:** {avg_dur}min avg watch time, {avg_pct}% retention, +{subs} subscribers gained"
+                break
+
+    system = f"""You are a YouTube content strategist. A creator is analyzing one of their own videos to understand its performance and learn from it.
+
+**Channel Overview:**
+- Average views: {avg_views:,}
+- Average engagement: {avg_engagement}%
+- Top performers:
+{top5}
+- Lowest performers:
+{bottom5}
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "performance_summary": "1-2 sentence summary of how this video performed relative to the channel",
+  "title_analysis": "Analysis of the title — what works or doesn't, CTR tactics used",
+  "topic_analysis": "Why this topic likely performed the way it did",
+  "format_tactics": ["what worked well 1", "what worked well 2", "what could improve"],
+  "takeaways": ["actionable lesson 1", "actionable lesson 2", "actionable lesson 3"],
+  "video_ideas": ["follow-up or sequel idea 1", "related topic idea 2"]
+}}
+
+RULES:
+- Be specific and reference actual numbers
+- For breakout/strong videos: identify what likely drove the success and how to replicate it
+- For underperformers: identify what likely went wrong and how to avoid it next time
+- Suggest follow-up or sequel ideas that could capitalize on what worked
+- Be direct and actionable"""
+
+    user_msg = f"""Analyze this video from my channel:
+
+**Title:** {video['title']}
+**Views:** {video['view_count']:,}
+**Likes:** {video.get('like_count', 0):,}
+**Comments:** {video.get('comment_count', 0):,}
+**Engagement Rate:** {video.get('engagement_rate', 0)}%
+**Published:** {video.get('published_at', 'Unknown')[:10]}
+**Performance:** {performance}{analytics_note}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def analyze_competitor_video(
     video: dict,
     competitor: dict,

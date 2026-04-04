@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
 
@@ -420,6 +420,41 @@ def api_fetch_analytics():
         analytics_cache = fetch_channel_analytics()
         save_analytics(analytics_cache)
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/analyze-own-video", methods=["POST"])
+def api_analyze_own_video():
+    data = request.get_json()
+    video_id = data.get("video_id", "")
+
+    if not video_id:
+        return jsonify({"error": "video_id is required"}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    video = None
+    for v in video_cache:
+        if v["video_id"] == video_id:
+            video = v
+            break
+
+    if not video:
+        return jsonify({"error": "Video not found."}), 404
+
+    try:
+        analysis = analyze_own_video(
+            video=video,
+            video_data=video_cache,
+            api_key=api_key,
+            analytics_data=analytics_cache,
+            competitors_data=competitors_cache,
+        )
+        return jsonify(analysis)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

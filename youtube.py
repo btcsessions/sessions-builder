@@ -1,6 +1,7 @@
 from urllib.parse import urlparse, parse_qs
 from googleapiclient.discovery import build
 import re
+import isodate
 
 
 def parse_playlist_id(url_or_id: str) -> str:
@@ -112,17 +113,27 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
         if not next_page:
             break
 
-    # Fetch stats
+    # Fetch stats and filter out Shorts (< 60 seconds)
     videos = []
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i:i + 50]
         resp = youtube.videos().list(
             id=",".join(batch),
-            part="statistics,snippet",
+            part="statistics,snippet,contentDetails",
         ).execute()
 
         for item in resp.get("items", []):
             vid = item["id"]
+
+            # Skip Shorts (videos under 60 seconds)
+            duration_str = item.get("contentDetails", {}).get("duration", "PT0S")
+            try:
+                duration_seconds = isodate.parse_duration(duration_str).total_seconds()
+            except Exception:
+                duration_seconds = 0
+            if duration_seconds < 60:
+                continue
+
             stats = item["statistics"]
             views = int(stats.get("viewCount", 0))
             likes = int(stats.get("likeCount", 0))
