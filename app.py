@@ -12,6 +12,7 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 # In-memory store (single-user tool)
 video_cache = []
 chat_history = []
+playlist_info = {}  # stores playlist_id and google_key for refresh
 
 
 @app.route("/")
@@ -48,6 +49,8 @@ def fetch():
     try:
         playlist_id = parse_playlist_id(playlist_url)
         video_cache = fetch_playlist_videos(playlist_id, google_key)
+        playlist_info["playlist_id"] = playlist_id
+        playlist_info["google_key"] = google_key
         chat_history = []  # Reset chat on new playlist load
     except Exception as e:
         return render_template(
@@ -111,6 +114,18 @@ def api_chat():
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
         return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/refresh", methods=["POST"])
+def refresh():
+    global video_cache
+    if not playlist_info.get("playlist_id") or not playlist_info.get("google_key"):
+        return jsonify({"error": "No playlist loaded. Go back to the home page to load one."}), 400
+    try:
+        video_cache = fetch_playlist_videos(playlist_info["playlist_id"], playlist_info["google_key"])
+        return jsonify({"ok": True, "count": len(video_cache)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
