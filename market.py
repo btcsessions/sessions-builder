@@ -32,18 +32,7 @@ def _load_cached_prices() -> dict:
 
 def fetch_btc_prices(days: int = 730) -> dict:
     """Fetch daily BTC prices from CoinGecko. Returns {date_str: price}."""
-    # Check cache — only use it if it has enough data for the 200-day MA
-    if os.path.exists(BTC_CACHE_FILE):
-        try:
-            with open(BTC_CACHE_FILE) as f:
-                cached = json.load(f)
-            cached_prices = cached.get("prices", {})
-            if (time.time() - cached.get("_fetched_at", 0) < BTC_CACHE_TTL
-                    and len(cached_prices) >= 200):
-                print(f"[Market] Using cached data: {len(cached_prices)} days")
-                return cached_prices
-        except (json.JSONDecodeError, IOError):
-            pass
+    # Always fetch fresh data on launch (cache is only used as fallback if all APIs fail)
 
     # Try multiple sources for historical data until one works
     prices = {}
