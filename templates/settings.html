@@ -81,6 +81,60 @@
     {% endif %}
 </div>
 {% endif %}
+{% if videos %}
+<div class="setup-form" style="margin-top: 1.5rem; max-width: 900px;">
+    <div class="categorize-header" id="categorize-toggle" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+        <h3>Categorize Videos <span style="font-family:inherit; font-size:0.8rem; color:var(--text-muted); font-weight:400;">({{ videos|length }} videos, {{ video_categories|length }} categorized)</span></h3>
+        <span class="chevron" id="categorize-chevron">&#9662;</span>
+    </div>
+
+    <div id="categorize-panel" style="display:none; margin-top:1rem;">
+        <div class="cat-controls">
+            <div class="cat-filter-row">
+                <button class="btn small cat-filter-btn active" data-filter="all">All</button>
+                <button class="btn small cat-filter-btn" data-filter="uncategorized">Uncategorized</button>
+                <button class="btn small cat-filter-btn" data-filter="Tutorial">Tutorial</button>
+                <button class="btn small cat-filter-btn" data-filter="Comparison">Comparison</button>
+                <button class="btn small cat-filter-btn" data-filter="List">List</button>
+                <button class="btn small cat-filter-btn" data-filter="Integrated Setup">Integrated Setup</button>
+            </div>
+            <div class="cat-select-row">
+                <button class="btn small" id="cat-select-all">Select visible</button>
+                <button class="btn small" id="cat-select-none">Clear selection</button>
+                <span id="cat-selected-count" class="cat-count-label">0 selected</span>
+            </div>
+        </div>
+
+        <div class="cat-video-list" id="cat-video-list">
+            {% for v in videos %}
+            <div class="cat-row" data-vid="{{ v.video_id }}" data-cat="{{ video_categories.get(v.video_id, '') }}">
+                <label class="cat-check-label">
+                    <input type="checkbox" class="cat-check" value="{{ v.video_id }}">
+                </label>
+                {% if v.thumbnail_url %}
+                <img src="{{ v.thumbnail_url }}" alt="" class="cat-thumb" loading="lazy">
+                {% endif %}
+                <div class="cat-info">
+                    <span class="cat-title">{{ v.title[:70] }}</span>
+                    <span class="cat-meta">{{ "{:,}".format(v.view_count) }} views</span>
+                </div>
+                <span class="cat-current-badge" data-vid="{{ v.video_id }}">{{ video_categories.get(v.video_id, '—') }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="cat-action-bar" id="cat-action-bar">
+            <span class="cat-action-label">Assign selected to:</span>
+            <button class="btn small primary cat-assign-btn" data-cat="Tutorial">Tutorial</button>
+            <button class="btn small primary cat-assign-btn" data-cat="Comparison">Comparison</button>
+            <button class="btn small primary cat-assign-btn" data-cat="List">List</button>
+            <button class="btn small primary cat-assign-btn" data-cat="Integrated Setup">Integrated Setup</button>
+            <button class="btn small cat-assign-btn" data-cat="" style="border-color:#aa5555; color:#aa5555;">Clear</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -107,5 +161,102 @@ if (fetchBtn) {
         fetchBtn.textContent = "Refresh Analytics";
     });
 }
+// Categorize Videos
+const catToggle = document.getElementById("categorize-toggle");
+const catPanel = document.getElementById("categorize-panel");
+const catChevron = document.getElementById("categorize-chevron");
+if (catToggle) {
+    catToggle.addEventListener("click", () => {
+        const open = catPanel.style.display === "none";
+        catPanel.style.display = open ? "block" : "none";
+        catChevron.style.transform = open ? "rotate(180deg)" : "";
+    });
+}
+
+const catRows = document.querySelectorAll(".cat-row");
+const catChecks = document.querySelectorAll(".cat-check");
+const catCount = document.getElementById("cat-selected-count");
+const catActionBar = document.getElementById("cat-action-bar");
+
+function updateCount() {
+    const n = document.querySelectorAll(".cat-check:checked").length;
+    catCount.textContent = n + " selected";
+    catActionBar.style.display = n > 0 ? "flex" : "none";
+}
+
+catChecks.forEach(cb => cb.addEventListener("change", updateCount));
+
+document.getElementById("cat-select-all")?.addEventListener("click", () => {
+    catRows.forEach(r => {
+        if (r.style.display !== "none") {
+            r.querySelector(".cat-check").checked = true;
+        }
+    });
+    updateCount();
+});
+
+document.getElementById("cat-select-none")?.addEventListener("click", () => {
+    catChecks.forEach(cb => cb.checked = false);
+    updateCount();
+});
+
+// Filter buttons
+document.querySelectorAll(".cat-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".cat-filter-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const filter = btn.dataset.filter;
+        catRows.forEach(r => {
+            const cat = r.dataset.cat;
+            if (filter === "all") r.style.display = "";
+            else if (filter === "uncategorized") r.style.display = cat ? "none" : "";
+            else r.style.display = cat === filter ? "" : "none";
+        });
+    });
+});
+
+// Assign buttons
+document.querySelectorAll(".cat-assign-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        const category = btn.dataset.cat;
+        const checked = document.querySelectorAll(".cat-check:checked");
+        if (!checked.length) return;
+
+        const assignments = [];
+        checked.forEach(cb => {
+            assignments.push({ video_id: cb.value, category });
+        });
+
+        btn.disabled = true;
+        btn.textContent = "Saving...";
+
+        try {
+            const resp = await fetch("/api/video-category/bulk", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ assignments })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                // Update UI
+                checked.forEach(cb => {
+                    const row = cb.closest(".cat-row");
+                    row.dataset.cat = category;
+                    const badge = row.querySelector(".cat-current-badge");
+                    badge.textContent = category || "—";
+                    badge.style.color = category ? "var(--accent)" : "var(--text-muted)";
+                    cb.checked = false;
+                });
+                updateCount();
+            }
+        } catch (err) {
+            alert("Failed: " + err.message);
+        }
+        btn.disabled = false;
+        btn.textContent = category || "Clear";
+    });
+});
+
+updateCount();
 </script>
 {% endblock %}

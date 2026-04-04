@@ -246,6 +246,8 @@ def settings_page():
         has_analytics=bool(analytics_cache),
         has_videos=len(video_cache) > 0,
         error=request.args.get("error"),
+        videos=video_cache,
+        video_categories=video_categories,
     )
 
 
@@ -827,6 +829,28 @@ def api_video_category():
 
     save_categories(video_categories)
     return jsonify({"ok": True})
+
+
+@app.route("/api/video-category/bulk", methods=["POST"])
+def api_video_category_bulk():
+    global video_categories
+    data = request.get_json()
+    assignments = data.get("assignments", [])
+    if not assignments:
+        return jsonify({"error": "No assignments provided"}), 400
+
+    for item in assignments:
+        video_id = item.get("video_id", "")
+        category = item.get("category", "")
+        if not video_id:
+            continue
+        if category:
+            video_categories[video_id] = category
+        else:
+            video_categories.pop(video_id, None)
+
+    save_categories(video_categories)
+    return jsonify({"ok": True, "count": len(assignments)})
 
 
 @app.route("/api/clear-chat", methods=["POST"])

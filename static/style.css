@@ -152,6 +152,79 @@ h2 {
 .form-actions { margin-top: 1rem; }
 .analytics-status { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
+/* Bulk categorization */
+.cat-controls { margin-bottom: 0.75rem; }
+.cat-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+.cat-filter-btn.active { border-color: var(--accent); color: var(--accent); }
+.cat-select-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.cat-count-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+}
+.cat-video-list {
+    max-height: 55vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.cat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+.cat-row:last-child { border-bottom: none; }
+.cat-row:hover { background: var(--surface2); }
+.cat-check-label { flex-shrink: 0; display: flex; align-items: center; }
+.cat-check { width: 1rem; height: 1rem; cursor: pointer; accent-color: var(--accent); }
+.cat-thumb { width: 72px; height: 40px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.cat-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.cat-title { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-meta { font-size: 0.65rem; color: var(--text-muted); }
+.cat-current-badge {
+    flex-shrink: 0;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    min-width: 80px;
+    text-align: right;
+}
+.cat-action-bar {
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem;
+    margin-top: 0.5rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    position: sticky;
+    bottom: 0;
+}
+.cat-action-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-right: 0.25rem;
+    white-space: nowrap;
+}
+
 /* Buttons */
 .btn {
     padding: 0.55rem 1.4rem;
