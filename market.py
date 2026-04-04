@@ -42,13 +42,15 @@ def fetch_btc_prices(days: int = 730) -> dict:
         except (json.JSONDecodeError, IOError):
             pass
 
-    # Try CoinGecko market_chart for historical data (with retry)
+    # Try CoinGecko first, then CoinCap for historical data
     prices = _fetch_coingecko_history(days)
+    if not prices:
+        prices = _fetch_coincap_history()
 
-    # If historical fetch failed, try simple price endpoint for at least current price
+    # If historical fetch failed, try current price endpoints as fallback
     if not prices:
         prices = _load_cached_prices()
-        current = _fetch_coingecko_simple()
+        current = _fetch_current_price()
         if current:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             prices[today] = current
@@ -65,7 +67,7 @@ def _fetch_coingecko_history(days: int) -> dict:
     """Fetch historical daily prices from CoinGecko market_chart endpoint."""
     url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}&interval=daily"
     headers = {
-        "User-Agent": "YT-Planner/1.0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "Accept": "application/json",
     }
 
@@ -81,26 +83,88 @@ def _fetch_coingecko_history(days: int) -> dict:
                 dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
                 date_str = dt.strftime("%Y-%m-%d")
                 prices[date_str] = round(price, 2)
-            return prices
 
-        except Exception:
+            if prices:
+                print(f"[Market] CoinGecko history: {len(prices)} days fetched")
+                return prices
+
+        except Exception as e:
+            print(f"[Market] CoinGecko history attempt {attempt+1}/3 failed: {e}")
             if attempt < 2:
-                time.sleep(2 * (attempt + 1))  # 2s, 4s backoff
+                time.sleep(2 * (attempt + 1))
             continue
 
     return {}
 
 
-def _fetch_coingecko_simple() -> float | None:
-    """Fetch just the current BTC price from CoinGecko simple endpoint."""
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+def _fetch_coincap_history() -> dict:
+    """Fetch historical daily prices from CoinCap API (no key required)."""
+    # CoinCap provides 1-day intervals for up to 2000 days
+    end = int(time.time() * 1000)
+    start = end - (730 * 86400 * 1000)
+    url = f"https://api.coincap.io/v2/assets/bitcoin/history?interval=d1&start={start}&end={end}"
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
     try:
-        req = Request(url, headers={"User-Agent": "YT-Planner/1.0", "Accept": "application/json"})
-        with urlopen(req, timeout=10) as resp:
+        req = Request(url, headers=headers)
+        with urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read().decode())
-        return data.get("bitcoin", {}).get("usd")
-    except Exception:
-        return None
+
+        prices = {}
+        for entry in data.get("data", []):
+            dt = datetime.fromtimestamp(entry["time"] / 1000, tz=timezone.utc)
+            date_str = dt.strftime("%Y-%m-%d")
+            prices[date_str] = round(float(entry["priceUsd"]), 2)
+
+        if prices:
+            print(f"[Market] CoinCap history: {len(prices)} days fetched")
+        return prices
+    except Exception as e:
+        print(f"[Market] CoinCap history failed: {e}")
+        return {}
+
+
+def _fetch_current_price() -> float | None:
+    """Try multiple APIs to get just the current BTC price."""
+    sources = [
+        (
+            "CoinGecko",
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+            lambda d: d.get("bitcoin", {}).get("usd"),
+        ),
+        (
+            "mempool.space",
+            "https://mempool.space/api/v1/prices",
+            lambda d: d.get("USD"),
+        ),
+        (
+            "CoinCap",
+            "https://api.coincap.io/v2/assets/bitcoin",
+            lambda d: round(float(d.get("data", {}).get("priceUsd", 0)), 2) or None,
+        ),
+        (
+            "blockchain.info",
+            "https://blockchain.info/ticker",
+            lambda d: d.get("USD", {}).get("last"),
+        ),
+    ]
+
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+    for name, url, parser in sources:
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            price = parser(data)
+            if price and price > 0:
+                print(f"[Market] Current price from {name}: ${price:,.0f}")
+                return price
+        except Exception as e:
+            print(f"[Market] {name} price failed: {e}")
+            continue
+
+    return None
 
 
 def compute_200d_ma(prices: dict, date_str: str) -> float | None:
