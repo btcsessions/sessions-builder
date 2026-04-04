@@ -8,7 +8,7 @@
     <aside class="ws-sidebar" id="ws-sidebar">
         <div class="sidebar-toggle-area">
             <button id="sidebar-collapse" class="btn small" title="Toggle sidebar">&#9776;</button>
-            <span class="sidebar-label">Competitors</span>
+            <span class="sidebar-label">Inspiration</span>
         </div>
 
         {% if competitors %}
@@ -64,8 +64,8 @@
         {% endfor %}
         {% else %}
         <div class="sidebar-empty">
-            <p>No competitors added yet.</p>
-            <a href="/competitors" class="btn small">Add Competitors</a>
+            <p>No inspiration channels added yet.</p>
+            <a href="/competitors" class="btn small">Add Channels</a>
         </div>
         {% endif %}
     </aside>
@@ -115,7 +115,7 @@
                     </div>
                 </div>
                 <div class="form-group compact grow">
-                    <label>Competitor Videos</label>
+                    <label>Inspiration Videos</label>
                     <div id="competitors-container">
                         <div class="multi-input-row">
                             <input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=...">
@@ -173,12 +173,12 @@
 
         <!-- Competitor Video Analysis -->
         <div id="analysis-loading" class="plan-loading" style="display:none">
-            <p>Analyzing competitor video...</p>
+            <p>Analyzing video...</p>
         </div>
         <div id="analysis-error" class="alert error" style="display:none"></div>
         <div id="analysis-results" class="analysis-results" style="display:none">
             <div class="analysis-header">
-                <h2>Competitor Analysis</h2>
+                <h2>Video Analysis</h2>
                 <button class="btn small" id="close-analysis">Back to Planner</button>
             </div>
             <div class="analysis-video-hero">

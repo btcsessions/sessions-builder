@@ -7,7 +7,7 @@
 <div class="trends-top-bar">
     <div class="trends-top-left">
         <h1>Trends & Analysis</h1>
-        <p class="text-muted">{{ total_videos }} videos + {{ competitor_count }} competitors</p>
+        <p class="text-muted">{{ total_videos }} videos + {{ competitor_count }} inspiration channels</p>
     </div>
     <button id="generate-report-btn" class="btn primary">Generate AI Report</button>
 </div>
@@ -62,7 +62,7 @@
             <div id="report-landscape" class="plan-text"></div>
         </section>
         <section class="plan-card">
-            <h2>Competitor Insights</h2>
+            <h2>Channel Insights</h2>
             <div id="report-comp-insights" class="plan-text"></div>
         </section>
         <section class="plan-card">
@@ -396,7 +396,7 @@
 
         {% if trends.competitor_summary %}
         <section class="trend-card">
-            <h2>Competitor Comparison</h2>
+            <h2>Channel Comparison</h2>
             <div class="monthly-table-wrapper">
                 <table class="monthly-table">
                     <thead>
