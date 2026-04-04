@@ -756,8 +756,8 @@ tr:hover { background: var(--surface2); }
     font-weight: 700;
 }
 .market-phase-pip.phase-bull { background: #1a3a1a; color: #66ff66; }
-.market-phase-pip.phase-bear { background: #3a1a1a; color: #ff6666; }
-.market-phase-pip.phase-sideways { background: #2a2a1a; color: #dddd66; }
+.market-phase-pip.phase-bear { background: #3a1a1a; color: #ff6666; border: 1px solid #ff6666; }
+.market-phase-pip.phase-sideways { background: #2a2a1a; color: #dddd66; border: 1px dashed #dddd66; }
 .market-phase-pip.phase-unknown { background: var(--surface2); color: var(--text-muted); }
 .vpd-stat {
     font-size: 0.6rem;
