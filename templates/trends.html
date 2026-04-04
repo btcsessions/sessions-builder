@@ -304,17 +304,20 @@
 
         {% if trends.recent_breakouts %}
         <section class="trend-card">
-            <h2>Recent Breakouts (90 Days)</h2>
+            <h2>Recent Outliers (90 Days)</h2>
             <p class="trend-subtitle">2x+ avg across all channels</p>
-            <div class="trend-list">
+            <div class="outlier-list">
                 {% for b in trends.recent_breakouts[:8] %}
-                <div class="trend-list-item">
-                    <div class="trend-item-title">
-                        {{ b.title[:50] }}
-                        <span class="source-tag">{{ b.source }}</span>
-                    </div>
-                    <div class="trend-item-stats">
-                        <span>{{ "{:,}".format(b.views) }}</span>
+                <div class="outlier-item">
+                    {% if b.thumbnail_url %}
+                    <img src="{{ b.thumbnail_url }}" alt="" class="outlier-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="outlier-info">
+                        <span class="outlier-title">{{ b.title[:55] }}</span>
+                        <div class="outlier-stats">
+                            <span>{{ "{:,}".format(b.views) }}</span>
+                            <span class="source-tag">{{ b.source }}</span>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
@@ -353,6 +356,21 @@
                 <div class="keyword-pill">
                     <span class="kw-word">{{ kw }}</span>
                     <span class="kw-stats">{{ data.count }} &middot; {{ "{:,}".format(data.avg_views) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if trends.crypto_keywords %}
+        <section class="trend-card">
+            <h2>Bitcoin / Crypto Keywords</h2>
+            <p class="trend-subtitle">Terms that drive views in the niche</p>
+            <div class="keyword-grid">
+                {% for kw, data in trends.crypto_keywords.items() %}
+                <div class="keyword-pill crypto-keyword">
+                    <span class="kw-word">{{ kw }}</span>
+                    <span class="kw-stats">{{ data.count }} videos &middot; {{ "{:,}".format(data.avg_views) }} avg</span>
                 </div>
                 {% endfor %}
             </div>
@@ -434,14 +452,34 @@
 
         {% if trends.breakout_hits %}
         <section class="trend-card">
-            <h2>Your Breakout Hits</h2>
-            <div class="trend-list">
-                {% for b in trends.breakout_hits[:6] %}
-                <div class="trend-list-item">
-                    <div class="trend-item-title">{{ b.title[:45] }}</div>
-                    <div class="trend-item-stats">
-                        <span class="stat-pill hit">{{ b.multiplier }}x</span>
-                        <span>{{ "{:,}".format(b.views) }}</span>
+            <div class="trend-card-header-row">
+                <h2>Your Outliers</h2>
+                <div class="outlier-tabs">
+                    <button class="btn small outlier-tab active" data-filter="all">All</button>
+                    <button class="btn small outlier-tab" data-filter="bull">Bull</button>
+                    <button class="btn small outlier-tab" data-filter="bear">Bear</button>
+                    <button class="btn small outlier-tab" data-filter="sideways">Sideways</button>
+                </div>
+            </div>
+            <div class="outlier-list" id="outlier-list">
+                {% for b in trends.breakout_hits %}
+                <div class="outlier-item" data-phase="{{ b.market_phase }}">
+                    {% if b.thumbnail_url %}
+                    <img src="{{ b.thumbnail_url }}" alt="" class="outlier-thumb" loading="lazy">
+                    {% endif %}
+                    <div class="outlier-info">
+                        <span class="outlier-title">{{ b.title[:55] }}</span>
+                        <div class="outlier-stats">
+                            <span class="stat-pill hit">{{ b.multiplier }}x</span>
+                            <span>{{ "{:,}".format(b.views) }}</span>
+                            {% if b.market_phase == 'bull' %}
+                            <span class="market-text-badge bull-badge">BULL</span>
+                            {% elif b.market_phase == 'bear' %}
+                            <span class="market-text-badge bear-badge">BEAR</span>
+                            {% elif b.market_phase == 'sideways' %}
+                            <span class="market-text-badge sw-badge">SW</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
@@ -478,6 +516,19 @@ function esc(text) {
     d.textContent = text;
     return d.innerHTML;
 }
+
+/* --- Outlier tabs --- */
+document.querySelectorAll(".outlier-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+        document.querySelectorAll(".outlier-tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        const filter = tab.dataset.filter;
+        document.querySelectorAll("#outlier-list .outlier-item").forEach(item => {
+            if (filter === "all") item.style.display = "";
+            else item.style.display = item.dataset.phase === filter ? "" : "none";
+        });
+    });
+});
 
 /* --- AI Report --- */
 const reportBtn = document.getElementById("generate-report-btn");

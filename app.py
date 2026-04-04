@@ -451,7 +451,7 @@ def trends_page():
 
     total_views = sum(v["view_count"] for v in video_cache)
     avg_engagement = round(sum(v["engagement_rate"] for v in video_cache) / len(video_cache), 2)
-    trends_data = analyze_trends(video_cache, competitors_cache)
+    trends_data = analyze_trends(dated_videos, competitors_cache)
 
     return render_template("trends.html", trends=trends_data,
                            total_videos=len(video_cache),

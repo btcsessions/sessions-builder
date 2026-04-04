@@ -1256,6 +1256,57 @@ tr:hover { background: var(--surface2); }
 }
 .kw-word { font-weight: 600; font-size: 0.85rem; }
 .kw-stats { font-size: 0.65rem; color: var(--text-muted); }
+.crypto-keyword { border-color: rgba(247, 147, 26, 0.25); }
+.crypto-keyword .kw-word { color: var(--accent); }
+
+/* Outlier items with thumbnails */
+.outlier-list {
+    display: flex;
+    flex-direction: column;
+}
+.outlier-item {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.4rem 0.25rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+.outlier-item:last-child { border-bottom: none; }
+.outlier-item:hover { background: var(--surface2); }
+.outlier-thumb {
+    width: 80px;
+    min-width: 80px;
+    height: 45px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+.outlier-info { flex: 1; min-width: 0; }
+.outlier-title {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.outlier-stats {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Outlier tabs */
+.outlier-tabs {
+    display: flex;
+    gap: 0.25rem;
+}
+.outlier-tab { padding: 0.15rem 0.5rem; font-size: 0.7rem; }
+.outlier-tab.active { border-color: var(--accent); color: var(--accent); }
 
 /* ===== WORKSPACE ===== */
 .workspace {

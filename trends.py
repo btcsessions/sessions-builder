@@ -87,6 +87,8 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
                 "engagement": v["engagement_rate"],
                 "source": v.get("_source", "You"),
                 "published": v.get("published_at", "")[:10],
+                "thumbnail_url": v.get("thumbnail_url", ""),
+                "video_id": v.get("video_id", ""),
             }
             for v in recent_breakouts[:10]
         ]
@@ -135,6 +137,43 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
     }
     trends["hot_keywords"] = dict(
         sorted(hot_keywords.items(), key=lambda x: x[1]["avg_views"], reverse=True)[:20]
+    )
+
+    # --- Bitcoin/Crypto specific keywords ---
+    btc_terms = {
+        "bitcoin", "btc", "wallet", "lightning", "node", "coldcard", "trezor",
+        "ledger", "seed", "multisig", "nostr", "self-custody", "custody",
+        "hardware", "privacy", "mining", "halving", "etf", "sats",
+        "stacking", "hodl", "sovereign", "decentralized", "blockchain",
+        "layer", "taproot", "segwit", "mempool", "utxo", "coinjoin",
+        "whirlpool", "samourai", "sparrow", "electrum", "wasabi", "mutiny",
+        "phoenix", "breez", "zeus", "umbrel", "start9", "mynode", "raspiblitz",
+        "bitkey", "coldpower", "seedsigner", "jade", "passport", "foundation",
+        "coinkite", "bull", "bear", "dca", "exchange", "kyc", "nokyc",
+    }
+    crypto_keyword_data = defaultdict(lambda: {"count": 0, "total_views": 0})
+    source_videos = recent_all if recent_all else all_videos
+    for v in source_videos:
+        title_lower = v["title"].lower()
+        words = set(re.findall(r"[a-zA-Z0-9-]+", title_lower))
+        for w in words:
+            if w in btc_terms:
+                crypto_keyword_data[w]["count"] += 1
+                crypto_keyword_data[w]["total_views"] += v["view_count"]
+        # Multi-word matches
+        for phrase in ["self custody", "self-custody", "hardware wallet", "lightning network",
+                       "full node", "cold storage", "seed phrase", "private key"]:
+            if phrase in title_lower:
+                crypto_keyword_data[phrase]["count"] += 1
+                crypto_keyword_data[phrase]["total_views"] += v["view_count"]
+
+    crypto_keywords = {
+        k: {"count": d["count"], "avg_views": d["total_views"] // d["count"]}
+        for k, d in crypto_keyword_data.items()
+        if d["count"] >= 2
+    }
+    trends["crypto_keywords"] = dict(
+        sorted(crypto_keywords.items(), key=lambda x: x[1]["avg_views"], reverse=True)[:15]
     )
 
     # --- Publish day of week analysis ---
@@ -202,6 +241,9 @@ def analyze_trends(video_data: list[dict], competitors_data: list[dict] = None) 
             "views": v["view_count"],
             "multiplier": round(v["view_count"] / own_avg_views, 1),
             "engagement": v["engagement_rate"],
+            "thumbnail_url": v.get("thumbnail_url", ""),
+            "video_id": v.get("video_id", ""),
+            "market_phase": v.get("_market_phase", "unknown"),
         }
         for v in breakouts[:10]
     ]
