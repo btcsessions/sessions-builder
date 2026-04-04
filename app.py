@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels, remix_video
 from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_score,
                     record_snapshot, compute_velocity, compute_longevity_from_snapshots,
                     get_current_market_info, get_market_summary)
@@ -889,6 +889,43 @@ def api_analyze_competitor_video():
             market_data=market_data,
         )
         return jsonify(analysis)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/remix-video", methods=["POST"])
+def api_remix_video():
+    data = request.get_json()
+    video_title = data.get("video_title", "")
+    video_source = data.get("video_source", "You")
+    source_category = data.get("source_category", "Bitcoin/Crypto")
+    analysis_summary = data.get("analysis_summary", "")
+    focus_topic = data.get("focus_topic", "")
+
+    if not video_title:
+        return jsonify({"error": "video_title is required"}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        result = remix_video(
+            video_title=video_title,
+            video_source=video_source,
+            source_category=source_category,
+            analysis_summary=analysis_summary,
+            video_data=video_cache,
+            api_key=api_key,
+            focus_topic=focus_topic,
+            market_data=market_data,
+        )
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

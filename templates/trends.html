@@ -104,7 +104,10 @@
 <div id="analysis-results" class="analysis-results trends-top-section" style="display:none">
     <div class="analysis-header">
         <h2>Video Analysis</h2>
-        <button class="btn small" id="close-analysis">Close</button>
+        <div style="display:flex;gap:0.5rem">
+            <button class="btn small secondary" id="remix-btn">Remix</button>
+            <button class="btn small" id="close-analysis">Close</button>
+        </div>
     </div>
     <div class="analysis-video-hero">
         <img id="analysis-thumb" src="" alt="" class="analysis-thumb">
@@ -138,6 +141,31 @@
             <h2>Video Ideas</h2>
             <div id="analysis-ideas" class="plan-list"></div>
         </section>
+    </div>
+</div>
+
+<!-- Remix Modal -->
+<div id="remix-modal" class="remix-overlay" style="display:none">
+    <div class="remix-modal">
+        <div class="remix-modal-header">
+            <h2>Remix Video</h2>
+            <button class="btn small" id="close-remix">&times;</button>
+        </div>
+        <div id="remix-video-context" class="remix-context"></div>
+        <div class="remix-focus-row">
+            <input type="text" id="remix-focus" class="sidebar-search remix-focus-input" placeholder="Focus on a specific topic (e.g. Coldcard, bitcoin privacy, Lightning...)">
+            <button class="btn primary" id="remix-generate">Generate Ideas</button>
+        </div>
+        <div id="remix-loading" class="plan-loading" style="display:none">
+            <p>Generating remix ideas...</p>
+        </div>
+        <div id="remix-error" class="alert error" style="display:none"></div>
+        <div id="remix-results" style="display:none">
+            <h3>Remix Ideas</h3>
+            <div id="remix-ideas" class="remix-ideas-list"></div>
+            <h3>Style Takeaways</h3>
+            <div id="remix-takeaways" class="remix-takeaways-list"></div>
+        </div>
     </div>
 </div>
 
@@ -233,7 +261,9 @@
                      data-channel-id="{{ comp.channel_id }}"
                      data-video-id="{{ v.video_id }}"
                      data-title="{{ v.title }}"
-                     data-thumb="{{ v.thumbnail_url or '' }}">
+                     data-thumb="{{ v.thumbnail_url or '' }}"
+                     data-source="{{ comp.name }}"
+                     data-category="{{ comp.category }}">
                     {% if v.thumbnail_url %}
                     <img src="{{ v.thumbnail_url }}" alt="" class="tv-thumb" loading="lazy">
                     {% endif %}
@@ -616,11 +646,20 @@ const analysisLoading = document.getElementById("analysis-loading");
 const analysisError = document.getElementById("analysis-error");
 const analysisResults = document.getElementById("analysis-results");
 
-function showAnalysis(data, title, videoId, thumbUrl) {
+// Track current analysis context for remix
+let currentAnalysis = { title: "", source: "You", category: "Bitcoin/Crypto", summary: "" };
+
+function showAnalysis(data, title, videoId, thumbUrl, source, category) {
     if (data.error) {
         analysisError.textContent = data.error;
         analysisError.style.display = "block";
     } else {
+        currentAnalysis = {
+            title: title,
+            source: source || "You",
+            category: category || "Bitcoin/Crypto",
+            summary: (data.performance_summary || "") + " " + (data.topic_analysis || ""),
+        };
         document.getElementById("analysis-video-title").textContent = title;
         document.getElementById("analysis-yt-link").href = "https://youtube.com/watch?v=" + encodeURIComponent(videoId);
         const thumbEl = document.getElementById("analysis-thumb");
@@ -657,7 +696,7 @@ document.querySelectorAll(".own-video-clickable").forEach(el => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ video_id: el.dataset.videoId }),
             });
-            showAnalysis(await resp.json(), el.dataset.videoTitle, el.dataset.videoId, el.dataset.thumb);
+            showAnalysis(await resp.json(), el.dataset.videoTitle, el.dataset.videoId, el.dataset.thumb, "You", "Bitcoin/Crypto");
         } catch (err) {
             analysisError.textContent = "Analysis failed: " + err.message;
             analysisError.style.display = "block";
@@ -678,7 +717,7 @@ document.querySelectorAll(".comp-video-clickable").forEach(el => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ channel_id: el.dataset.channelId, video_id: el.dataset.videoId }),
             });
-            showAnalysis(await resp.json(), el.dataset.title, el.dataset.videoId, el.dataset.thumb);
+            showAnalysis(await resp.json(), el.dataset.title, el.dataset.videoId, el.dataset.thumb, el.dataset.source, el.dataset.category);
         } catch (err) {
             analysisError.textContent = "Analysis failed: " + err.message;
             analysisError.style.display = "block";
@@ -690,6 +729,80 @@ document.querySelectorAll(".comp-video-clickable").forEach(el => {
 document.getElementById("close-analysis").addEventListener("click", () => {
     analysisResults.style.display = "none";
     analysisError.style.display = "none";
+});
+
+/* --- Remix modal --- */
+const remixModal = document.getElementById("remix-modal");
+const remixLoading = document.getElementById("remix-loading");
+const remixError = document.getElementById("remix-error");
+const remixResults = document.getElementById("remix-results");
+
+document.getElementById("remix-btn").addEventListener("click", () => {
+    document.getElementById("remix-video-context").textContent = `Remixing: "${currentAnalysis.title}" (${currentAnalysis.source})`;
+    document.getElementById("remix-focus").value = "";
+    remixLoading.style.display = "none";
+    remixError.style.display = "none";
+    remixResults.style.display = "none";
+    remixModal.style.display = "flex";
+});
+
+document.getElementById("close-remix").addEventListener("click", () => {
+    remixModal.style.display = "none";
+});
+
+remixModal.addEventListener("click", (e) => {
+    if (e.target === remixModal) remixModal.style.display = "none";
+});
+
+document.getElementById("remix-generate").addEventListener("click", async () => {
+    const btn = document.getElementById("remix-generate");
+    const focus = document.getElementById("remix-focus").value.trim();
+    btn.disabled = true;
+    btn.textContent = "Generating...";
+    remixLoading.style.display = "block";
+    remixError.style.display = "none";
+    remixResults.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/remix-video", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                video_title: currentAnalysis.title,
+                video_source: currentAnalysis.source,
+                source_category: currentAnalysis.category,
+                analysis_summary: currentAnalysis.summary.substring(0, 500),
+                focus_topic: focus,
+            }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            remixError.textContent = data.error;
+            remixError.style.display = "block";
+        } else {
+            const ideas = data.remix_ideas || [];
+            document.getElementById("remix-ideas").innerHTML = ideas.map(idea =>
+                `<div class="remix-idea-card">
+                    <div class="remix-idea-title">${esc(idea.title_concept)}</div>
+                    <p class="remix-idea-angle">${esc(idea.angle)}</p>
+                    <p class="remix-idea-format"><strong>Format:</strong> ${esc(idea.format_notes)}</p>
+                </div>`).join("");
+            const takeaways = data.style_takeaways || [];
+            document.getElementById("remix-takeaways").innerHTML = takeaways.map((t, i) =>
+                `<div class="plan-option"><span class="option-num">${i+1}</span> ${esc(t)}</div>`).join("");
+            remixResults.style.display = "block";
+        }
+    } catch (err) {
+        remixError.textContent = "Remix failed: " + err.message;
+        remixError.style.display = "block";
+    }
+    remixLoading.style.display = "none";
+    btn.disabled = false;
+    btn.textContent = "Generate Ideas";
+});
+
+document.getElementById("remix-focus").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("remix-generate").click();
 });
 </script>
 {% endblock %}

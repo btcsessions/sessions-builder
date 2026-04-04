@@ -1308,6 +1308,87 @@ tr:hover { background: var(--surface2); }
 .outlier-tab { padding: 0.15rem 0.5rem; font-size: 0.7rem; }
 .outlier-tab.active { border-color: var(--accent); color: var(--accent); }
 
+/* Remix Modal */
+.remix-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.remix-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+.remix-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.remix-modal-header h2 { margin: 0; }
+.remix-context {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface2);
+    border-radius: 8px;
+}
+.remix-focus-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.remix-focus-input {
+    flex: 1;
+}
+.remix-ideas-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+}
+.remix-idea-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+.remix-idea-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.05rem;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+}
+.remix-idea-angle {
+    font-size: 0.82rem;
+    color: var(--text);
+    margin: 0 0 0.3rem;
+    line-height: 1.4;
+}
+.remix-idea-format {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+}
+.remix-takeaways-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
 /* ===== WORKSPACE ===== */
 .workspace {
     display: grid;

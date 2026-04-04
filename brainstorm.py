@@ -750,3 +750,90 @@ RULES:
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
+
+
+def remix_video(
+    video_title: str,
+    video_source: str,
+    source_category: str,
+    analysis_summary: str,
+    video_data: list[dict],
+    api_key: str,
+    focus_topic: str = "",
+    market_data: dict = None,
+) -> dict:
+    """Generate remix ideas: adapt a video's format/style for the creator's bitcoin channel."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    creator_top = "\n".join(
+        f"  - \"{v['title'][:55]}\" — {v['view_count']:,} views"
+        for v in video_data[:12]
+    )
+
+    market_section = _build_market_section(market_data)
+
+    is_crypto = source_category in ("Bitcoin/Crypto", "Freedom Tech")
+
+    if is_crypto:
+        remix_angle = """This is a crypto/bitcoin video. The creator wants to DOUBLE DOWN on this format:
+- Suggest ways to apply the same format, style, or angle to different bitcoin topics, devices, apps, or concepts
+- Think about what made this video work and how to replicate that success with fresh subject matter
+- Consider: different hardware wallets, different apps, different privacy tools, different network concepts, different use cases"""
+    else:
+        remix_angle = """This is a general tech video (not crypto). The creator wants to ADAPT this style for bitcoin:
+- Identify what makes this video's format, structure, or presentation compelling
+- Suggest how to apply that exact style/trend to bitcoin, freedom tech, privacy, or self-custody topics
+- Think about: the pacing, the hook, the thumbnail approach, the narrative structure, the editing style
+- Make the bitcoin version feel native to that format, not forced"""
+
+    focus_section = ""
+    if focus_topic:
+        focus_section = f"""
+**FOCUS TOPIC:** The creator specifically wants to apply this to: {focus_topic}
+Make sure at least 2-3 suggestions directly involve "{focus_topic}" as the subject matter."""
+
+    system = f"""You are a YouTube content strategist for a bitcoin/freedom tech creator (BTC Sessions).
+
+**Creator's Top Videos:**
+{creator_top}
+
+**Video Being Remixed:** "{video_title}"
+**Source:** {video_source} ({source_category})
+**Analysis Context:** {analysis_summary}
+{market_section}
+{remix_angle}
+{focus_section}
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "remix_ideas": [
+    {{
+      "title_concept": "A working title for the remix video",
+      "angle": "1-2 sentences on the specific angle and why it works",
+      "format_notes": "How to adapt the original's format/style"
+    }}
+  ],
+  "style_takeaways": [
+    "Specific production/style element to borrow (thumbnail approach, pacing, hook style, etc.)"
+  ]
+}}
+
+RULES:
+- Generate 4-5 remix ideas, each with a concrete title concept
+- Generate 3-4 style takeaways
+- Every suggestion must be actionable and specific to bitcoin/freedom tech
+- Title concepts should be real titles the creator could use, not placeholders
+- If a focus topic is given, prioritize it heavily
+- Consider current market conditions when suggesting topics"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[{"role": "user", "content": f"Remix this video for my bitcoin channel: \"{video_title}\""}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
