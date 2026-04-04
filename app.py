@@ -266,6 +266,9 @@ def trends_page():
             pass
 
     year_avg_views = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
+    year_avg_likes = sum(v.get("like_count", 0) for v in year_videos) // len(year_videos) if year_videos else 0
+    year_avg_engagement = round(sum(v["engagement_rate"] for v in year_videos) / len(year_videos), 2) if year_videos else 0
+    year_total_views = sum(v["view_count"] for v in year_videos)
 
     # Sort own videos by publish date (most recent first), add score
     dated_videos = []
@@ -319,6 +322,10 @@ def trends_page():
                            total_views=total_views,
                            avg_engagement=avg_engagement,
                            year_avg_views=year_avg_views,
+                           year_avg_likes=year_avg_likes,
+                           year_avg_engagement=year_avg_engagement,
+                           year_total_views=year_total_views,
+                           year_video_count=len(year_videos),
                            competitors=scored_competitors)
 
 

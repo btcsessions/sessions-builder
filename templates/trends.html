@@ -112,7 +112,28 @@
                 <h2>My Videos</h2>
                 <input type="text" id="video-search" class="sidebar-search" placeholder="Filter..." style="max-width:160px">
             </div>
-            <p class="trend-subtitle">Most recent first &middot; scored against past year avg ({{ "{:,}".format(year_avg_views) }} views)</p>
+            <div class="year-stats-bar">
+                <div class="year-stat">
+                    <span class="year-stat-value">{{ year_video_count }}</span>
+                    <span class="year-stat-label">Videos (1yr)</span>
+                </div>
+                <div class="year-stat">
+                    <span class="year-stat-value">{{ "{:,}".format(year_avg_views) }}</span>
+                    <span class="year-stat-label">Avg Views</span>
+                </div>
+                <div class="year-stat">
+                    <span class="year-stat-value">{{ "{:,}".format(year_avg_likes) }}</span>
+                    <span class="year-stat-label">Avg Likes</span>
+                </div>
+                <div class="year-stat">
+                    <span class="year-stat-value">{{ year_avg_engagement }}%</span>
+                    <span class="year-stat-label">Avg Engagement</span>
+                </div>
+                <div class="year-stat">
+                    <span class="year-stat-value">{{ "{:,}".format(year_total_views) }}</span>
+                    <span class="year-stat-label">Total Views</span>
+                </div>
+            </div>
             <div class="video-scroll-list" id="video-list">
                 {% for video in videos %}
                 <div class="trend-video-item own-video-clickable"
