@@ -77,19 +77,31 @@
         </div>
 
         <form id="plan-form" class="ws-plan-form">
-            <div class="plan-form-row">
-                <div class="form-group compact">
-                    <label for="video-type">Type</label>
-                    <select id="video-type">
-                        <option value="tutorial">Tutorial</option>
-                        <option value="first impressions">First Impressions</option>
-                        <option value="listicle">Listicle</option>
-                    </select>
+            <div class="form-group compact">
+                <label>Format</label>
+                <div class="radio-group-inline">
+                    <label class="radio-pill">
+                        <input type="radio" name="video-type" value="tutorial" checked>
+                        <span>Tutorial</span>
+                    </label>
+                    <label class="radio-pill">
+                        <input type="radio" name="video-type" value="comparison">
+                        <span>Comparison</span>
+                    </label>
+                    <label class="radio-pill">
+                        <input type="radio" name="video-type" value="list">
+                        <span>List</span>
+                    </label>
+                    <label class="radio-pill">
+                        <input type="radio" name="video-type" value="integrated setup">
+                        <span>Integrated Setup</span>
+                    </label>
                 </div>
-                <div class="form-group compact grow">
-                    <label for="video-topic">Topic</label>
-                    <input type="text" id="video-topic" placeholder="e.g. Setting up a Bitcoin full node on a Raspberry Pi" required autocomplete="off">
-                </div>
+            </div>
+
+            <div class="form-group compact">
+                <label for="video-topic">Topic</label>
+                <input type="text" id="video-topic" placeholder="e.g. Setting up a Bitcoin full node on a Raspberry Pi" required autocomplete="off">
             </div>
 
             <div class="plan-form-row">
@@ -271,7 +283,7 @@ document.addEventListener("click", (e) => {
 
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const videoType = document.getElementById("video-type").value;
+    const videoType = document.querySelector('input[name="video-type"]:checked').value;
     const topic = document.getElementById("video-topic").value.trim();
     if (!topic) return;
 

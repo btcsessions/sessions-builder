@@ -327,6 +327,35 @@ tr:hover { background: var(--surface2); }
 .radio-card-title { font-weight: 700; font-size: 0.95rem; }
 .radio-card-desc { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Inline radio pills (compact, for workspace) */
+.radio-group-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.radio-pill {
+    cursor: pointer;
+    display: inline-block;
+}
+.radio-pill input[type="radio"] { display: none; }
+.radio-pill span {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface2);
+    transition: all 0.15s;
+}
+.radio-pill:hover span { border-color: #555; color: var(--text); }
+.radio-pill input:checked + span {
+    border-color: var(--accent);
+    background: rgba(255, 68, 68, 0.12);
+    color: #fff;
+}
+
 /* Category tagging */
 .category-video-list {
     max-height: 60vh;
