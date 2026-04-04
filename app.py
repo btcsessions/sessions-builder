@@ -23,6 +23,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 COMPETITORS_FILE = os.path.join(DATA_DIR, "competitors.json")
+CATEGORIES_FILE = os.path.join(DATA_DIR, "video_categories.json")
 
 # In-memory store
 video_cache = []
@@ -99,6 +100,19 @@ def load_competitors() -> list:
     return []
 
 
+def save_categories(data: dict):
+    _ensure_data_dir()
+    with open(CATEGORIES_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def load_categories() -> dict:
+    if os.path.exists(CATEGORIES_FILE):
+        with open(CATEGORIES_FILE) as f:
+            return json.load(f)
+    return {}
+
+
 # Load persisted data on startup
 _saved = load_settings()
 playlist_info = {
@@ -108,6 +122,7 @@ playlist_info = {
 video_cache = load_video_cache()
 analytics_cache = load_analytics()
 competitors_cache = load_competitors()
+video_categories = load_categories()
 
 # Auto-refresh competitors on startup
 _google_key = _saved.get("google_key", "")
@@ -387,7 +402,35 @@ def trends_page():
 
 @app.route("/planner")
 def planner():
-    return render_template("planner.html")
+    # Attach categories to videos
+    tagged_videos = []
+    for v in video_cache:
+        vc = dict(v)
+        vc["_category"] = video_categories.get(v["video_id"], "")
+        tagged_videos.append(vc)
+
+    # Compute format performance stats
+    format_stats = {}
+    uncategorized_count = 0
+    for v in tagged_videos:
+        cat = v["_category"]
+        if not cat:
+            uncategorized_count += 1
+            continue
+        if cat not in format_stats:
+            format_stats[cat] = {"count": 0, "views": 0, "engagement": 0}
+        format_stats[cat]["count"] += 1
+        format_stats[cat]["views"] += v["view_count"]
+        format_stats[cat]["engagement"] += v.get("engagement_rate", 0)
+
+    for cat, stats in format_stats.items():
+        stats["avg_views"] = stats["views"] // stats["count"] if stats["count"] else 0
+        stats["avg_engagement"] = round(stats["engagement"] / stats["count"], 2) if stats["count"] else 0
+
+    return render_template("planner.html",
+                           videos=tagged_videos,
+                           format_stats=format_stats,
+                           uncategorized_count=uncategorized_count)
 
 
 @app.route("/api/generate-plan", methods=["POST"])
@@ -696,6 +739,25 @@ def update_app():
         return jsonify({"updated": True, "message": output})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/video-category", methods=["POST"])
+def api_video_category():
+    global video_categories
+    data = request.get_json()
+    video_id = data.get("video_id", "")
+    category = data.get("category", "")
+
+    if not video_id:
+        return jsonify({"error": "video_id is required"}), 400
+
+    if category:
+        video_categories[video_id] = category
+    else:
+        video_categories.pop(video_id, None)
+
+    save_categories(video_categories)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/clear-chat", methods=["POST"])

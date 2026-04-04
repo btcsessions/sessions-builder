@@ -4,15 +4,40 @@
 {% block content %}
 <div class="planner-input">
     <h1>Plan a Video</h1>
-    <p>Fill in the details and AI will generate a full production plan.</p>
+    <p>Choose a format and topic, then AI will generate a full production plan.</p>
     <form id="plan-form" class="plan-form">
         <div class="form-group">
-            <label for="video-type">Type of Video</label>
-            <select id="video-type">
-                <option value="tutorial">Tutorial</option>
-                <option value="first impressions">First Impressions</option>
-                <option value="listicle">Listicle</option>
-            </select>
+            <label>Video Format</label>
+            <div class="radio-group">
+                <label class="radio-card">
+                    <input type="radio" name="video-type" value="tutorial" checked>
+                    <div class="radio-card-body">
+                        <span class="radio-card-title">Tutorial</span>
+                        <span class="radio-card-desc">Step-by-step walkthrough or how-to</span>
+                    </div>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="video-type" value="comparison">
+                    <div class="radio-card-body">
+                        <span class="radio-card-title">Comparison</span>
+                        <span class="radio-card-desc">Head-to-head or vs. style breakdown</span>
+                    </div>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="video-type" value="list">
+                    <div class="radio-card-body">
+                        <span class="radio-card-title">List</span>
+                        <span class="radio-card-desc">Ranked or numbered roundup (e.g. "Top 5...")</span>
+                    </div>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="video-type" value="integrated setup">
+                    <div class="radio-card-body">
+                        <span class="radio-card-title">Integrated Setup</span>
+                        <span class="radio-card-desc">Full personal workflow or setup showcase</span>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="form-group">
@@ -88,6 +113,52 @@
     </section>
 
 </div>
+
+<!-- Categorize Videos -->
+<div class="planner-input" style="margin-top:2rem">
+    <h2>Categorize Your Videos</h2>
+    <p>Tag your videos by format to track how each type performs.</p>
+
+    {% if format_stats %}
+    <div class="format-stats-bar">
+        {% for fmt, stats in format_stats.items() %}
+        <div class="format-stat">
+            <span class="format-stat-label">{{ fmt|title }}</span>
+            <span class="format-stat-value">{{ stats.count }} videos</span>
+            <span class="format-stat-meta">{{ "{:,}".format(stats.avg_views) }} avg views &middot; {{ stats.avg_engagement }}% eng</span>
+        </div>
+        {% endfor %}
+        {% if uncategorized_count > 0 %}
+        <div class="format-stat format-stat-uncategorized">
+            <span class="format-stat-label">Uncategorized</span>
+            <span class="format-stat-value">{{ uncategorized_count }} videos</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="category-video-list">
+        {% for video in videos %}
+        <div class="category-video-row">
+            {% if video.thumbnail_url %}
+            <img src="{{ video.thumbnail_url }}" alt="" class="cv-thumb" loading="lazy">
+            {% endif %}
+            <div class="cv-info">
+                <span class="cv-title">{{ video.title[:65] }}</span>
+                <span class="cv-stats">{{ "{:,}".format(video.view_count) }} views &middot; {{ video.engagement_rate }}%</span>
+            </div>
+            <select class="cv-category" data-video-id="{{ video.video_id }}">
+                <option value="">--</option>
+                <option value="tutorial" {% if video._category == 'tutorial' %}selected{% endif %}>Tutorial</option>
+                <option value="comparison" {% if video._category == 'comparison' %}selected{% endif %}>Comparison</option>
+                <option value="list" {% if video._category == 'list' %}selected{% endif %}>List</option>
+                <option value="integrated setup" {% if video._category == 'integrated setup' %}selected{% endif %}>Integrated Setup</option>
+            </select>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -120,7 +191,7 @@ document.addEventListener("click", (e) => {
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const videoType = document.getElementById("video-type").value;
+    const videoType = document.querySelector('input[name="video-type"]:checked').value;
     const topic = document.getElementById("video-topic").value.trim();
     if (!topic) return;
 
@@ -193,5 +264,28 @@ function esc(text) {
     d.textContent = text;
     return d.innerHTML;
 }
+
+/* --- Category tagging --- */
+document.querySelectorAll(".cv-category").forEach(sel => {
+    sel.addEventListener("change", async () => {
+        const videoId = sel.dataset.videoId;
+        const category = sel.value;
+        sel.classList.remove("cv-saved", "cv-error");
+        try {
+            const resp = await fetch("/api/video-category", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ video_id: videoId, category }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                sel.classList.add("cv-saved");
+                setTimeout(() => sel.classList.remove("cv-saved"), 1500);
+            }
+        } catch (err) {
+            sel.classList.add("cv-error");
+        }
+    });
+});
 </script>
 {% endblock %}
