@@ -400,16 +400,66 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
 
 
 def _build_title_history_section(title_history: list = None) -> str:
-    """Build a prompt section from saved title preferences."""
+    """Build a prompt section split into style preferences and proven performers."""
     if not title_history:
         return ""
-    recent = title_history[-30:]  # Last 30 saved titles
-    lines = ["\n**CREATOR'S SAVED TITLE PREFERENCES (titles they liked and saved):**"]
-    for entry in recent:
-        used_marker = " [USED]" if entry.get("used") else ""
-        lines.append(f"  - \"{entry['title']}\" (topic: {entry.get('topic', '?')}, format: {entry.get('format', '?')}, score: {entry.get('score', '?')}){used_marker}")
+
+    from datetime import datetime, timedelta
+    now = datetime.now()
+
+    # Split into two categories
+    style_prefs = []     # saved but not used, or used without performance data
+    proven = []          # used with real performance data
+
+    for entry in title_history:
+        try:
+            saved_date = datetime.fromisoformat(entry.get("saved_at", "2020-01-01"))
+        except (ValueError, TypeError):
+            saved_date = now - timedelta(days=365)
+        days_ago = (now - saved_date).days
+        recency_weight = 2 ** (-days_ago / 90)
+
+        if entry.get("used") and entry.get("perf_ratio"):
+            perf_weight = min(3.0, max(0.3, entry["perf_ratio"]))
+            proven.append((entry, recency_weight * perf_weight))
+        else:
+            style_prefs.append((entry, recency_weight))
+
+    lines = []
+
+    # Style preferences — sorted by recency weight, top 15
+    if style_prefs:
+        style_prefs.sort(key=lambda x: x[1], reverse=True)
+        lines.append("\n**STYLE PREFERENCES (titles the creator liked — weighted by recency):**")
+        for entry, weight in style_prefs[:15]:
+            freshness = "fresh" if weight > 0.7 else ("recent" if weight > 0.3 else "older")
+            lines.append(f"  - \"{entry['title']}\" (topic: {entry.get('topic', '?')}, format: {entry.get('format', '?')}) [{freshness}]")
+        lines.append("These reflect the creator's current style preferences. Prioritize patterns from 'fresh' titles over 'older' ones — trends and tastes evolve.")
+
+    # Proven performers — sorted by combined weight, top 15
+    if proven:
+        proven.sort(key=lambda x: x[1], reverse=True)
+        lines.append("\n**PROVEN PERFORMERS (titles that were used and have real performance data):**")
+        for entry, weight in proven[:15]:
+            perf = entry.get("perf_ratio", 0)
+            views = entry.get("actual_views", 0)
+            phase = entry.get("market_phase", "unknown")
+            if perf >= 2:
+                perf_label = f"BREAKOUT {perf}x avg"
+            elif perf >= 1.2:
+                perf_label = f"STRONG {perf}x avg"
+            elif perf <= 0.5:
+                perf_label = f"UNDERPERFORMED {perf}x avg"
+            else:
+                perf_label = f"AVERAGE {perf}x avg"
+            lines.append(f"  - \"{entry['title']}\" — {views:,} views, {perf_label}, published during {phase} market")
+        lines.append("These titles have real-world performance data. Heavily favor patterns from BREAKOUT and STRONG titles. Note market phase — a 'strong' bear-market title may indicate evergreen appeal.")
+
+    if not lines:
+        return ""
+
     lines.append("")
-    lines.append("Study these saved titles carefully. They represent the creator's preferred style, word choices, and structure. New title suggestions should reflect similar patterns while remaining fresh and unique.")
+    lines.append("IMPORTANT: Balance proven patterns with freshness. Don't just copy old titles — evolve the style. If a proven title used 'Complete Guide To X' and hit 2x, consider that structure but with current topics.")
     return "\n".join(lines)
 
 

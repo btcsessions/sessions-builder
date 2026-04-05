@@ -676,21 +676,49 @@ def api_generate_plan():
 def _build_scoring_context() -> dict:
     """Build title scoring context from real channel + competitor data."""
     from trends import analyze_trends
+    from datetime import datetime, timedelta
     try:
         trends = analyze_trends(video_cache, competitors_cache)
     except Exception:
         trends = {}
 
-    # Extract learned keywords from saved title history
+    now = datetime.now()
+    stop_words = {"the", "a", "an", "i", "my", "is", "it", "in", "to", "for", "of", "and",
+                  "on", "with", "this", "that", "you", "your", "but", "not", "are", "was",
+                  "be", "or", "at", "by", "we", "from", "so", "if", "do", "no", "just",
+                  "its", "me", "has", "have", "had", "can", "will", "one", "all", "get",
+                  "new", "been", "than", "up", "out", "about", "how", "what", "when", "why"}
+
+    # Extract learned keywords with recency decay + performance weighting
     learned_keywords = {}
     for entry in title_history:
+        # Recency decay: half-life of 90 days
+        try:
+            saved_date = datetime.fromisoformat(entry.get("saved_at", "2020-01-01"))
+        except (ValueError, TypeError):
+            saved_date = now - timedelta(days=365)
+        days_ago = (now - saved_date).days
+        recency_weight = 2 ** (-days_ago / 90)  # 1.0 today, 0.5 at 90 days, 0.25 at 180
+
+        # Performance weight: if used and has real data, boost/penalize
+        perf_weight = 1.0
+        if entry.get("used") and entry.get("perf_ratio"):
+            perf_weight = min(3.0, max(0.3, entry["perf_ratio"]))
+
+        combined_weight = recency_weight * perf_weight
+
         words = entry["title"].lower().split()
         for w in words:
             w = w.strip("()[].,!?:;\"'")
-            if len(w) > 2:
-                learned_keywords[w] = learned_keywords.get(w, 0) + 1
-    # Only keep words that appear in 2+ saved titles
-    learned_keywords = {k: v for k, v in learned_keywords.items() if v >= 2}
+            if len(w) > 2 and w not in stop_words:
+                learned_keywords[w] = learned_keywords.get(w, 0) + combined_weight
+
+    # Only keep words with meaningful weight (roughly 2+ recent titles)
+    learned_keywords = {
+        k: round(v, 2)
+        for k, v in learned_keywords.items()
+        if v >= 1.0
+    }
 
     return {
         "hot_keywords": trends.get("hot_keywords", {}),
@@ -783,10 +811,46 @@ def api_mark_title_used():
     idx = data.get("index")
     if idx is None or idx < 0 or idx >= len(title_history):
         return jsonify({"error": "Invalid index"}), 400
+
+    from datetime import datetime
+
     title_history[idx]["used"] = True
+    title_history[idx]["used_at"] = datetime.now().isoformat()[:10]
     title_history[idx]["video_url"] = data.get("video_url", "")
+
+    # Auto-match to actual video performance from playlist
+    saved_title = title_history[idx]["title"].lower().strip()
+    best_match = None
+    best_ratio = 0
+    for v in video_cache:
+        vt = v["title"].lower().strip()
+        # Check for close match (exact or high overlap)
+        if vt == saved_title:
+            best_match = v
+            break
+        # Fuzzy: count shared words
+        saved_words = set(saved_title.split())
+        vid_words = set(vt.split())
+        if not saved_words:
+            continue
+        overlap = len(saved_words & vid_words) / max(len(saved_words), len(vid_words))
+        if overlap > best_ratio and overlap >= 0.6:
+            best_ratio = overlap
+            best_match = v
+
+    if best_match:
+        avg_views = sum(v["view_count"] for v in video_cache) // len(video_cache) if video_cache else 1
+        perf_ratio = round(best_match["view_count"] / avg_views, 2) if avg_views else 0
+        title_history[idx]["video_id"] = best_match["video_id"]
+        title_history[idx]["actual_views"] = best_match["view_count"]
+        title_history[idx]["perf_ratio"] = perf_ratio
+        title_history[idx]["engagement_rate"] = best_match.get("engagement_rate", 0)
+        # Tag market phase
+        tagged = tag_video_market_phase(dict(best_match), _btc_prices)
+        title_history[idx]["market_phase"] = tagged.get("_market_phase", "unknown")
+
     save_title_history(title_history)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "matched": best_match is not None})
 
 
 @app.route("/api/plan-context", methods=["POST"])

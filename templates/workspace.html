@@ -488,16 +488,17 @@ function scoreTitle(title) {
     // 6. Brackets/parentheses (thumbnail + title CTR pattern)
     if (/[\[\(]/.test(title)) { score += 3; breakdown.push("+3 brackets/parentheses"); }
 
-    // 7. Learned keywords from saved title preferences
+    // 7. Learned keywords from saved title preferences (recency + performance weighted)
     const learned = scoringCtx.learned_keywords || {};
     let learnedHits = 0;
-    for (const [kw, freq] of Object.entries(learned)) {
+    for (const [kw, weight] of Object.entries(learned)) {
         if (lower.includes(kw)) {
             learnedHits++;
             if (learnedHits <= 3) {
-                const bonus = Math.min(5, freq * 2);
+                const bonus = Math.min(6, Math.round(weight * 3));
                 score += bonus;
-                breakdown.push("+" + bonus + ' preferred word "' + kw + '" (used in ' + freq + " saved titles)");
+                const label = weight >= 2 ? "proven" : (weight >= 1 ? "preferred" : "emerging");
+                breakdown.push("+" + bonus + ' ' + label + ' word "' + kw + '" (weight: ' + weight + ")");
             }
         }
     }
@@ -778,22 +779,29 @@ async function refreshSavedTitles() {
         section.style.display = "";
         count.textContent = titles.length;
 
-        list.innerHTML = titles.map((t, i) =>
-            `<div class="saved-title-item ${t.used ? 'used' : ''}">
+        list.innerHTML = titles.map((t, i) => {
+            let perfHtml = '';
+            if (t.used && t.perf_ratio) {
+                const cls = t.perf_ratio >= 2 ? 'perf-breakout' : (t.perf_ratio >= 1.2 ? 'perf-strong' : (t.perf_ratio <= 0.5 ? 'perf-under' : 'perf-avg'));
+                perfHtml = `<span class="saved-title-perf ${cls}">${t.perf_ratio}x avg · ${(t.actual_views || 0).toLocaleString()} views</span>`;
+                if (t.market_phase) perfHtml += `<span class="saved-title-phase">${t.market_phase}</span>`;
+            }
+            return `<div class="saved-title-item ${t.used ? (t.perf_ratio >= 1.2 ? 'proven' : 'used') : ''}">
                 <div class="saved-title-text">${esc(t.title)}</div>
                 <div class="saved-title-meta">
                     ${t.topic ? '<span>' + esc(t.topic) + '</span>' : ''}
                     ${t.format ? '<span>' + esc(t.format) + '</span>' : ''}
                     <span>Score: ${t.score}</span>
                     <span>${t.saved_at}</span>
-                    ${t.used ? '<span class="used-badge">Used</span>' : ''}
+                    ${t.used && !t.perf_ratio ? '<span class="used-badge">Used</span>' : ''}
+                    ${perfHtml}
                 </div>
                 <div class="saved-title-actions">
                     ${!t.used ? '<button class="btn small mark-used-btn" data-idx="' + i + '">Mark Used</button>' : ''}
                     <button class="btn small delete-title-btn" data-idx="${i}">Remove</button>
                 </div>
-            </div>`
-        ).reverse().join("");
+            </div>`;
+        }).reverse().join("");
 
         // Wire delete buttons
         list.querySelectorAll(".delete-title-btn").forEach(btn => {
