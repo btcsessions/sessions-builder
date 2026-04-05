@@ -136,13 +136,15 @@ def pull_from_gist() -> bool:
         if content.strip() == local_content.strip():
             continue
 
-        # For settings.json, preserve local sync credentials (they are machine-specific)
+        # For settings.json, preserve local secrets (they're stripped from the Gist)
         if filename == "settings.json":
             try:
                 local_settings = json.loads(local_content) if local_content.strip() else {}
                 gist_settings = json.loads(content)
-                # Keep local sync credentials — the Gist may have stale ones
-                for key in ("sync_gist_id", "sync_github_token"):
+                # Restore local secrets — these are never in the Gist
+                for key in ("sync_gist_id", "sync_github_token",
+                            "google_key", "anthropic_key",
+                            "oauth_client_id", "oauth_client_secret"):
                     if key in local_settings:
                         gist_settings[key] = local_settings[key]
                 content = json.dumps(gist_settings)
@@ -178,13 +180,16 @@ def push_to_gist() -> bool:
                     content = f.read()
                 if not content.strip():
                     continue
-                # Strip sync credentials from settings.json before pushing —
-                # GitHub secret scanning revokes tokens found in Gist content
+                # Strip ALL secrets from settings.json before pushing —
+                # GitHub secret scanning detects API keys in Gist content
+                # and notifies providers, who may revoke them
                 if filename == "settings.json":
                     try:
                         settings_data = json.loads(content)
-                        settings_data.pop("sync_github_token", None)
-                        settings_data.pop("sync_gist_id", None)
+                        for secret_key in ("sync_github_token", "sync_gist_id",
+                                           "google_key", "anthropic_key",
+                                           "oauth_client_id", "oauth_client_secret"):
+                            settings_data.pop(secret_key, None)
                         content = json.dumps(settings_data)
                     except (json.JSONDecodeError, ValueError):
                         pass
