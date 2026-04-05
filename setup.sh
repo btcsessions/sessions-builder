@@ -128,5 +128,10 @@ echo ""
 echo "  Starting app..."
 echo "  Open http://localhost:5000 in your browser"
 echo ""
+echo "  TIP: If you use fish shell, launch with:"
+echo "    fish launch.fish"
+echo "  Or from any shell:"
+echo "    bash launch.sh"
+echo ""
 
 "$PYTHON" app.py
