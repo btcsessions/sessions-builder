@@ -1141,7 +1141,7 @@ def api_export_data():
     ]
     # Also include market and snapshot data
     market_dir = os.path.join(DATA_DIR)
-    for name in ["btc_prices.json", "snapshots.json", "trend_intel.json", "oauth_token.json"]:
+    for name in ["btc_prices.json", "snapshots.json", "trend_intel.json", "oauth_token.json", "nostr_history.json"]:
         path = os.path.join(market_dir, name)
         if os.path.exists(path):
             data_files.append(path)
@@ -1179,6 +1179,7 @@ def api_import_data():
                 "competitors.json", "video_categories.json",
                 "btc_prices.json", "snapshots.json", "trend_intel.json",
                 "oauth_token.json",
+                "nostr_history.json",
             }
             for name in zf.namelist():
                 if name in allowed:

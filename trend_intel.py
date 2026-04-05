@@ -26,6 +26,7 @@ from urllib.error import URLError
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 INTEL_CACHE_FILE = os.path.join(DATA_DIR, "trend_intel.json")
+NOSTR_HISTORY_FILE = os.path.join(DATA_DIR, "nostr_history.json")
 INTEL_CACHE_TTL = 4 * 3600  # 4 hours
 
 
@@ -251,6 +252,101 @@ def _fetch_nostr_trending_profiles() -> list[dict]:
     return profiles
 
 
+# --- Nostr 28-Day Rolling History ---
+
+def _load_nostr_history() -> dict:
+    """Load the rolling nostr trend history."""
+    if os.path.exists(NOSTR_HISTORY_FILE):
+        try:
+            with open(NOSTR_HISTORY_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {"days": {}}
+
+
+def _save_nostr_history(history: dict):
+    """Save nostr trend history."""
+    _ensure_data_dir()
+    try:
+        with open(NOSTR_HISTORY_FILE, "w") as f:
+            json.dump(history, f)
+    except IOError as e:
+        print(f"[TrendIntel] Nostr history save failed: {e}")
+
+
+def record_nostr_snapshot(hashtags: list[str], notes: list[dict], profiles: list[dict]):
+    """Record today's nostr trending data into the rolling 28-day history."""
+    history = _load_nostr_history()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Don't overwrite if we already have today's snapshot
+    if today in history["days"]:
+        return history
+
+    history["days"][today] = {
+        "hashtags": hashtags[:15],
+        "note_topics": [n.get("content", "")[:150] for n in notes[:10]],
+        "profiles": [p.get("name", "") for p in profiles[:8]],
+    }
+
+    # Prune entries older than 28 days
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=28)).strftime("%Y-%m-%d")
+    history["days"] = {d: v for d, v in history["days"].items() if d >= cutoff}
+
+    _save_nostr_history(history)
+    print(f"[TrendIntel] Nostr snapshot recorded for {today} ({len(history['days'])} days in history)")
+    return history
+
+
+def analyze_nostr_history() -> dict:
+    """Analyze 28-day nostr history to find persistent trends and recurring topics."""
+    history = _load_nostr_history()
+    days = history.get("days", {})
+
+    if not days:
+        return {}
+
+    # Count hashtag frequency across days
+    hashtag_counts = {}
+    for day_data in days.values():
+        for tag in day_data.get("hashtags", []):
+            tag_lower = tag.lower()
+            hashtag_counts[tag_lower] = hashtag_counts.get(tag_lower, 0) + 1
+
+    # Sort by frequency (topics that trend repeatedly are more significant)
+    recurring_hashtags = sorted(hashtag_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Count profile mentions across days
+    profile_counts = {}
+    for day_data in days.values():
+        for name in day_data.get("profiles", []):
+            if name:
+                profile_counts[name] = profile_counts.get(name, 0) + 1
+
+    recurring_profiles = sorted(profile_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Collect all note snippets for topic extraction
+    all_notes = []
+    for date_str in sorted(days.keys(), reverse=True):
+        for note in days[date_str].get("note_topics", []):
+            if note:
+                all_notes.append(note)
+
+    return {
+        "days_tracked": len(days),
+        "recurring_hashtags": [
+            {"tag": tag, "days_seen": count}
+            for tag, count in recurring_hashtags[:20]
+        ],
+        "recurring_profiles": [
+            {"name": name, "days_seen": count}
+            for name, count in recurring_profiles[:10]
+        ],
+        "recent_discussions": all_notes[:15],
+    }
+
+
 # --- Stacker News (Bitcoin community) ---
 
 def _fetch_stacker_news_top() -> list[dict]:
@@ -411,9 +507,16 @@ def gather_trend_intel() -> dict:
     intel["bitcoin_network"]["difficulty"] = _fetch_bitcoin_difficulty()
 
     # --- Nostr / freedom tech ---
-    intel["nostr"]["trending_hashtags"] = _fetch_nostr_trending_hashtags()
-    intel["nostr"]["trending_notes"] = _fetch_nostr_trending_notes()
-    intel["nostr"]["trending_profiles"] = _fetch_nostr_trending_profiles()
+    nostr_hashtags = _fetch_nostr_trending_hashtags()
+    nostr_notes = _fetch_nostr_trending_notes()
+    nostr_profiles = _fetch_nostr_trending_profiles()
+    intel["nostr"]["trending_hashtags"] = nostr_hashtags
+    intel["nostr"]["trending_notes"] = nostr_notes
+    intel["nostr"]["trending_profiles"] = nostr_profiles
+
+    # Record daily snapshot and analyze 28-day rolling history
+    record_nostr_snapshot(nostr_hashtags, nostr_notes, nostr_profiles)
+    intel["nostr"]["history_28d"] = analyze_nostr_history()
 
     # --- Stacker News ---
     intel["stacker_news"]["top_posts"] = _fetch_stacker_news_top()
@@ -525,6 +628,35 @@ def intel_to_prompt_context(intel: dict) -> str:
     if nostr_profiles:
         names = [p["name"] for p in nostr_profiles[:6]]
         lines.append(f"\nNostr Trending Profiles: {', '.join(names)}")
+
+    # Nostr 28-day rolling trends
+    nostr_history = nostr.get("history_28d", {})
+    if nostr_history.get("days_tracked", 0) > 1:
+        days_tracked = nostr_history["days_tracked"]
+        lines.append(f"\nNostr 28-Day Trend Analysis ({days_tracked} days tracked):")
+
+        recurring = nostr_history.get("recurring_hashtags", [])
+        if recurring:
+            # Show tags that appeared on multiple days — these are persistent trends
+            persistent = [f"#{h['tag']} ({h['days_seen']}d)" for h in recurring if h["days_seen"] > 1]
+            if persistent:
+                lines.append(f"Persistent topics (appeared multiple days): {', '.join(persistent[:12])}")
+            # Also show recent one-offs that might be emerging
+            emerging = [f"#{h['tag']}" for h in recurring if h["days_seen"] == 1][:8]
+            if emerging:
+                lines.append(f"Emerging/new topics (last seen once): {', '.join(emerging)}")
+
+        recurring_profiles = nostr_history.get("recurring_profiles", [])
+        if recurring_profiles:
+            frequent = [f"{p['name']} ({p['days_seen']}d)" for p in recurring_profiles if p["days_seen"] > 1][:8]
+            if frequent:
+                lines.append(f"Consistently trending voices: {', '.join(frequent)}")
+
+        recent_notes = nostr_history.get("recent_discussions", [])
+        if recent_notes:
+            lines.append(f"Recent community discussions (last 28 days):")
+            for note in recent_notes[:6]:
+                lines.append(f"- \"{note[:120]}\"")
 
     # --- Stacker News ---
     sn = intel.get("stacker_news", {}).get("top_posts", [])

@@ -22,6 +22,7 @@ SYNC_FILES = [
     "btc_prices.json",
     "snapshots.json",
     "oauth_token.json",
+    "nostr_history.json",
 ]
 
 # Don't sync trend_intel.json — it's a cache that auto-refreshes
