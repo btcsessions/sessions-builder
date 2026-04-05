@@ -135,6 +135,9 @@ if [ "$PLATFORM" = "Linux" ]; then
     fi
 fi
 
+# Kill any existing instance on port 5000
+lsof -ti:5000 2>/dev/null | xargs kill 2>/dev/null
+
 # Launch
 echo ""
 echo "  Starting app..."
