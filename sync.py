@@ -136,15 +136,13 @@ def pull_from_gist() -> bool:
         if content.strip() == local_content.strip():
             continue
 
-        # For settings.json, preserve local secrets (they're stripped from the Gist)
+        # For settings.json, preserve local sync credentials (they're stripped from the Gist)
         if filename == "settings.json":
             try:
                 local_settings = json.loads(local_content) if local_content.strip() else {}
                 gist_settings = json.loads(content)
-                # Restore local secrets — these are never in the Gist
-                for key in ("sync_gist_id", "sync_github_token",
-                            "google_key", "anthropic_key",
-                            "oauth_client_id", "oauth_client_secret"):
+                # Restore local sync credentials — these are never in the Gist
+                for key in ("sync_gist_id", "sync_github_token"):
                     if key in local_settings:
                         gist_settings[key] = local_settings[key]
                 content = json.dumps(gist_settings)
@@ -180,16 +178,13 @@ def push_to_gist() -> bool:
                     content = f.read()
                 if not content.strip():
                     continue
-                # Strip ALL secrets from settings.json before pushing —
-                # GitHub secret scanning detects API keys in Gist content
-                # and notifies providers, who may revoke them
+                # Strip sync credentials from settings.json before pushing —
+                # GitHub secret scanning revokes GitHub tokens found in Gist content
                 if filename == "settings.json":
                     try:
                         settings_data = json.loads(content)
-                        for secret_key in ("sync_github_token", "sync_gist_id",
-                                           "google_key", "anthropic_key",
-                                           "oauth_client_id", "oauth_client_secret"):
-                            settings_data.pop(secret_key, None)
+                        settings_data.pop("sync_github_token", None)
+                        settings_data.pop("sync_gist_id", None)
                         content = json.dumps(settings_data)
                     except (json.JSONDecodeError, ValueError):
                         pass
