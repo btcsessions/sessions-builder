@@ -22,12 +22,6 @@ body {
     color: var(--text);
     line-height: 1.6;
 }
-body:has(.workspace) {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-}
 
 /* Nav */
 nav {
@@ -63,7 +57,7 @@ nav a {
 nav a:hover { color: #fff; }
 
 main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-main:has(.workspace) { padding: 0; max-width: none; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main:has(.workspace) { padding: 0; max-width: none; }
 
 /* Headings */
 h1, h2 {
@@ -1401,8 +1395,7 @@ tr:hover { background: var(--surface2); }
     display: grid;
     grid-template-columns: 260px 1fr 340px;
     gap: 0;
-    flex: 1;
-    min-height: 0;
+    height: calc(100vh - var(--nav-height, 55px));
     overflow: hidden;
 }
 .workspace.sidebar-collapsed {

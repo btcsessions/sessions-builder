@@ -298,6 +298,14 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Measure actual nav height so workspace fills remaining viewport exactly
+const nav = document.querySelector("nav");
+if (nav) {
+    const h = nav.offsetHeight + parseFloat(getComputedStyle(nav).marginTop) + parseFloat(getComputedStyle(nav).marginBottom);
+    document.documentElement.style.setProperty("--nav-height", Math.ceil(h) + "px");
+}
+</script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
 /* --- Planner logic --- */
