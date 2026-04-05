@@ -81,6 +81,20 @@
     {% endif %}
 </div>
 {% endif %}
+<div class="setup-form" style="margin-top: 1.5rem;">
+    <h3>Data Export / Import</h3>
+    <p class="form-hint">Move your entire setup (API keys, videos, channels, categories, analytics) to another machine.</p>
+    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
+        <a href="/api/export-data" class="btn primary">Export Data (.zip)</a>
+        <span class="form-hint" style="margin:0;">or</span>
+        <label class="btn secondary" style="cursor:pointer; margin:0;">
+            Import Data
+            <input type="file" id="import-file" accept=".zip" style="display:none;">
+        </label>
+        <span id="import-status" class="form-hint" style="margin:0;"></span>
+    </div>
+</div>
+
 {% if videos %}
 <div class="setup-form" style="margin-top: 1.5rem; max-width: 900px;">
     <div class="categorize-header" id="categorize-toggle" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
@@ -260,5 +274,35 @@ document.querySelectorAll(".cat-assign-btn").forEach(btn => {
 });
 
 updateCount();
+
+// Data import
+const importInput = document.getElementById("import-file");
+const importStatus = document.getElementById("import-status");
+if (importInput) {
+    importInput.addEventListener("change", async () => {
+        const file = importInput.files[0];
+        if (!file) return;
+        if (!confirm("This will replace all current data. Continue?")) {
+            importInput.value = "";
+            return;
+        }
+        importStatus.textContent = "Importing...";
+        const form = new FormData();
+        form.append("file", file);
+        try {
+            const resp = await fetch("/api/import-data", { method: "POST", body: form });
+            const data = await resp.json();
+            if (data.ok) {
+                importStatus.textContent = "Imported! Reloading...";
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                importStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            importStatus.textContent = "Failed: " + err.message;
+        }
+        importInput.value = "";
+    });
+}
 </script>
 {% endblock %}

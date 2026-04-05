@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, render_template, request, session, jsonify, redirect, url_for
+from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
 from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels, remix_video
@@ -999,6 +999,76 @@ def clear_chat():
     global chat_history
     chat_history = []
     return jsonify({"ok": True})
+
+
+@app.route("/api/export-data")
+def api_export_data():
+    """Export all app data as a zip file for migration to another machine."""
+    import zipfile
+    import io
+    from datetime import datetime as _dt
+
+    buf = io.BytesIO()
+    data_files = [
+        SETTINGS_FILE, CACHE_FILE, ANALYTICS_FILE,
+        COMPETITORS_FILE, CATEGORIES_FILE,
+    ]
+    # Also include market and snapshot data
+    market_dir = os.path.join(DATA_DIR)
+    for name in ["btc_prices.json", "snapshots.json", "trend_intel.json", "oauth_token.json"]:
+        path = os.path.join(market_dir, name)
+        if os.path.exists(path):
+            data_files.append(path)
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fpath in data_files:
+            if os.path.exists(fpath):
+                zf.write(fpath, os.path.basename(fpath))
+
+    buf.seek(0)
+    date_str = _dt.now().strftime("%Y%m%d")
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name=f"sessions-builder-data-{date_str}.zip")
+
+
+@app.route("/api/import-data", methods=["POST"])
+def api_import_data():
+    """Import a data zip file, replacing current app data."""
+    import zipfile
+    import io
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files["file"]
+    if not f.filename.endswith(".zip"):
+        return jsonify({"error": "File must be a .zip archive"}), 400
+
+    try:
+        _ensure_data_dir()
+        with zipfile.ZipFile(io.BytesIO(f.read()), "r") as zf:
+            # Only extract known JSON files
+            allowed = {
+                "settings.json", "videos.json", "analytics.json",
+                "competitors.json", "video_categories.json",
+                "btc_prices.json", "snapshots.json", "trend_intel.json",
+                "oauth_token.json",
+            }
+            for name in zf.namelist():
+                if name in allowed:
+                    zf.extract(name, DATA_DIR)
+
+        # Reload in-memory caches
+        global video_cache, analytics_cache, competitors_cache
+        video_cache = load_video_cache()
+        analytics_cache = load_analytics()
+        competitors_cache = load_competitors()
+
+        return jsonify({"ok": True, "message": "Data imported. Refresh the page."})
+    except zipfile.BadZipFile:
+        return jsonify({"error": "Invalid zip file"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
