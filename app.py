@@ -1264,11 +1264,18 @@ def api_remix_video():
 @app.route("/api/update", methods=["POST"])
 def update_app():
     import subprocess
+    app_dir = os.path.dirname(os.path.abspath(__file__))
     try:
+        # Detect the current branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=10, cwd=app_dir,
+        )
+        branch = branch_result.stdout.strip() or "claude/youtube-planning-app-B52L2"
+
         result = subprocess.run(
-            ["git", "pull", "origin", "claude/youtube-planning-app-B52L2"],
-            capture_output=True, text=True, timeout=30,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+            ["git", "pull", "origin", branch],
+            capture_output=True, text=True, timeout=30, cwd=app_dir,
         )
         output = result.stdout.strip()
         if result.returncode != 0:

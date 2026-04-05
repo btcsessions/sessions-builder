@@ -123,15 +123,25 @@ else
     [ "$HAS_ANTHROPIC" != "yes" ] && echo "    - Anthropic API Key (AI features)"
 fi
 
+# Install desktop launcher (Linux only)
+if [ "$PLATFORM" = "Linux" ]; then
+    APP_DIR="$(pwd)"
+    DESKTOP_SRC="$APP_DIR/yt-planner.desktop"
+    DESKTOP_DST="$HOME/.local/share/applications/yt-planner.desktop"
+    if [ -f "$DESKTOP_SRC" ]; then
+        mkdir -p "$HOME/.local/share/applications"
+        sed "s|__APP_DIR__|$APP_DIR|g" "$DESKTOP_SRC" > "$DESKTOP_DST"
+        echo "  Desktop icon installed."
+    fi
+fi
+
 # Launch
 echo ""
 echo "  Starting app..."
 echo "  Open http://localhost:5000 in your browser"
 echo ""
-echo "  TIP: If you use fish shell, launch with:"
-echo "    fish launch.fish"
-echo "  Or from any shell:"
-echo "    bash launch.sh"
+echo "  TIP: Next time just use the YT Planner icon in your app launcher,"
+echo "  or from any shell: bash launch.sh"
 echo ""
 
 "$PYTHON" app.py
