@@ -223,34 +223,32 @@ def write_png(filename, width, height, pixels):
         f.write(chunk(b'IEND', b''))
 
 
-# Generate all required icon sizes
+# Generate exactly the icon sizes macOS iconutil expects
 iconset_dir = os.environ.get('ICON_DIR', '.')
-sizes = [16, 32, 64, 128, 256, 512]
 
-for sz in sizes:
-    pixels = create_btc_icon(sz)
-    write_png(os.path.join(iconset_dir, f'icon_{sz}x{sz}.png'), sz, sz, pixels)
-    if sz <= 256:
-        # @2x version
-        big = sz * 2
-        pixels2 = create_btc_icon(big)
-        write_png(os.path.join(iconset_dir, f'icon_{sz}x{sz}@2x.png'), big, big, pixels2)
+# macOS iconset requires these exact files:
+# icon_NxN.png (1x) and icon_NxN@2x.png (2x, double pixel size)
+required = [
+    ("icon_16x16.png",      16),
+    ("icon_16x16@2x.png",   32),
+    ("icon_32x32.png",      32),
+    ("icon_32x32@2x.png",   64),
+    ("icon_128x128.png",    128),
+    ("icon_128x128@2x.png", 256),
+    ("icon_256x256.png",    256),
+    ("icon_256x256@2x.png", 512),
+    ("icon_512x512.png",    512),
+    ("icon_512x512@2x.png", 1024),
+]
+
+cache = {}
+for fname, px in required:
+    if px not in cache:
+        cache[px] = create_btc_icon(px)
+    write_png(os.path.join(iconset_dir, fname), px, px, cache[px])
 
 print("Icon PNGs generated.")
 PYICON
-
-# Rename to match macOS iconset naming convention
-cd "$ICON_DIR"
-mv icon_16x16.png icon_16x16.png 2>/dev/null || true
-mv icon_16x16@2x.png icon_16x16@2x.png 2>/dev/null || true
-mv icon_32x32.png icon_32x32.png 2>/dev/null || true
-mv icon_32x32@2x.png icon_32x32@2x.png 2>/dev/null || true
-mv icon_128x128.png icon_128x128.png 2>/dev/null || true
-mv icon_128x128@2x.png icon_128x128@2x.png 2>/dev/null || true
-mv icon_256x256.png icon_256x256.png 2>/dev/null || true
-mv icon_256x256@2x.png icon_256x256@2x.png 2>/dev/null || true
-mv icon_512x512.png icon_512x512.png 2>/dev/null || true
-mv icon_64x64.png icon_32x32@2x.png 2>/dev/null || true
 
 # Convert iconset to icns
 if command -v iconutil &>/dev/null; then
