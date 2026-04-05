@@ -62,6 +62,9 @@
                placeholder="GOCSPX-...">
     </div>
 
+    <input type="hidden" name="sync_gist_id" value="{{ sync_gist_id }}">
+    <input type="hidden" name="sync_github_token" value="{{ sync_github_token }}">
+
     <div class="form-actions">
         <button type="submit" class="btn primary">Save &amp; Reload Playlist</button>
     </div>
@@ -81,6 +84,40 @@
     {% endif %}
 </div>
 {% endif %}
+<div class="setup-form" style="margin-top: 1.5rem;">
+    <h3>Cloud Sync <span class="badge {{ 'connected' if sync_configured else 'disconnected' }}">{{ 'Active' if sync_configured else 'Not Configured' }}</span></h3>
+    <p class="form-hint">Auto-sync your data between machines using a private GitHub Gist. Changes push automatically; data pulls on each app launch.</p>
+
+    {% if not sync_configured %}
+    <div style="margin-top:0.75rem;">
+        <div class="form-group">
+            <label for="sync_token_input">GitHub Personal Access Token</label>
+            <input type="password" id="sync_token_input" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
+            <small>Create one at <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">github.com/settings/tokens</a> with <strong>gist</strong> scope only.</small>
+        </div>
+        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+            <button class="btn primary" id="create-gist-btn">Create Sync Gist &amp; Enable</button>
+            <span class="form-hint" style="margin:0;">or connect to an existing Gist:</span>
+        </div>
+        <div class="form-group" style="margin-top:0.5rem;">
+            <label for="sync_gist_id_input">Existing Gist ID <span style="font-weight:normal; color:var(--text-muted);">(optional)</span></label>
+            <input type="text" id="sync_gist_id_input" class="sidebar-search" placeholder="paste Gist ID to connect to existing sync" style="max-width:400px;">
+        </div>
+        <button class="btn secondary" id="connect-gist-btn">Connect Existing Gist</button>
+        <span id="sync-setup-status" class="form-hint" style="margin-left:0.5rem;"></span>
+    </div>
+    {% else %}
+    <div style="margin-top:0.75rem;">
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <span class="form-hint" style="margin:0;">Gist ID: <code>{{ sync_gist_id[:12] }}...</code></span>
+            <button class="btn small" id="sync-push-btn">Push Now</button>
+            <button class="btn small" id="sync-pull-btn">Pull Now</button>
+            <span id="sync-status" class="form-hint" style="margin:0;"></span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 <div class="setup-form" style="margin-top: 1.5rem;">
     <h3>Data Export / Import</h3>
     <p class="form-hint">Move your entire setup (API keys, videos, channels, categories, analytics) to another machine.</p>
@@ -274,6 +311,107 @@ document.querySelectorAll(".cat-assign-btn").forEach(btn => {
 });
 
 updateCount();
+
+// Cloud Sync setup
+const createGistBtn = document.getElementById("create-gist-btn");
+const connectGistBtn = document.getElementById("connect-gist-btn");
+const syncSetupStatus = document.getElementById("sync-setup-status");
+
+if (createGistBtn) {
+    createGistBtn.addEventListener("click", async () => {
+        const token = document.getElementById("sync_token_input").value.trim();
+        if (!token) { syncSetupStatus.textContent = "Enter a GitHub token first."; return; }
+        createGistBtn.disabled = true;
+        createGistBtn.textContent = "Creating...";
+        syncSetupStatus.textContent = "";
+        try {
+            const resp = await fetch("/api/sync/create-gist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                syncSetupStatus.textContent = "Sync enabled! Reloading...";
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                syncSetupStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            syncSetupStatus.textContent = "Failed: " + err.message;
+        }
+        createGistBtn.disabled = false;
+        createGistBtn.textContent = "Create Sync Gist & Enable";
+    });
+}
+
+if (connectGistBtn) {
+    connectGistBtn.addEventListener("click", async () => {
+        const token = document.getElementById("sync_token_input").value.trim();
+        const gistId = document.getElementById("sync_gist_id_input").value.trim();
+        if (!token || !gistId) { syncSetupStatus.textContent = "Enter both token and Gist ID."; return; }
+        connectGistBtn.disabled = true;
+        syncSetupStatus.textContent = "Connecting...";
+        try {
+            // Save sync settings
+            const resp = await fetch("/api/sync/connect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token, gist_id: gistId }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                syncSetupStatus.textContent = "Connected! Reloading...";
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                syncSetupStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            syncSetupStatus.textContent = "Failed: " + err.message;
+        }
+        connectGistBtn.disabled = false;
+    });
+}
+
+// Sync push/pull buttons
+const syncPushBtn = document.getElementById("sync-push-btn");
+const syncPullBtn = document.getElementById("sync-pull-btn");
+const syncStatus = document.getElementById("sync-status");
+
+if (syncPushBtn) {
+    syncPushBtn.addEventListener("click", async () => {
+        syncPushBtn.disabled = true;
+        syncStatus.textContent = "Pushing...";
+        try {
+            const resp = await fetch("/api/sync/push", { method: "POST" });
+            const data = await resp.json();
+            syncStatus.textContent = data.ok ? "Pushed!" : "Error: " + data.error;
+        } catch (err) {
+            syncStatus.textContent = "Failed: " + err.message;
+        }
+        syncPushBtn.disabled = false;
+    });
+}
+
+if (syncPullBtn) {
+    syncPullBtn.addEventListener("click", async () => {
+        syncPullBtn.disabled = true;
+        syncStatus.textContent = "Pulling...";
+        try {
+            const resp = await fetch("/api/sync/pull", { method: "POST" });
+            const data = await resp.json();
+            if (data.ok) {
+                syncStatus.textContent = data.updated ? "Updated! Reloading..." : "Already up to date.";
+                if (data.updated) setTimeout(() => location.reload(), 1000);
+            } else {
+                syncStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            syncStatus.textContent = "Failed: " + err.message;
+        }
+        syncPullBtn.disabled = false;
+    });
+}
 
 // Data import
 const importInput = document.getElementById("import-file");

@@ -37,8 +37,34 @@ def _ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
 
+# Background sync: debounced push after any save
+import threading
+_sync_timer = None
+_sync_lock = threading.Lock()
+
+def _schedule_sync_push():
+    """Schedule a sync push 3 seconds from now (debounced)."""
+    global _sync_timer
+    with _sync_lock:
+        if _sync_timer:
+            _sync_timer.cancel()
+        _sync_timer = threading.Timer(3.0, _do_sync_push)
+        _sync_timer.daemon = True
+        _sync_timer.start()
+
+def _do_sync_push():
+    """Run the actual sync push in a background thread."""
+    try:
+        from sync import push_to_gist, is_sync_configured
+        if is_sync_configured():
+            push_to_gist()
+    except Exception as e:
+        print(f"[Sync] Background push failed: {e}")
+
+
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
-                   oauth_client_id="", oauth_client_secret=""):
+                   oauth_client_id="", oauth_client_secret="",
+                   sync_gist_id="", sync_github_token=""):
     _ensure_data_dir()
     # Preserve existing fields not being explicitly set
     existing = load_settings()
@@ -49,9 +75,12 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
         "anthropic_key": anthropic_key or existing.get("anthropic_key", ""),
         "oauth_client_id": oauth_client_id or existing.get("oauth_client_id", ""),
         "oauth_client_secret": oauth_client_secret or existing.get("oauth_client_secret", ""),
+        "sync_gist_id": sync_gist_id or existing.get("sync_gist_id", ""),
+        "sync_github_token": sync_github_token or existing.get("sync_github_token", ""),
     }
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
+    _schedule_sync_push()
 
 
 def load_settings() -> dict:
@@ -65,6 +94,7 @@ def save_video_cache(videos: list):
     _ensure_data_dir()
     with open(CACHE_FILE, "w") as f:
         json.dump(videos, f)
+    _schedule_sync_push()
 
 
 def load_video_cache() -> list:
@@ -78,6 +108,7 @@ def save_analytics(data: dict):
     _ensure_data_dir()
     with open(ANALYTICS_FILE, "w") as f:
         json.dump(data, f)
+    _schedule_sync_push()
 
 
 def load_analytics() -> dict:
@@ -91,6 +122,7 @@ def save_competitors(data: list):
     _ensure_data_dir()
     with open(COMPETITORS_FILE, "w") as f:
         json.dump(data, f)
+    _schedule_sync_push()
 
 
 def load_competitors() -> list:
@@ -104,6 +136,7 @@ def save_categories(data: dict):
     _ensure_data_dir()
     with open(CATEGORIES_FILE, "w") as f:
         json.dump(data, f)
+    _schedule_sync_push()
 
 
 def load_categories() -> dict:
@@ -112,6 +145,13 @@ def load_categories() -> dict:
             return json.load(f)
     return {}
 
+
+# Sync: pull latest data from Gist before loading
+from sync import pull_from_gist, push_to_gist, is_sync_configured
+try:
+    pull_from_gist()
+except Exception as _sync_err:
+    print(f"[Sync] Pull on startup failed: {_sync_err}")
 
 # Load persisted data on startup
 _saved = load_settings()
@@ -248,6 +288,9 @@ def settings_page():
         error=request.args.get("error"),
         videos=video_cache,
         video_categories=video_categories,
+        sync_gist_id=settings.get("sync_gist_id", ""),
+        sync_github_token=settings.get("sync_github_token", ""),
+        sync_configured=is_sync_configured(),
     )
 
 
@@ -260,6 +303,8 @@ def fetch():
     anthropic_key = request.form.get("anthropic_key", "").strip()
     oauth_client_id = request.form.get("oauth_client_id", "").strip()
     oauth_client_secret = request.form.get("oauth_client_secret", "").strip()
+    sync_gist_id = request.form.get("sync_gist_id", "").strip()
+    sync_github_token = request.form.get("sync_github_token", "").strip()
 
     if not playlist_url or not google_key:
         return render_template(
@@ -280,7 +325,8 @@ def fetch():
 
         # Persist everything
         save_settings(playlist_id, google_key, anthropic_key, playlist_url,
-                      oauth_client_id, oauth_client_secret)
+                      oauth_client_id, oauth_client_secret,
+                      sync_gist_id, sync_github_token)
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -999,6 +1045,86 @@ def clear_chat():
     global chat_history
     chat_history = []
     return jsonify({"ok": True})
+
+
+@app.route("/api/sync/create-gist", methods=["POST"])
+def api_create_sync_gist():
+    """Create a new private Gist for syncing."""
+    data = request.get_json()
+    token = data.get("token", "")
+    if not token:
+        return jsonify({"error": "GitHub token is required"}), 400
+
+    from sync import create_sync_gist
+    gist_id = create_sync_gist(token)
+    if not gist_id:
+        return jsonify({"error": "Failed to create Gist. Check your token has 'gist' scope."}), 400
+
+    # Save to settings
+    settings = load_settings()
+    settings["sync_gist_id"] = gist_id
+    settings["sync_github_token"] = token
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+
+    # Immediately push current data
+    from sync import push_to_gist
+    push_to_gist()
+
+    return jsonify({"ok": True, "gist_id": gist_id})
+
+
+@app.route("/api/sync/connect", methods=["POST"])
+def api_sync_connect():
+    """Connect to an existing Gist for syncing."""
+    data = request.get_json()
+    token = data.get("token", "")
+    gist_id = data.get("gist_id", "")
+    if not token or not gist_id:
+        return jsonify({"error": "Both token and gist_id are required"}), 400
+
+    # Save sync config
+    settings = load_settings()
+    settings["sync_gist_id"] = gist_id
+    settings["sync_github_token"] = token
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+
+    # Pull data from the existing Gist
+    global video_cache, analytics_cache, competitors_cache, video_categories
+    pull_from_gist()
+    video_cache = load_video_cache()
+    analytics_cache = load_analytics()
+    competitors_cache = load_competitors()
+    video_categories = load_categories()
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sync/push", methods=["POST"])
+def api_sync_push():
+    """Manually trigger a sync push."""
+    if not is_sync_configured():
+        return jsonify({"error": "Sync not configured"}), 400
+    success = push_to_gist()
+    return jsonify({"ok": success})
+
+
+@app.route("/api/sync/pull", methods=["POST"])
+def api_sync_pull():
+    """Manually trigger a sync pull."""
+    if not is_sync_configured():
+        return jsonify({"error": "Sync not configured"}), 400
+    global video_cache, analytics_cache, competitors_cache, video_categories
+    updated = pull_from_gist()
+    if updated:
+        video_cache = load_video_cache()
+        analytics_cache = load_analytics()
+        competitors_cache = load_competitors()
+        video_categories = load_categories()
+    return jsonify({"ok": True, "updated": updated})
 
 
 @app.route("/api/export-data")
