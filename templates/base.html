@@ -14,12 +14,27 @@
         <a href="{{ url_for('competitors_page') }}">Inspiration</a>
         <a href="{{ url_for('settings_page') }}">Settings</a>
         <button id="update-app-btn" class="btn small nav-update-btn" title="Check for app updates">Update App</button>
+        <button id="shutdown-btn" class="btn small nav-shutdown-btn" title="Stop the app">Shutdown</button>
     </nav>
     <main>
         {% block content %}{% endblock %}
     </main>
     {% block scripts %}{% endblock %}
     <script>
+    const shutdownBtn = document.getElementById("shutdown-btn");
+    shutdownBtn.addEventListener("click", async () => {
+        if (!confirm("Shut down the app? You'll need to relaunch to use it again.")) return;
+        shutdownBtn.disabled = true;
+        shutdownBtn.textContent = "Stopping...";
+        try {
+            await fetch("/api/shutdown", { method: "POST" });
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#ccc;background:#1a1a2e;"><div style="text-align:center"><h1 style="font-size:2rem;margin-bottom:1rem">App Stopped</h1><p>You can close this tab. Double-click the launcher to start again.</p></div></div>';
+        } catch (err) {
+            // Server killed itself — expected
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#ccc;background:#1a1a2e;"><div style="text-align:center"><h1 style="font-size:2rem;margin-bottom:1rem">App Stopped</h1><p>You can close this tab. Double-click the launcher to start again.</p></div></div>';
+        }
+    });
+
     const updateBtn = document.getElementById("update-app-btn");
     updateBtn.addEventListener("click", async () => {
         updateBtn.disabled = true;

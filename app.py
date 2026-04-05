@@ -1482,5 +1482,20 @@ def api_import_data():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/shutdown", methods=["POST"])
+def shutdown_app():
+    """Gracefully shut down the Flask server."""
+    import signal
+    pid = os.getpid()
+    # Send response first, then schedule shutdown
+    def _kill():
+        import time
+        time.sleep(0.5)
+        os.kill(pid, signal.SIGTERM)
+    t = threading.Thread(target=_kill, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "message": "Server shutting down..."})
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

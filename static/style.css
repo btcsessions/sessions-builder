@@ -298,6 +298,14 @@ h2 {
     padding: 0.25rem 0.8rem;
 }
 .nav-update-btn:hover { color: var(--accent); border-color: var(--accent); }
+.nav-shutdown-btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.8rem;
+    margin-left: 0.5rem;
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+.nav-shutdown-btn:hover { background: #e74c3c; color: #fff; border-color: #e74c3c; }
 
 /* Dashboard grid */
 .dashboard-grid {
