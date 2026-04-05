@@ -1431,7 +1431,9 @@ def api_sync_push():
     if not is_sync_configured():
         return jsonify({"error": "Sync not configured"}), 400
     success = push_to_gist()
-    return jsonify({"ok": success})
+    if success:
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Push failed — check your GitHub token and Gist ID"}), 500
 
 
 @app.route("/api/sync/pull", methods=["POST"])
