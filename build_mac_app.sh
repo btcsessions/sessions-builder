@@ -80,55 +80,54 @@ LAUNCHER
 chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
 
 # --- Generate icon ---
-# Use Automator/JS to create a Bitcoin-orange circle icon via macOS graphics
 RESOURCES="$SCRIPT_DIR/$APP_DIR/Contents/Resources"
 ICON_DIR="$RESOURCES/AppIcon.iconset"
 mkdir -p "$ICON_DIR"
 MASTER_PNG="$RESOURCES/_master_1024.png"
 
-# Create a 1024x1024 master icon using macOS built-in JavaScript for Automation
-osascript -l JavaScript << 'JSICON' - "$MASTER_PNG"
-ObjC.import('AppKit');
-ObjC.import('Foundation');
+# Create a 1024x1024 master icon using Swift (guaranteed on macOS)
+cat > /tmp/_btc_icon.swift << 'SWIFT'
+import AppKit
 
-var outPath = $.NSProcessInfo.processInfo.arguments.objectAtIndex(4).js;
-var size = 1024;
+let size = 1024
+let outPath = CommandLine.arguments[1]
 
-var rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaPlanarColorSpaceNameBytesPerRowBitsPerPixel(
-    null, size, size, 8, 4, true, false,
-    $.NSDeviceRGBColorSpace, size * 4, 32
-);
-
-var ctx = $.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep);
-$.NSGraphicsContext.setCurrentContext(ctx);
+let image = NSImage(size: NSSize(width: size, height: size))
+image.lockFocus()
 
 // Orange circle
-var orange = $.NSColor.colorWithCalibratedRedGreenBlueAlpha(0.949, 0.663, 0.0, 1.0);
-orange.set;
-var path = $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(0, 0, size, size));
-path.fill;
+NSColor(calibratedRed: 0.949, green: 0.663, blue: 0.0, alpha: 1.0).setFill()
+NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: size, height: size)).fill()
 
-// White Bitcoin "B" symbol using text rendering
-var white = $.NSColor.whiteColor;
-var font = $.NSFont.fontWithNameSize("Helvetica-Bold", 620);
-var attrs = $.NSMutableDictionary.alloc.init;
-attrs.setObjectForKey(font, $.NSFontAttributeName);
-attrs.setObjectForKey(white, $.NSForegroundColorAttributeName);
+// White ₿ symbol
+let font = NSFont.boldSystemFont(ofSize: 620)
+let attrs: [NSAttributedString.Key: Any] = [
+    .font: font,
+    .foregroundColor: NSColor.white
+]
+let str = "₿" as NSString
+let strSize = str.size(withAttributes: attrs)
+let x = (CGFloat(size) - strSize.width) / 2
+let y = (CGFloat(size) - strSize.height) / 2
+str.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
 
-var str = $.NSString.alloc.initWithUTF8String("₿");
-var strSize = str.sizeWithAttributes(attrs);
-var x = (size - strSize.width) / 2;
-var y = (size - strSize.height) / 2 - 20;
-str.drawAtPointWithAttributes($.NSMakePoint(x, y), attrs);
+image.unlockFocus()
 
-ctx.flushGraphics;
+guard let tiff = image.tiffRepresentation,
+      let rep = NSBitmapImageRep(data: tiff),
+      let png = rep.representation(using: .png, properties: [:]) else {
+    exit(1)
+}
 
-var data = rep.representationUsingTypeProperties($.NSPNGFileType, null);
-data.writeToFileAtomically(outPath, true);
-JSICON
+try! png.write(to: URL(fileURLWithPath: outPath))
+SWIFT
+
+swiftc /tmp/_btc_icon.swift -o /tmp/_btc_icon -framework AppKit 2>/dev/null
+/tmp/_btc_icon "$MASTER_PNG"
+rm -f /tmp/_btc_icon /tmp/_btc_icon.swift
 
 if [ ! -f "$MASTER_PNG" ]; then
-    echo "⚠ Could not generate icon via osascript. Skipping icon."
+    echo "⚠ Could not generate icon. Skipping."
 else
     echo "✓ Master icon generated"
 
