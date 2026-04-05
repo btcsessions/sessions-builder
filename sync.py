@@ -125,6 +125,19 @@ def pull_from_gist() -> bool:
         if content.strip() == local_content.strip():
             continue
 
+        # For settings.json, preserve local sync credentials (they are machine-specific)
+        if filename == "settings.json":
+            try:
+                local_settings = json.loads(local_content) if local_content.strip() else {}
+                gist_settings = json.loads(content)
+                # Keep local sync credentials — the Gist may have stale ones
+                for key in ("sync_gist_id", "sync_github_token"):
+                    if key in local_settings:
+                        gist_settings[key] = local_settings[key]
+                content = json.dumps(gist_settings)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
         # Write the Gist version locally
         with open(local_path, "w") as f:
             f.write(content)

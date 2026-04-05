@@ -1420,13 +1420,13 @@ def api_sync_update_token():
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
-    # Test the token by attempting a pull
-    from sync import pull_from_gist
+    # Push immediately so the Gist has the updated credentials
+    from sync import push_to_gist
     try:
-        pull_from_gist()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": True, "warning": str(e)})
+        push_to_gist()
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 
 @app.route("/api/sync/push", methods=["POST"])
