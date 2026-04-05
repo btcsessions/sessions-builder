@@ -2,9 +2,9 @@
 
 ## Multi-Machine Setup
 
-This app runs on **two machines** (same user, same repo, same branch):
+This app runs on **multiple machines** (same user, same repo, same branch):
 
-- **macOS** (Apple Silicon Mac) — uses `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`
+- **macOS** (Apple Silicon Macs) — uses `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`
 - **CachyOS (Arch Linux)** — uses `yt-planner.desktop` launcher and `launch.sh`
 
 ### Branch Policy
