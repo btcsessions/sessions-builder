@@ -165,8 +165,19 @@ def push_to_gist() -> bool:
             try:
                 with open(local_path) as f:
                     content = f.read()
-                if content.strip():
-                    files[filename] = {"content": content}
+                if not content.strip():
+                    continue
+                # Strip sync credentials from settings.json before pushing —
+                # GitHub secret scanning revokes tokens found in Gist content
+                if filename == "settings.json":
+                    try:
+                        settings_data = json.loads(content)
+                        settings_data.pop("sync_github_token", None)
+                        settings_data.pop("sync_gist_id", None)
+                        content = json.dumps(settings_data)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                files[filename] = {"content": content}
             except IOError:
                 continue
 
