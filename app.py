@@ -1498,4 +1498,6 @@ def shutdown_app():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    # Disable reloader when launched from .app bundle (keeps process alive for Dock)
+    use_reloader = os.environ.get("LAUNCHED_FROM_APP") != "1"
+    app.run(debug=True, host="127.0.0.1", port=5000, use_reloader=use_reloader)

@@ -63,6 +63,9 @@ fi
 # Finder-launched .app bundles get a minimal PATH — set it up
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
 
+# Tell Flask not to use reloader (keeps this process alive for Dock indicator)
+export LAUNCHED_FROM_APP=1
+
 # Project directory (baked in at build time)
 PROJECT_DIR="$SCRIPT_DIR"
 cd "\$PROJECT_DIR"
