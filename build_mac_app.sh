@@ -50,6 +50,12 @@ PLIST
 cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" << LAUNCHER
 #!/bin/bash
 
+# If running on Apple Silicon natively, re-exec under Rosetta
+# to match the x86_64 system Python + packages
+if [ "\$(uname -m)" = "arm64" ]; then
+    exec arch -x86_64 /bin/bash "\$0" "\$@"
+fi
+
 # Finder-launched .app bundles get a minimal PATH — set it up
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
 
