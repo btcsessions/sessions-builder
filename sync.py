@@ -38,6 +38,10 @@ SYNC_FILES = [
 # Keys that are local-only (never pushed to Gist, preserved on pull)
 LOCAL_ONLY_KEYS = ("sync_gist_id", "sync_github_token", "sync_password")
 
+# Keys that contain secrets — stripped from unencrypted pushes, and preserved
+# on pull from unencrypted Gist (since the Gist won't have them)
+SECRET_KEYS = ("google_key", "anthropic_key", "oauth_client_id", "oauth_client_secret")
+
 
 def _get_sync_config() -> tuple[str, str]:
     """Read Gist ID and GitHub token from settings or env."""
@@ -167,6 +171,8 @@ def pull_from_gist() -> bool:
     updated = 0
 
     for filename in SYNC_FILES:
+        settings_encrypted = False
+
         # For settings.json, check for encrypted version first
         if filename == "settings.json":
             if "settings.json.enc" in files and password:
@@ -175,6 +181,7 @@ def pull_from_gist() -> bool:
                     decrypted = _decrypt(enc_content, password)
                     if decrypted:
                         content = decrypted
+                        settings_encrypted = True
                         print("[Sync] Decrypted settings.json from Gist.")
                     else:
                         print("[Sync] WARNING: Could not decrypt settings.json — wrong password?")
@@ -209,14 +216,22 @@ def pull_from_gist() -> bool:
         if content.strip() == local_content.strip():
             continue
 
-        # For settings.json, preserve local-only keys
+        # For settings.json, preserve local-only keys (always) and
+        # secret keys (only when pulling unencrypted, since those are
+        # stripped from the Gist and the local copy has the real values)
         if filename == "settings.json":
             try:
                 local_settings = json.loads(local_content) if local_content.strip() else {}
                 gist_settings = json.loads(content)
+                # Always preserve local-only keys
                 for key in LOCAL_ONLY_KEYS:
                     if key in local_settings:
                         gist_settings[key] = local_settings[key]
+                # If unencrypted, also preserve secret keys (they were stripped)
+                if not settings_encrypted:
+                    for key in SECRET_KEYS:
+                        if key in local_settings and not gist_settings.get(key):
+                            gist_settings[key] = local_settings[key]
                 content = json.dumps(gist_settings)
             except (json.JSONDecodeError, ValueError):
                 pass
