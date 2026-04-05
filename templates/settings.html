@@ -234,11 +234,11 @@ const catActionBar = document.getElementById("cat-action-bar");
 
 function updateCount() {
     const n = document.querySelectorAll(".cat-check:checked").length;
-    catCount.textContent = n + " selected";
-    catActionBar.style.display = n > 0 ? "flex" : "none";
+    if (catCount) catCount.textContent = n + " selected";
+    if (catActionBar) catActionBar.style.display = n > 0 ? "flex" : "none";
 }
 
-catChecks.forEach(cb => cb.addEventListener("change", updateCount));
+if (catChecks.length) catChecks.forEach(cb => cb.addEventListener("change", updateCount));
 
 document.getElementById("cat-select-all")?.addEventListener("click", () => {
     catRows.forEach(r => {
@@ -311,7 +311,7 @@ document.querySelectorAll(".cat-assign-btn").forEach(btn => {
     });
 });
 
-updateCount();
+if (catCount) updateCount();
 
 // Cloud Sync setup
 const createGistBtn = document.getElementById("create-gist-btn");
