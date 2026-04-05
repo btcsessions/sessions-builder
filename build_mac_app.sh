@@ -41,6 +41,10 @@ cat > "$SCRIPT_DIR/$APP_DIR/Contents/Info.plist" << 'PLIST'
     <string>10.13</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>LSArchitecturePriority</key>
+    <array>
+        <string>arm64</string>
+    </array>
 </dict>
 </plist>
 PLIST
@@ -50,10 +54,10 @@ PLIST
 cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" << LAUNCHER
 #!/bin/bash
 
-# If running on Apple Silicon natively, re-exec under Rosetta
-# to match the x86_64 system Python + packages
-if [ "\$(uname -m)" = "arm64" ]; then
-    exec arch -x86_64 /bin/bash "\$0" "\$@"
+# Force arm64 to match arm64-compiled Python packages
+# (macOS .app bundles sometimes default to x86_64)
+if [ "\$(uname -m)" != "arm64" ]; then
+    exec arch -arm64 /bin/bash "\$0" "\$@"
 fi
 
 # Finder-launched .app bundles get a minimal PATH — set it up
@@ -67,6 +71,7 @@ cd "\$PROJECT_DIR"
 LOG="\$PROJECT_DIR/launch.log"
 exec > "\$LOG" 2>&1
 echo "=== Launch at \$(date) ==="
+echo "Arch: \$(uname -m)"
 echo "PATH: \$PATH"
 
 # Activate venv (use explicit python path as fallback)
