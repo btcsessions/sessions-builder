@@ -117,15 +117,20 @@
         </div>
         <div style="margin-top:0.75rem;">
             <details>
-                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.85rem;">Update Token or Disconnect</summary>
+                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.85rem;">Update Token, Gist ID, or Disconnect</summary>
                 <div style="margin-top:0.5rem;">
                     <div class="form-group">
-                        <label for="sync_token_update">New GitHub Token</label>
+                        <label for="sync_token_update">GitHub Token</label>
                         <input type="password" id="sync_token_update" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
                         <small>If your token expired, <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">create a new one</a> and paste it here.</small>
                     </div>
+                    <div class="form-group">
+                        <label for="sync_gist_id_update">Gist ID</label>
+                        <input type="text" id="sync_gist_id_update" class="sidebar-search" placeholder="{{ sync_gist_id }}" style="max-width:400px;">
+                        <small>Only change this if you need to connect to a different Gist.</small>
+                    </div>
                     <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                        <button class="btn primary small" id="sync-update-token-btn">Update Token</button>
+                        <button class="btn primary small" id="sync-update-token-btn">Save Changes</button>
                         <button class="btn small" id="sync-disconnect-btn" style="border-color:#aa5555; color:#aa5555;">Disconnect Sync</button>
                         <span id="sync-manage-status" class="form-hint" style="margin:0;"></span>
                     </div>
@@ -439,19 +444,23 @@ const syncManageStatus = document.getElementById("sync-manage-status");
 if (syncUpdateTokenBtn) {
     syncUpdateTokenBtn.addEventListener("click", async () => {
         const token = document.getElementById("sync_token_update").value.trim();
-        if (!token) { syncManageStatus.textContent = "Enter a token first."; return; }
+        const gistId = document.getElementById("sync_gist_id_update").value.trim();
+        if (!token && !gistId) { syncManageStatus.textContent = "Enter a token or Gist ID."; return; }
         syncUpdateTokenBtn.disabled = true;
-        syncManageStatus.textContent = "Updating...";
+        syncManageStatus.textContent = "Saving...";
         try {
+            const payload = {};
+            if (token) payload.token = token;
+            if (gistId) payload.gist_id = gistId;
             const resp = await fetch("/api/sync/update-token", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token }),
+                body: JSON.stringify(payload),
             });
             const data = await resp.json();
             if (data.ok) {
-                syncManageStatus.textContent = "Token updated!";
-                document.getElementById("sync_token_update").value = "";
+                syncManageStatus.textContent = "Saved! Reloading...";
+                setTimeout(() => location.reload(), 1000);
             } else {
                 syncManageStatus.textContent = "Error: " + data.error;
             }

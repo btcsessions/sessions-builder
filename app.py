@@ -1406,13 +1406,17 @@ def api_sync_disconnect():
 
 @app.route("/api/sync/update-token", methods=["POST"])
 def api_sync_update_token():
-    """Update the GitHub token for an existing sync connection."""
+    """Update the GitHub token and/or Gist ID for an existing sync connection."""
     data = request.get_json()
-    token = data.get("token", "")
-    if not token:
-        return jsonify({"error": "Token is required"}), 400
+    token = data.get("token", "").strip()
+    gist_id = data.get("gist_id", "").strip()
+    if not token and not gist_id:
+        return jsonify({"error": "Enter a token or Gist ID to update"}), 400
     settings = load_settings()
-    settings["sync_github_token"] = token
+    if token:
+        settings["sync_github_token"] = token
+    if gist_id:
+        settings["sync_gist_id"] = gist_id
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
