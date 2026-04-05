@@ -66,7 +66,7 @@ def _do_sync_push():
 
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
-                   sync_gist_id="", sync_github_token=""):
+                   sync_gist_id="", sync_github_token="", sync_password=""):
     _ensure_data_dir()
     # Preserve existing fields not being explicitly set
     existing = load_settings()
@@ -79,6 +79,7 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
         "oauth_client_secret": oauth_client_secret or existing.get("oauth_client_secret", ""),
         "sync_gist_id": sync_gist_id or existing.get("sync_gist_id", ""),
         "sync_github_token": sync_github_token or existing.get("sync_github_token", ""),
+        "sync_password": sync_password or existing.get("sync_password", ""),
     }
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
@@ -334,6 +335,7 @@ def settings_page():
         video_categories=video_categories,
         sync_gist_id=settings.get("sync_gist_id", ""),
         sync_github_token=settings.get("sync_github_token", ""),
+        sync_password=settings.get("sync_password", ""),
         sync_configured=is_sync_configured(),
     )
 
@@ -349,6 +351,7 @@ def fetch():
     oauth_client_secret = request.form.get("oauth_client_secret", "").strip()
     sync_gist_id = request.form.get("sync_gist_id", "").strip()
     sync_github_token = request.form.get("sync_github_token", "").strip()
+    sync_password = request.form.get("sync_password", "").strip()
 
     if not playlist_url or not google_key:
         return render_template(
@@ -370,7 +373,7 @@ def fetch():
         # Persist everything
         save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                       oauth_client_id, oauth_client_secret,
-                      sync_gist_id, sync_github_token)
+                      sync_gist_id, sync_github_token, sync_password)
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -395,6 +398,7 @@ def save_settings_only():
     oauth_client_secret = request.form.get("oauth_client_secret", "").strip()
     sync_gist_id = request.form.get("sync_gist_id", "").strip()
     sync_github_token = request.form.get("sync_github_token", "").strip()
+    sync_password = request.form.get("sync_password", "").strip()
 
     existing = load_settings()
     playlist_id = existing.get("playlist_id", "")
@@ -406,7 +410,7 @@ def save_settings_only():
 
     save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                   oauth_client_id, oauth_client_secret,
-                  sync_gist_id, sync_github_token)
+                  sync_gist_id, sync_github_token, sync_password)
 
     return redirect(url_for("settings_page", success="Settings saved."))
 
@@ -1362,6 +1366,7 @@ def api_create_sync_gist():
     """Create a new private Gist for syncing."""
     data = request.get_json()
     token = data.get("token", "")
+    password = data.get("password", "")
     if not token:
         return jsonify({"error": "GitHub token is required"}), 400
 
@@ -1374,6 +1379,8 @@ def api_create_sync_gist():
     settings = load_settings()
     settings["sync_gist_id"] = gist_id
     settings["sync_github_token"] = token
+    if password:
+        settings["sync_password"] = password
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
@@ -1391,6 +1398,7 @@ def api_sync_connect():
     data = request.get_json()
     token = data.get("token", "")
     gist_id = data.get("gist_id", "")
+    password = data.get("password", "")
     if not token or not gist_id:
         return jsonify({"error": "Both token and gist_id are required"}), 400
 
@@ -1398,6 +1406,8 @@ def api_sync_connect():
     settings = load_settings()
     settings["sync_gist_id"] = gist_id
     settings["sync_github_token"] = token
+    if password:
+        settings["sync_password"] = password
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
@@ -1428,17 +1438,20 @@ def api_sync_disconnect():
 
 @app.route("/api/sync/update-token", methods=["POST"])
 def api_sync_update_token():
-    """Update the GitHub token and/or Gist ID for an existing sync connection."""
+    """Update the GitHub token, Gist ID, and/or sync password."""
     data = request.get_json()
     token = data.get("token", "").strip()
     gist_id = data.get("gist_id", "").strip()
-    if not token and not gist_id:
-        return jsonify({"error": "Enter a token or Gist ID to update"}), 400
+    password = data.get("password", "").strip()
+    if not token and not gist_id and not password:
+        return jsonify({"error": "Enter a token, Gist ID, or password to update"}), 400
     settings = load_settings()
     if token:
         settings["sync_github_token"] = token
     if gist_id:
         settings["sync_gist_id"] = gist_id
+    if password:
+        settings["sync_password"] = password
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)

@@ -64,6 +64,7 @@
 
     <input type="hidden" name="sync_gist_id" value="{{ sync_gist_id }}">
     <input type="hidden" name="sync_github_token" value="{{ sync_github_token }}">
+    <input type="hidden" name="sync_password" value="{{ sync_password }}">
 
     <div class="form-actions" style="display:flex; gap:0.75rem; flex-wrap:wrap;">
         <button type="submit" class="btn primary" name="action" value="save" formaction="{{ url_for('save_settings_only') }}">Save Settings</button>
@@ -95,6 +96,11 @@
             <label for="sync_token_input">GitHub Personal Access Token</label>
             <input type="password" id="sync_token_input" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
             <small>Create one at <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">github.com/settings/tokens</a> with <strong>gist</strong> scope only.</small>
+        </div>
+        <div class="form-group">
+            <label for="sync_password_input">Sync Password</label>
+            <input type="password" id="sync_password_input" class="sidebar-search" placeholder="encryption password (same on all machines)" style="max-width:400px;">
+            <small>Encrypts your API keys before pushing to the Gist so GitHub can't scan and revoke them. Use the same password on every machine.</small>
         </div>
         <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
             <button class="btn primary" id="create-gist-btn">Create Sync Gist &amp; Enable</button>
@@ -128,6 +134,11 @@
                         <label for="sync_gist_id_update">Gist ID</label>
                         <input type="text" id="sync_gist_id_update" class="sidebar-search" placeholder="{{ sync_gist_id }}" style="max-width:400px;">
                         <small>Only change this if you need to connect to a different Gist.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="sync_password_update">Sync Password {{ '(set)' if sync_password else '(not set)' }}</label>
+                        <input type="password" id="sync_password_update" class="sidebar-search" placeholder="{{ '••••••••' if sync_password else 'set a password to encrypt API keys' }}" style="max-width:400px;">
+                        <small>Encrypts settings (including API keys) before pushing to the Gist. Must be the same on all machines.</small>
                     </div>
                     <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
                         <button class="btn primary small" id="sync-update-token-btn">Save Changes</button>
@@ -343,7 +354,9 @@ const syncSetupStatus = document.getElementById("sync-setup-status");
 if (createGistBtn) {
     createGistBtn.addEventListener("click", async () => {
         const token = document.getElementById("sync_token_input").value.trim();
+        const password = document.getElementById("sync_password_input").value.trim();
         if (!token) { syncSetupStatus.textContent = "Enter a GitHub token first."; return; }
+        if (!password) { syncSetupStatus.textContent = "Enter a sync password to encrypt your API keys."; return; }
         createGistBtn.disabled = true;
         createGistBtn.textContent = "Creating...";
         syncSetupStatus.textContent = "";
@@ -351,7 +364,7 @@ if (createGistBtn) {
             const resp = await fetch("/api/sync/create-gist", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token }),
+                body: JSON.stringify({ token, password }),
             });
             const data = await resp.json();
             if (data.ok) {
@@ -372,7 +385,9 @@ if (connectGistBtn) {
     connectGistBtn.addEventListener("click", async () => {
         const token = document.getElementById("sync_token_input").value.trim();
         const gistId = document.getElementById("sync_gist_id_input").value.trim();
+        const password = document.getElementById("sync_password_input").value.trim();
         if (!token || !gistId) { syncSetupStatus.textContent = "Enter both token and Gist ID."; return; }
+        if (!password) { syncSetupStatus.textContent = "Enter a sync password to encrypt your API keys."; return; }
         connectGistBtn.disabled = true;
         syncSetupStatus.textContent = "Connecting...";
         try {
@@ -380,7 +395,7 @@ if (connectGistBtn) {
             const resp = await fetch("/api/sync/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token, gist_id: gistId }),
+                body: JSON.stringify({ token, gist_id: gistId, password }),
             });
             const data = await resp.json();
             if (data.ok) {
@@ -445,13 +460,15 @@ if (syncUpdateTokenBtn) {
     syncUpdateTokenBtn.addEventListener("click", async () => {
         const token = document.getElementById("sync_token_update").value.trim();
         const gistId = document.getElementById("sync_gist_id_update").value.trim();
-        if (!token && !gistId) { syncManageStatus.textContent = "Enter a token or Gist ID."; return; }
+        const password = document.getElementById("sync_password_update").value.trim();
+        if (!token && !gistId && !password) { syncManageStatus.textContent = "Enter a token, Gist ID, or password."; return; }
         syncUpdateTokenBtn.disabled = true;
         syncManageStatus.textContent = "Saving...";
         try {
             const payload = {};
             if (token) payload.token = token;
             if (gistId) payload.gist_id = gistId;
+            if (password) payload.password = password;
             const resp = await fetch("/api/sync/update-token", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

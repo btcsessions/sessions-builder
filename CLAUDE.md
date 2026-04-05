@@ -23,9 +23,11 @@ Never create separate branches per machine or per platform. Both machines pull f
 
 The app syncs data between machines via a private GitHub Gist. Important:
 
-- `sync.py` strips `sync_github_token` and `sync_gist_id` from `settings.json` before pushing to the Gist — this prevents GitHub secret scanning from revoking the token
-- On pull, local sync credentials are preserved (they're machine-specific)
-- If sync shows 401 errors, the token was likely revoked and needs to be regenerated as a **classic** personal access token with `gist` scope (fine-grained tokens don't support Gists)
+- **Encryption**: `settings.json` is encrypted with a user-set sync password before pushing to the Gist. This prevents GitHub secret scanning from detecting and revoking API keys (confirmed: both GitHub tokens and Anthropic keys were revoked this way). The password is set once per machine in Settings and stored locally only.
+- **Local-only keys**: `sync_github_token`, `sync_gist_id`, and `sync_password` are stripped before push and preserved from local settings on pull — they never appear in the Gist.
+- **Fallback**: If no sync password is set, settings.json is pushed unencrypted but with API keys stripped (legacy behavior).
+- If sync shows 401 errors, the token was likely revoked — regenerate as a **classic** personal access token with `gist` scope (fine-grained tokens don't support Gists)
+- The `cryptography` package is required for encryption (in requirements.txt)
 
 ### Python Version
 

@@ -2,9 +2,15 @@
 
 Requires a GitHub personal access token with 'gist' scope and a Gist ID.
 Stores each data file as a separate file in the Gist.
+
+settings.json is encrypted before pushing to prevent GitHub secret scanning
+from detecting and revoking API keys. A sync password (same on all machines)
+is used for encryption.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import time
@@ -29,6 +35,9 @@ SYNC_FILES = [
 
 # Don't sync trend_intel.json — it's a cache that auto-refreshes
 
+# Keys that are local-only (never pushed to Gist, preserved on pull)
+LOCAL_ONLY_KEYS = ("sync_gist_id", "sync_github_token", "sync_password")
+
 
 def _get_sync_config() -> tuple[str, str]:
     """Read Gist ID and GitHub token from settings or env."""
@@ -46,10 +55,52 @@ def _get_sync_config() -> tuple[str, str]:
     return gist_id, gh_token
 
 
+def _get_sync_password() -> str:
+    """Read the sync encryption password from settings."""
+    settings_path = os.path.join(DATA_DIR, "settings.json")
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path) as f:
+                return json.load(f).get("sync_password", "")
+        except (json.JSONDecodeError, IOError):
+            pass
+    return ""
+
+
 def is_sync_configured() -> bool:
     """Check if sync is set up."""
     gist_id, gh_token = _get_sync_config()
     return bool(gist_id and gh_token)
+
+
+# --- Encryption helpers ---
+
+def _derive_key(password: str) -> bytes:
+    """Derive a 32-byte Fernet key from a password using PBKDF2."""
+    # Fixed salt — all machines with the same password get the same key
+    salt = b"sessions-builder-sync-v1"
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+    return base64.urlsafe_b64encode(dk)
+
+
+def _encrypt(plaintext: str, password: str) -> str:
+    """Encrypt a string with the sync password. Returns base64 ciphertext."""
+    from cryptography.fernet import Fernet
+    key = _derive_key(password)
+    f = Fernet(key)
+    return f.encrypt(plaintext.encode("utf-8")).decode("ascii")
+
+
+def _decrypt(ciphertext: str, password: str) -> str | None:
+    """Decrypt a string with the sync password. Returns None on failure."""
+    from cryptography.fernet import Fernet, InvalidToken
+    key = _derive_key(password)
+    f = Fernet(key)
+    try:
+        return f.decrypt(ciphertext.encode("ascii")).decode("utf-8")
+    except (InvalidToken, Exception) as e:
+        print(f"[Sync] Decryption failed: {e}")
+        return None
 
 
 _last_sync_error = ""
@@ -99,6 +150,8 @@ def pull_from_gist() -> bool:
     if not gist_id or not token:
         return False
 
+    password = _get_sync_password()
+
     print("[Sync] Pulling data from Gist...")
     gist = _gist_api("GET", gist_id, token)
     if not gist:
@@ -114,13 +167,33 @@ def pull_from_gist() -> bool:
     updated = 0
 
     for filename in SYNC_FILES:
-        if filename not in files:
-            continue
-
-        gist_file = files[filename]
-        content = gist_file.get("content", "")
-        if not content:
-            continue
+        # For settings.json, check for encrypted version first
+        if filename == "settings.json":
+            if "settings.json.enc" in files and password:
+                enc_content = files["settings.json.enc"].get("content", "")
+                if enc_content:
+                    decrypted = _decrypt(enc_content, password)
+                    if decrypted:
+                        content = decrypted
+                        print("[Sync] Decrypted settings.json from Gist.")
+                    else:
+                        print("[Sync] WARNING: Could not decrypt settings.json — wrong password?")
+                        continue
+                else:
+                    continue
+            elif filename in files:
+                # Fallback: unencrypted settings.json (legacy or no password)
+                content = files[filename].get("content", "")
+                if not content:
+                    continue
+            else:
+                continue
+        else:
+            if filename not in files:
+                continue
+            content = files[filename].get("content", "")
+            if not content:
+                continue
 
         local_path = os.path.join(DATA_DIR, filename)
 
@@ -136,15 +209,12 @@ def pull_from_gist() -> bool:
         if content.strip() == local_content.strip():
             continue
 
-        # For settings.json, preserve local secrets (they're stripped from the Gist)
+        # For settings.json, preserve local-only keys
         if filename == "settings.json":
             try:
                 local_settings = json.loads(local_content) if local_content.strip() else {}
                 gist_settings = json.loads(content)
-                # Restore local secrets — these are never in the Gist
-                for key in ("sync_gist_id", "sync_github_token",
-                            "google_key", "anthropic_key",
-                            "oauth_client_id", "oauth_client_secret"):
+                for key in LOCAL_ONLY_KEYS:
                     if key in local_settings:
                         gist_settings[key] = local_settings[key]
                 content = json.dumps(gist_settings)
@@ -165,11 +235,14 @@ def pull_from_gist() -> bool:
 
 def push_to_gist() -> bool:
     """Push current data files to the Gist. Returns True on success."""
+    global _last_sync_error
     gist_id, token = _get_sync_config()
     if not gist_id or not token:
         print(f"[Sync] Push skipped — gist_id={'set' if gist_id else 'MISSING'}, token={'set' if token else 'MISSING'}")
         return False
     print(f"[Sync] Config: gist_id={gist_id[:8]}..., token={token[:8]}...")
+
+    password = _get_sync_password()
 
     files = {}
     for filename in SYNC_FILES:
@@ -180,22 +253,39 @@ def push_to_gist() -> bool:
                     content = f.read()
                 if not content.strip():
                     continue
-                # Strip ALL secrets from settings.json before pushing —
-                # GitHub secret scanning detects API keys (GitHub, Anthropic,
-                # Google, OAuth) in Gist content and notifies providers who
-                # revoke them. Confirmed: both GitHub and Anthropic keys were
-                # revoked this way.
+
                 if filename == "settings.json":
+                    # Strip local-only keys (they don't belong in the Gist)
                     try:
                         settings_data = json.loads(content)
-                        for secret_key in ("sync_github_token", "sync_gist_id",
-                                           "google_key", "anthropic_key",
-                                           "oauth_client_id", "oauth_client_secret"):
-                            settings_data.pop(secret_key, None)
+                        for key in LOCAL_ONLY_KEYS:
+                            settings_data.pop(key, None)
                         content = json.dumps(settings_data)
                     except (json.JSONDecodeError, ValueError):
                         pass
-                files[filename] = {"content": content}
+
+                    if password:
+                        # Encrypt settings and push as settings.json.enc
+                        encrypted = _encrypt(content, password)
+                        files["settings.json.enc"] = {"content": encrypted}
+                        # Remove any old unencrypted settings.json from Gist
+                        files["settings.json"] = {"content": ""}
+                        print("[Sync] Settings encrypted for push.")
+                    else:
+                        # No password — push unencrypted (legacy behavior)
+                        # Still strip secrets that GitHub would revoke
+                        try:
+                            settings_data = json.loads(content)
+                            for key in ("google_key", "anthropic_key",
+                                        "oauth_client_id", "oauth_client_secret"):
+                                settings_data.pop(key, None)
+                            content = json.dumps(settings_data)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        files[filename] = {"content": content}
+                        _last_sync_error = ""
+                else:
+                    files[filename] = {"content": content}
             except IOError:
                 continue
 
