@@ -49,19 +49,13 @@ cat > "$SCRIPT_DIR/$APP_DIR/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# --- Launch script ---
-# Note: LAUNCHER is unquoted so $SCRIPT_DIR expands at build time (correct)
-cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" << LAUNCHER
+# --- Server launch script (called by the native wrapper) ---
+# Note: SERVERSCRIPT is unquoted so $SCRIPT_DIR expands at build time (correct)
+cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/server.sh" << SERVERSCRIPT
 #!/bin/bash
 
-# Force arm64 to match arm64-compiled Python packages
-# (macOS .app bundles sometimes default to x86_64)
-if [ "\$(uname -m)" != "arm64" ]; then
-    exec arch -arm64 /bin/bash "\$0" "\$@"
-fi
-
 # Finder-launched .app bundles get a minimal PATH — set it up
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
 
 # Tell Flask not to use reloader (keeps this process alive for Dock indicator)
 export LAUNCHED_FROM_APP=1
@@ -93,29 +87,98 @@ echo "Using python: \$PYTHON"
 /usr/sbin/lsof -ti:5000 | xargs kill -9 2>/dev/null
 sleep 0.3
 
-# Launch app
-\$PYTHON app.py &
-APP_PID=\$!
-echo "Started app.py with PID \$APP_PID"
+# Launch app (foreground — the native wrapper manages the lifecycle)
+exec \$PYTHON app.py
+SERVERSCRIPT
+chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/server.sh"
 
-# Wait for server to be ready (up to 10 seconds)
-READY=0
-for i in {1..20}; do
-    if /usr/bin/curl -s http://127.0.0.1:5000 >/dev/null 2>&1; then
-        READY=1
-        break
-    fi
-    sleep 0.5
-done
+# --- Native Cocoa wrapper (gives us a Dock dot + proper app lifecycle) ---
+cat > /tmp/_btc_launcher.swift << 'SWIFT'
+import AppKit
 
-echo "Server ready: \$READY"
-/usr/bin/open http://127.0.0.1:5000
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var serverProcess: Process?
 
-# Keep the .app process alive as long as the server runs
-wait \$APP_PID
-echo "App exited with code \$?"
-LAUNCHER
-chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let bundle = Bundle.main
+        let serverScript = bundle.executableURL!
+            .deletingLastPathComponent()
+            .appendingPathComponent("server.sh")
+
+        // Launch the server script
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [serverScript.path]
+        process.terminationHandler = { _ in
+            DispatchQueue.main.async {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+
+        do {
+            try process.run()
+            serverProcess = process
+        } catch {
+            NSLog("Failed to launch server: \(error)")
+            NSApplication.shared.terminate(nil)
+            return
+        }
+
+        // Poll for server readiness, then open browser
+        DispatchQueue.global().async {
+            var ready = false
+            for _ in 0..<60 {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+                task.arguments = ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+                                  "http://127.0.0.1:5000/planner"]
+                let pipe = Pipe()
+                task.standardOutput = pipe
+                task.standardError = FileHandle.nullDevice
+                do {
+                    try task.run()
+                    task.waitUntilExit()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let code = String(data: data, encoding: .utf8), code.contains("200") {
+                        ready = true
+                        break
+                    }
+                } catch {}
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            if ready {
+                DispatchQueue.main.async {
+                    NSWorkspace.shared.open(URL(string: "http://127.0.0.1:5000")!)
+                }
+            }
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if let process = serverProcess, process.isRunning {
+            process.terminate()
+        }
+        return .terminateNow
+    }
+}
+
+let app = NSApplication.shared
+app.setActivationPolicy(.regular)
+let delegate = AppDelegate()
+app.delegate = delegate
+app.run()
+SWIFT
+
+echo "Compiling native launcher..."
+swiftc /tmp/_btc_launcher.swift -o "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" \
+    -framework AppKit -O 2>/dev/null
+rm -f /tmp/_btc_launcher.swift
+
+if [ ! -f "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" ]; then
+    echo "⚠ Native compile failed, falling back to shell launcher"
+    # Fallback: rename server.sh to launch
+    mv "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/server.sh" "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
+fi
 
 # --- Generate icon ---
 RESOURCES="$SCRIPT_DIR/$APP_DIR/Contents/Resources"

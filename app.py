@@ -162,14 +162,9 @@ def load_title_history() -> list:
     return []
 
 
-# Sync: pull latest data from Gist before loading
+# Load persisted data on startup (local files only — instant)
 from sync import pull_from_gist, push_to_gist, is_sync_configured
-try:
-    pull_from_gist()
-except Exception as _sync_err:
-    print(f"[Sync] Pull on startup failed: {_sync_err}")
 
-# Load persisted data on startup
 _saved = load_settings()
 playlist_info = {
     "playlist_id": _saved.get("playlist_id", ""),
@@ -181,31 +176,58 @@ competitors_cache = load_competitors()
 video_categories = load_categories()
 title_history = load_title_history()
 
-# Auto-refresh competitors on startup
-_google_key = _saved.get("google_key", "")
-if _google_key and competitors_cache:
-    for _comp in competitors_cache:
+# Heavy startup work (network calls) runs in background so the server starts fast
+_btc_prices = {}
+_snapshots = {}
+_startup_done = threading.Event()
+
+def _background_startup():
+    global _btc_prices, _snapshots, video_cache, analytics_cache, competitors_cache, title_history
+    try:
+        # Sync pull — may update local data files
         try:
-            _result = fetch_channel_videos(_comp["url"], _google_key, max_videos=30)
-            _comp["videos"] = _result["videos"]
-            _comp["name"] = _result["channel_title"]
-        except Exception:
-            pass
-    save_competitors(competitors_cache)
+            if pull_from_gist():
+                # Reload data that may have been updated by sync
+                video_cache = load_video_cache()
+                analytics_cache = load_analytics()
+                competitors_cache = load_competitors()
+                title_history = load_title_history()
+                _saved_inner = load_settings()
+                playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
+                playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
+        except Exception as e:
+            print(f"[Sync] Pull on startup failed: {e}")
 
-# Record view count snapshots for longevity tracking
-if video_cache or competitors_cache:
-    _snapshots = record_snapshot(video_cache, competitors_cache)
-else:
-    _snapshots = {}
+        # Auto-refresh competitors
+        _gk = playlist_info.get("google_key", "")
+        if _gk and competitors_cache:
+            for _comp in competitors_cache:
+                try:
+                    _result = fetch_channel_videos(_comp["url"], _gk, max_videos=30)
+                    _comp["videos"] = _result["videos"]
+                    _comp["name"] = _result["channel_title"]
+                except Exception:
+                    pass
+            save_competitors(competitors_cache)
 
-# Fetch BTC price data (cached, non-blocking if fails)
-_btc_prices = fetch_btc_prices()
-if _btc_prices:
-    _latest = sorted(_btc_prices.keys())[-1]
-    print(f"[Market] BTC data loaded: {len(_btc_prices)} days, latest {_latest} = ${_btc_prices[_latest]:,.0f}")
-else:
-    print("[Market] WARNING: Could not fetch BTC price data. Market features will show $0.")
+        # Snapshots
+        if video_cache or competitors_cache:
+            _snapshots.update(record_snapshot(video_cache, competitors_cache))
+
+        # BTC prices
+        prices = fetch_btc_prices()
+        if prices:
+            _btc_prices.update(prices)
+            _latest = sorted(_btc_prices.keys())[-1]
+            print(f"[Market] BTC data loaded: {len(_btc_prices)} days, latest {_latest} = ${_btc_prices[_latest]:,.0f}")
+        else:
+            print("[Market] WARNING: Could not fetch BTC price data. Market features will show $0.")
+    finally:
+        _startup_done.set()
+        print("[Startup] Background initialization complete.")
+
+_startup_thread = threading.Thread(target=_background_startup, daemon=True)
+_startup_thread.start()
 
 
 @app.route("/")
