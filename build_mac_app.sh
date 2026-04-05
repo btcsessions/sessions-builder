@@ -80,184 +80,72 @@ LAUNCHER
 chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
 
 # --- Generate icon ---
-# Create a simple Bitcoin-orange icon using macOS built-in tools
-ICON_DIR="$SCRIPT_DIR/$APP_DIR/Contents/Resources/AppIcon.iconset"
+# Use Automator/JS to create a Bitcoin-orange circle icon via macOS graphics
+RESOURCES="$SCRIPT_DIR/$APP_DIR/Contents/Resources"
+ICON_DIR="$RESOURCES/AppIcon.iconset"
 mkdir -p "$ICON_DIR"
+MASTER_PNG="$RESOURCES/_master_1024.png"
 
-# Use Python to generate a PNG icon (no external deps needed)
-python3 << 'PYICON'
-import struct, zlib, os, sys
+# Create a 1024x1024 master icon using macOS built-in JavaScript for Automation
+osascript -l JavaScript << 'JSICON' - "$MASTER_PNG"
+ObjC.import('AppKit');
+ObjC.import('Foundation');
 
-def create_btc_icon(size):
-    """Create a Bitcoin-themed icon as raw RGBA pixels."""
-    pixels = bytearray()
-    cx, cy = size // 2, size // 2
-    r = size // 2 - 1
+var outPath = $.NSProcessInfo.processInfo.arguments.objectAtIndex(4).js;
+var size = 1024;
 
-    for y in range(size):
-        for x in range(size):
-            dx, dy = x - cx, y - cy
-            dist = (dx*dx + dy*dy) ** 0.5
+var rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaPlanarColorSpaceNameBytesPerRowBitsPerPixel(
+    null, size, size, 8, 4, true, false,
+    $.NSDeviceRGBColorSpace, size * 4, 32
+);
 
-            if dist <= r:
-                # Orange circle background
-                R, G, B, A = 242, 169, 0, 255
+var ctx = $.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep);
+$.NSGraphicsContext.setCurrentContext(ctx);
 
-                # Draw a simple "₿" shape
-                # Scale everything relative to size
-                s = size / 64.0
+// Orange circle
+var orange = $.NSColor.colorWithCalibratedRedGreenBlueAlpha(0.949, 0.663, 0.0, 1.0);
+orange.set;
+var path = $.NSBezierPath.bezierPathWithOvalInRect($.NSMakeRect(0, 0, size, size));
+path.fill;
 
-                # Vertical bars of B
-                bar_x1 = int(22 * s)
-                bar_x2 = int(26 * s)
-                bar_top = int(16 * s)
-                bar_bot = int(48 * s)
+// White Bitcoin "B" symbol using text rendering
+var white = $.NSColor.whiteColor;
+var font = $.NSFont.fontWithNameSize("Helvetica-Bold", 620);
+var attrs = $.NSMutableDictionary.alloc.init;
+attrs.setObjectForKey(font, $.NSFontAttributeName);
+attrs.setObjectForKey(white, $.NSForegroundColorAttributeName);
 
-                # Top serif
-                top_x1 = int(20 * s)
-                top_x2 = int(28 * s)
-                top_y1 = int(14 * s)
-                top_y2 = int(18 * s)
+var str = $.NSString.alloc.initWithUTF8String("₿");
+var strSize = str.sizeWithAttributes(attrs);
+var x = (size - strSize.width) / 2;
+var y = (size - strSize.height) / 2 - 20;
+str.drawAtPointWithAttributes($.NSMakePoint(x, y), attrs);
 
-                # Bottom serif
-                bot_y1 = int(46 * s)
-                bot_y2 = int(50 * s)
+ctx.flushGraphics;
 
-                # Upper bump of B
-                bump1_cx = int(30 * s)
-                bump1_cy = int(27 * s)
-                bump1_r = int(9 * s)
+var data = rep.representationUsingTypeProperties($.NSPNGFileType, null);
+data.writeToFileAtomically(outPath, true);
+JSICON
 
-                # Lower bump of B
-                bump2_cx = int(31 * s)
-                bump2_cy = int(39 * s)
-                bump2_r = int(10 * s)
-
-                # Horizontal bars
-                hbar_y1_top = int(18 * s)
-                hbar_y1_bot = int(21 * s)
-                hbar_y2_top = int(32 * s)
-                hbar_y2_bot = int(35 * s)
-                hbar_y3_top = int(45 * s)
-                hbar_y3_bot = int(48 * s)
-                hbar_x1 = int(22 * s)
-                hbar_x2 = int(36 * s)
-
-                # Vertical strike-throughs
-                strike_x1 = int(27 * s)
-                strike_x2 = int(31 * s)
-                strike_top = int(11 * s)
-                strike_bot = int(53 * s)
-
-                is_symbol = False
-
-                # Vertical bar
-                if bar_x1 <= x <= bar_x2 and bar_top <= y <= bar_bot:
-                    is_symbol = True
-
-                # Horizontal bars
-                if hbar_x1 <= x <= hbar_x2:
-                    if hbar_y1_top <= y <= hbar_y1_bot:
-                        is_symbol = True
-                    if hbar_y2_top <= y <= hbar_y2_bot:
-                        is_symbol = True
-                    if hbar_y3_top <= y <= hbar_y3_bot:
-                        is_symbol = True
-
-                # Upper bump
-                bdx = x - bump1_cx
-                bdy = y - bump1_cy
-                if (bdx*bdx + bdy*bdy) <= bump1_r * bump1_r and x >= bar_x2:
-                    # Ring (not filled)
-                    inner_r = bump1_r - int(3 * s)
-                    if (bdx*bdx + bdy*bdy) >= inner_r * inner_r:
-                        is_symbol = True
-
-                # Lower bump
-                bdx = x - bump2_cx
-                bdy = y - bump2_cy
-                if (bdx*bdx + bdy*bdy) <= bump2_r * bump2_r and x >= bar_x2:
-                    inner_r = bump2_r - int(3 * s)
-                    if (bdx*bdx + bdy*bdy) >= inner_r * inner_r:
-                        is_symbol = True
-
-                # Strike-throughs
-                if strike_x1 <= x <= strike_x2:
-                    if strike_top <= y <= (strike_top + int(3*s)):
-                        is_symbol = True
-                    if (strike_bot - int(3*s)) <= y <= strike_bot:
-                        is_symbol = True
-
-                if is_symbol:
-                    R, G, B = 255, 255, 255
-
-                # Edge anti-aliasing
-                if dist > r - 1.5:
-                    alpha = max(0, min(255, int((r - dist + 1.5) * 170)))
-                    A = alpha
-
-            else:
-                R, G, B, A = 0, 0, 0, 0
-
-            pixels.extend([R, G, B, A])
-
-    return bytes(pixels)
-
-
-def write_png(filename, width, height, pixels):
-    """Write RGBA pixels as PNG."""
-    def chunk(chunk_type, data):
-        c = chunk_type + data
-        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xFFFFFFFF)
-
-    raw = bytearray()
-    for y in range(height):
-        raw.append(0)  # filter byte
-        offset = y * width * 4
-        raw.extend(pixels[offset:offset + width * 4])
-
-    with open(filename, 'wb') as f:
-        f.write(b'\x89PNG\r\n\x1a\n')
-        f.write(chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)))
-        f.write(chunk(b'IDAT', zlib.compress(bytes(raw), 9)))
-        f.write(chunk(b'IEND', b''))
-
-
-# Generate exactly the icon sizes macOS iconutil expects
-iconset_dir = os.environ.get('ICON_DIR', '.')
-
-# macOS iconset requires these exact files:
-# icon_NxN.png (1x) and icon_NxN@2x.png (2x, double pixel size)
-required = [
-    ("icon_16x16.png",      16),
-    ("icon_16x16@2x.png",   32),
-    ("icon_32x32.png",      32),
-    ("icon_32x32@2x.png",   64),
-    ("icon_128x128.png",    128),
-    ("icon_128x128@2x.png", 256),
-    ("icon_256x256.png",    256),
-    ("icon_256x256@2x.png", 512),
-    ("icon_512x512.png",    512),
-    ("icon_512x512@2x.png", 1024),
-]
-
-cache = {}
-for fname, px in required:
-    if px not in cache:
-        cache[px] = create_btc_icon(px)
-    write_png(os.path.join(iconset_dir, fname), px, px, cache[px])
-
-print("Icon PNGs generated.")
-PYICON
-
-# Convert iconset to icns
-if command -v iconutil &>/dev/null; then
-    cd "$SCRIPT_DIR"
-    iconutil -c icns "$ICON_DIR" -o "$SCRIPT_DIR/$APP_DIR/Contents/Resources/AppIcon.icns"
-    rm -rf "$ICON_DIR"
-    echo "✓ Icon converted to .icns"
+if [ ! -f "$MASTER_PNG" ]; then
+    echo "⚠ Could not generate icon via osascript. Skipping icon."
 else
-    echo "⚠ iconutil not available. Icon will use PNG fallback."
+    echo "✓ Master icon generated"
+
+    # Use sips to create all required iconset sizes
+    for sz in 16 32 128 256 512; do
+        sips -z $sz $sz "$MASTER_PNG" --out "$ICON_DIR/icon_${sz}x${sz}.png" >/dev/null 2>&1
+    done
+    for sz in 16 32 128 256; do
+        dbl=$((sz * 2))
+        sips -z $dbl $dbl "$MASTER_PNG" --out "$ICON_DIR/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
+    done
+    cp "$MASTER_PNG" "$ICON_DIR/icon_512x512@2x.png"
+    rm "$MASTER_PNG"
+
+    # Convert iconset to icns
+    iconutil -c icns "$ICON_DIR" -o "$RESOURCES/AppIcon.icns" && echo "✓ Icon converted to .icns"
+    rm -rf "$ICON_DIR"
 fi
 
 echo ""
