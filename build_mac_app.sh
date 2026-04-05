@@ -46,35 +46,47 @@ cat > "$SCRIPT_DIR/$APP_DIR/Contents/Info.plist" << 'PLIST'
 PLIST
 
 # --- Launch script ---
+# Note: LAUNCHER is unquoted so $SCRIPT_DIR expands at build time (correct)
 cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" << LAUNCHER
 #!/bin/bash
-cd "$SCRIPT_DIR"
+
+# Project directory (baked in at build time)
+PROJECT_DIR="$SCRIPT_DIR"
+cd "\$PROJECT_DIR"
 
 # Activate venv
-if [ -d "venv" ]; then
+if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
 fi
 
-# Kill any existing instance
-pkill -f "python app.py" 2>/dev/null
+# Kill any existing instance on port 5000
+lsof -ti:5000 | xargs kill -9 2>/dev/null
 sleep 0.3
 
-# Launch app
+# Launch app (bind to 127.0.0.1 explicitly)
 python app.py &
 APP_PID=\$!
 
-# Wait for server
-for i in {1..15}; do
-    if curl -s http://localhost:5000 >/dev/null 2>&1; then
+# Wait for server to be ready (up to 10 seconds)
+READY=0
+for i in {1..20}; do
+    if curl -s http://127.0.0.1:5000 >/dev/null 2>&1; then
+        READY=1
         break
     fi
     sleep 0.5
 done
 
-# Open browser
-open http://localhost:5000
+if [ \$READY -eq 1 ]; then
+    open http://127.0.0.1:5000
+else
+    # Open anyway — might just be slow
+    open http://127.0.0.1:5000
+fi
 
-# Keep running
+# Keep the .app process alive as long as the server runs
 wait \$APP_PID
 LAUNCHER
 chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
