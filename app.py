@@ -185,19 +185,26 @@ _startup_done = threading.Event()
 def _background_startup():
     global _btc_prices, _snapshots, video_cache, analytics_cache, competitors_cache, title_history
     try:
-        # Sync pull — may update local data files
-        try:
-            if pull_from_gist():
-                # Reload data that may have been updated by sync
-                video_cache = load_video_cache()
-                analytics_cache = load_analytics()
-                competitors_cache = load_competitors()
-                title_history = load_title_history()
-                _saved_inner = load_settings()
-                playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
-                playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
-        except Exception as e:
-            print(f"[Sync] Pull on startup failed: {e}")
+        # Sync pull — only auto-pull if a sync password is set (encrypted sync).
+        # Without a password, auto-pull would overwrite local API keys with the
+        # stripped Gist version. Users without a password can still pull manually.
+        from sync import _get_sync_password
+        _pw = _get_sync_password()
+        if _pw:
+            try:
+                if pull_from_gist():
+                    # Reload data that may have been updated by sync
+                    video_cache = load_video_cache()
+                    analytics_cache = load_analytics()
+                    competitors_cache = load_competitors()
+                    title_history = load_title_history()
+                    _saved_inner = load_settings()
+                    playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
+                    playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
+            except Exception as e:
+                print(f"[Sync] Pull on startup failed: {e}")
+        else:
+            print("[Sync] Skipping auto-pull (no sync password set). Use Pull button in Settings.")
 
         # Auto-refresh competitors
         _gk = playlist_info.get("google_key", "")
