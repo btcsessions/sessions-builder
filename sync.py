@@ -283,8 +283,6 @@ def push_to_gist() -> bool:
                         # Encrypt settings and push as settings.json.enc
                         encrypted = _encrypt(content, password)
                         files["settings.json.enc"] = {"content": encrypted}
-                        # Remove any old unencrypted settings.json from Gist
-                        files["settings.json"] = {"content": ""}
                         print("[Sync] Settings encrypted for push.")
                     else:
                         # No password — push unencrypted (legacy behavior)
