@@ -5,7 +5,6 @@ Used to enrich AI prompts with current context.
 
 Sources:
   Bitcoin/Crypto:
-    - CoinGecko: trending coins, categories, global market stats
     - mempool.space: Bitcoin fees, mempool size, block height, hashrate
     - Nostr.band: trending hashtags, trending notes, trending profiles
     - Stacker.news: top bitcoin community discussions (GraphQL)
@@ -104,39 +103,6 @@ def _strip_html(text: str) -> str:
 # =========================================================================
 #  Bitcoin / Crypto Signals
 # =========================================================================
-
-def _fetch_coingecko_trending() -> tuple[list[dict], list[str]]:
-    """Get trending coins and categories from CoinGecko (free, no key)."""
-    data = _api_get("https://api.coingecko.com/api/v3/search/trending")
-    if not data:
-        return [], []
-    coins = []
-    for item in data.get("coins", [])[:10]:
-        c = item.get("item", {})
-        coins.append({
-            "name": c.get("name", ""),
-            "symbol": c.get("symbol", ""),
-            "market_cap_rank": c.get("market_cap_rank", 0),
-        })
-    categories = []
-    for cat in data.get("categories", [])[:5]:
-        categories.append(cat.get("name", ""))
-    return coins, categories
-
-
-def _fetch_coingecko_global() -> dict:
-    """Get global crypto market data."""
-    data = _api_get("https://api.coingecko.com/api/v3/global")
-    if not data or "data" not in data:
-        return {}
-    g = data["data"]
-    return {
-        "total_market_cap_usd": round(g.get("total_market_cap", {}).get("usd", 0)),
-        "market_cap_change_24h": round(g.get("market_cap_change_percentage_24h_usd", 0), 1),
-        "btc_dominance": round(g.get("market_cap_percentage", {}).get("btc", 0), 1),
-        "active_cryptocurrencies": g.get("active_cryptocurrencies", 0),
-    }
-
 
 def _fetch_mempool_fees() -> dict:
     """Get current Bitcoin mempool/fee data from mempool.space."""
@@ -488,18 +454,6 @@ def gather_trend_intel() -> dict:
         "tech": {},
     }
 
-    # --- Crypto market ---
-    try:
-        trending_coins, trending_categories = _fetch_coingecko_trending()
-        intel["crypto"]["trending_coins"] = trending_coins
-        intel["crypto"]["trending_categories"] = trending_categories
-    except Exception as e:
-        print(f"[TrendIntel] Trending coins error: {e}")
-        intel["crypto"]["trending_coins"] = []
-        intel["crypto"]["trending_categories"] = []
-
-    intel["crypto"]["global_market"] = _fetch_coingecko_global()
-
     # --- Bitcoin network state ---
     intel["bitcoin_network"]["fees"] = _fetch_mempool_fees()
     intel["bitcoin_network"]["mempool"] = _fetch_mempool_stats()
@@ -571,26 +525,6 @@ def intel_to_prompt_context(intel: dict) -> str:
         return ""
 
     lines = ["\n**CURRENT TREND INTELLIGENCE** (live data):"]
-
-    # --- Crypto market ---
-    gm = intel.get("crypto", {}).get("global_market", {})
-    if gm:
-        lines.append(f"\nCrypto Market:")
-        if gm.get("total_market_cap_usd"):
-            lines.append(f"- Total market cap: ${gm['total_market_cap_usd']:,}")
-        if gm.get("market_cap_change_24h"):
-            lines.append(f"- 24h change: {gm['market_cap_change_24h']}%")
-        if gm.get("btc_dominance"):
-            lines.append(f"- BTC dominance: {gm['btc_dominance']}%")
-
-    coins = intel.get("crypto", {}).get("trending_coins", [])
-    if coins:
-        coin_names = [f"{c['name']} ({c['symbol']})" for c in coins[:8]]
-        lines.append(f"\nTrending Coins: {', '.join(coin_names)}")
-
-    cats = intel.get("crypto", {}).get("trending_categories", [])
-    if cats:
-        lines.append(f"Trending Crypto Categories: {', '.join(cats[:5])}")
 
     # --- Bitcoin network ---
     net = intel.get("bitcoin_network", {})

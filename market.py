@@ -38,7 +38,6 @@ def fetch_btc_prices(days: int = 730) -> dict:
     # Try multiple sources for historical data until one works
     prices = {}
     for fetch_fn, label in [
-        (_fetch_coingecko_history, "CoinGecko"),
         (_fetch_coincap_history, "CoinCap"),
         (lambda: _fetch_binance_history(), "Binance"),
         (_fetch_coincap_history_chunks, "CoinCap chunks"),
@@ -213,11 +212,6 @@ def _fetch_binance_history() -> dict:
 def _fetch_current_price() -> float | None:
     """Try multiple APIs to get just the current BTC price."""
     sources = [
-        (
-            "CoinGecko",
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
-            lambda d: d.get("bitcoin", {}).get("usd"),
-        ),
         (
             "mempool.space",
             "https://mempool.space/api/v1/prices",
