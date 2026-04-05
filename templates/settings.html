@@ -65,8 +65,9 @@
     <input type="hidden" name="sync_gist_id" value="{{ sync_gist_id }}">
     <input type="hidden" name="sync_github_token" value="{{ sync_github_token }}">
 
-    <div class="form-actions">
-        <button type="submit" class="btn primary">Save &amp; Reload Playlist</button>
+    <div class="form-actions" style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+        <button type="submit" class="btn primary" name="action" value="save" formaction="{{ url_for('save_settings_only') }}">Save Settings</button>
+        <button type="submit" class="btn secondary" name="action" value="reload" formaction="{{ url_for('fetch') }}">Save &amp; Reload Playlist</button>
     </div>
 </form>
 

@@ -286,6 +286,7 @@ def settings_page():
         has_analytics=bool(analytics_cache),
         has_videos=len(video_cache) > 0,
         error=request.args.get("error"),
+        success=request.args.get("success"),
         videos=video_cache,
         video_categories=video_categories,
         sync_gist_id=settings.get("sync_gist_id", ""),
@@ -339,6 +340,32 @@ def fetch():
         )
 
     return redirect(url_for("dashboard"))
+
+
+@app.route("/save-settings", methods=["POST"])
+def save_settings_only():
+    """Save settings without re-fetching the playlist."""
+    playlist_url = request.form.get("playlist_url", "").strip()
+    google_key = request.form.get("google_key", "").strip()
+    anthropic_key = request.form.get("anthropic_key", "").strip()
+    oauth_client_id = request.form.get("oauth_client_id", "").strip()
+    oauth_client_secret = request.form.get("oauth_client_secret", "").strip()
+    sync_gist_id = request.form.get("sync_gist_id", "").strip()
+    sync_github_token = request.form.get("sync_github_token", "").strip()
+
+    existing = load_settings()
+    playlist_id = existing.get("playlist_id", "")
+    if playlist_url:
+        try:
+            playlist_id = parse_playlist_id(playlist_url)
+        except Exception:
+            playlist_id = existing.get("playlist_id", "")
+
+    save_settings(playlist_id, google_key, anthropic_key, playlist_url,
+                  oauth_client_id, oauth_client_secret,
+                  sync_gist_id, sync_github_token)
+
+    return redirect(url_for("settings_page", success="Settings saved."))
 
 
 @app.route("/dashboard")
