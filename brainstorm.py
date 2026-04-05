@@ -344,11 +344,45 @@ def chat_with_claude(
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
+    plan_state: dict = None,
 ) -> str:
     """Send a message to Claude with video performance context."""
     client = anthropic.Anthropic(api_key=api_key)
 
     system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
+
+    # Add plan context if a plan is active
+    if plan_state:
+        plan_section = "\n\n**CURRENT VIDEO PLAN (visible in the planner):**"
+        if plan_state.get("topic"):
+            plan_section += f"\nTopic: {plan_state['topic']}"
+        if plan_state.get("video_type"):
+            plan_section += f"\nFormat: {plan_state['video_type']}"
+        if plan_state.get("titles"):
+            plan_section += "\nTitles:\n" + "\n".join(f"  {i+1}. {t}" for i, t in enumerate(plan_state["titles"]))
+        if plan_state.get("intro_hook"):
+            plan_section += f"\nIntro Hook: {plan_state['intro_hook']}"
+        if plan_state.get("outline"):
+            plan_section += "\nOutline:"
+            for sec in plan_state["outline"]:
+                plan_section += f"\n  - {sec.get('section', '')}: {', '.join(sec.get('points', []))}"
+        if plan_state.get("tags"):
+            plan_section += f"\nTags: {', '.join(plan_state['tags'])}"
+
+        plan_section += """
+
+You can see and modify this plan. When the user asks you to change something about the plan (titles, outline, hook, tags, thumbnails, description), respond with your explanation AND include the changes in a fenced code block tagged `plan_change` containing valid JSON. Only include the fields being changed.
+
+Example — if the user says "make the titles shorter":
+```plan_change
+{"titles": ["Short Title 1", "Short Title 2", "Short Title 3"]}
+```
+
+Available fields: titles (array of strings), thumbnail_ideas (array), intro_hook (string), outline (array of {section, points, duration_hint}), tags (array), description (string).
+
+IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking to modify the plan. For general discussion, just respond normally. Format your regular responses with clean markdown — use headers, bullet points, and bold for readability."""
+
+        system_prompt += plan_section
 
     messages = []
     for msg in chat_history:

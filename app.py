@@ -413,6 +413,8 @@ def api_chat():
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
+    plan_state = data.get("plan_state")
+
     settings = load_settings()
     api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -423,10 +425,28 @@ def api_chat():
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
         }
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data)
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state)
+
+        # Check if reply contains a plan change JSON block
+        plan_change = None
+        if "```plan_change" in reply:
+            import re
+            match = re.search(r"```plan_change\s*\n([\s\S]*?)```", reply)
+            if match:
+                try:
+                    plan_change = json.loads(match.group(1))
+                    # Remove the JSON block from the displayed reply
+                    reply = reply[:match.start()].rstrip() + reply[match.end():].lstrip()
+                except json.JSONDecodeError:
+                    pass
+
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
-        return jsonify({"reply": reply})
+
+        result = {"reply": reply}
+        if plan_change:
+            result["plan_change"] = plan_change
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
