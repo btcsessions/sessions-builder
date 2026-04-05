@@ -237,6 +237,16 @@
             </section>
         </div>
 
+        <!-- Saved Titles Reference -->
+        <div id="saved-titles-section" class="saved-titles-section" style="display:none">
+            <div class="saved-titles-toggle" id="saved-titles-toggle">
+                <span class="saved-titles-label">Saved Titles</span>
+                <span id="saved-titles-count" class="saved-titles-count">0</span>
+                <span class="chevron" id="saved-titles-chevron">&#9662;</span>
+            </div>
+            <div id="saved-titles-list" class="saved-titles-list" style="display:none"></div>
+        </div>
+
         <!-- Competitor Video Analysis -->
         <div id="analysis-loading" class="plan-loading" style="display:none">
             <p>Analyzing video...</p>
@@ -478,6 +488,20 @@ function scoreTitle(title) {
     // 6. Brackets/parentheses (thumbnail + title CTR pattern)
     if (/[\[\(]/.test(title)) { score += 3; breakdown.push("+3 brackets/parentheses"); }
 
+    // 7. Learned keywords from saved title preferences
+    const learned = scoringCtx.learned_keywords || {};
+    let learnedHits = 0;
+    for (const [kw, freq] of Object.entries(learned)) {
+        if (lower.includes(kw)) {
+            learnedHits++;
+            if (learnedHits <= 3) {
+                const bonus = Math.min(5, freq * 2);
+                score += bonus;
+                breakdown.push("+" + bonus + ' preferred word "' + kw + '" (used in ' + freq + " saved titles)");
+            }
+        }
+    }
+
     // Clamp 0-100
     score = Math.max(0, Math.min(100, score));
     return { score, breakdown };
@@ -498,14 +522,18 @@ function getScoreLabel(score) {
     return "Low";
 }
 
+let originalTitles = []; // track originals for save comparison
+
 function renderTitles(titles) {
+    originalTitles = [...titles];
     const container = document.getElementById("plan-titles");
     container.innerHTML = titles.map((t, i) => {
         const { score, breakdown } = scoreTitle(t);
-        return `<div class="title-row" data-idx="${i}">
+        return `<div class="title-row" data-idx="${i}" data-original="${esc(t)}">
             <div class="title-score-badge" style="background:${getScoreColor(score)}" title="${breakdown.map(b => esc(b)).join('\n')}">${score}</div>
             <input type="text" class="title-editable" value="${esc(t)}" data-idx="${i}">
             <span class="title-score-label" style="color:${getScoreColor(score)}">${getScoreLabel(score)}</span>
+            <button class="btn small title-save-btn" data-idx="${i}" title="Save this title to your preferences">Save</button>
         </div>`;
     }).join("");
 
@@ -521,6 +549,47 @@ function renderTitles(titles) {
             badge.title = breakdown.join("\n");
             label.textContent = getScoreLabel(score);
             label.style.color = getScoreColor(score);
+        });
+    });
+
+    // Wire up save buttons
+    container.querySelectorAll(".title-save-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const idx = parseInt(btn.dataset.idx);
+            const row = btn.closest(".title-row");
+            const input = row.querySelector(".title-editable");
+            const title = input.value.trim();
+            if (!title) return;
+
+            const { score } = scoreTitle(title);
+            const topic = document.getElementById("video-topic")?.value || "";
+            const format = document.querySelector('input[name="video-type"]:checked')?.value || "";
+
+            btn.disabled = true;
+            btn.textContent = "Saving...";
+            try {
+                const resp = await fetch("/api/title-history/save", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        title,
+                        topic,
+                        format,
+                        score,
+                        original: originalTitles[idx] || "",
+                    }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    btn.textContent = "Saved";
+                    btn.classList.add("saved");
+                    refreshSavedTitles();
+                } else {
+                    btn.textContent = "Error";
+                }
+            } catch (err) {
+                btn.textContent = "Error";
+            }
         });
     });
 }
@@ -690,6 +759,80 @@ function renderAnalysis(data, title, videoId, thumbUrl) {
     document.getElementById("analysis-ideas").innerHTML = (data.video_ideas || []).map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
 }
+
+/* --- Saved Titles --- */
+async function refreshSavedTitles() {
+    try {
+        const resp = await fetch("/api/title-history");
+        const data = await resp.json();
+        const titles = data.titles || [];
+        const section = document.getElementById("saved-titles-section");
+        const count = document.getElementById("saved-titles-count");
+        const list = document.getElementById("saved-titles-list");
+
+        if (titles.length === 0) {
+            section.style.display = "none";
+            return;
+        }
+
+        section.style.display = "";
+        count.textContent = titles.length;
+
+        list.innerHTML = titles.map((t, i) =>
+            `<div class="saved-title-item ${t.used ? 'used' : ''}">
+                <div class="saved-title-text">${esc(t.title)}</div>
+                <div class="saved-title-meta">
+                    ${t.topic ? '<span>' + esc(t.topic) + '</span>' : ''}
+                    ${t.format ? '<span>' + esc(t.format) + '</span>' : ''}
+                    <span>Score: ${t.score}</span>
+                    <span>${t.saved_at}</span>
+                    ${t.used ? '<span class="used-badge">Used</span>' : ''}
+                </div>
+                <div class="saved-title-actions">
+                    ${!t.used ? '<button class="btn small mark-used-btn" data-idx="' + i + '">Mark Used</button>' : ''}
+                    <button class="btn small delete-title-btn" data-idx="${i}">Remove</button>
+                </div>
+            </div>`
+        ).reverse().join("");
+
+        // Wire delete buttons
+        list.querySelectorAll(".delete-title-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                await fetch("/api/title-history/delete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ index: parseInt(btn.dataset.idx) }),
+                });
+                refreshSavedTitles();
+            });
+        });
+
+        // Wire mark-used buttons
+        list.querySelectorAll(".mark-used-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                await fetch("/api/title-history/mark-used", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ index: parseInt(btn.dataset.idx) }),
+                });
+                refreshSavedTitles();
+            });
+        });
+    } catch (err) {
+        console.warn("Failed to load saved titles:", err);
+    }
+}
+
+document.getElementById("saved-titles-toggle")?.addEventListener("click", () => {
+    const list = document.getElementById("saved-titles-list");
+    const chev = document.getElementById("saved-titles-chevron");
+    const open = list.style.display === "none";
+    list.style.display = open ? "block" : "none";
+    chev.style.transform = open ? "rotate(180deg)" : "";
+});
+
+// Load on startup
+refreshSavedTitles();
 
 /* --- Trend context seed (from Trends → Plan This Video) --- */
 let trendSeed = null;

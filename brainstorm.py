@@ -399,6 +399,20 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
     return response.content[0].text
 
 
+def _build_title_history_section(title_history: list = None) -> str:
+    """Build a prompt section from saved title preferences."""
+    if not title_history:
+        return ""
+    recent = title_history[-30:]  # Last 30 saved titles
+    lines = ["\n**CREATOR'S SAVED TITLE PREFERENCES (titles they liked and saved):**"]
+    for entry in recent:
+        used_marker = " [USED]" if entry.get("used") else ""
+        lines.append(f"  - \"{entry['title']}\" (topic: {entry.get('topic', '?')}, format: {entry.get('format', '?')}, score: {entry.get('score', '?')}){used_marker}")
+    lines.append("")
+    lines.append("Study these saved titles carefully. They represent the creator's preferred style, word choices, and structure. New title suggestions should reflect similar patterns while remaining fresh and unique.")
+    return "\n".join(lines)
+
+
 def generate_video_plan(
     video_type: str,
     topic: str,
@@ -412,6 +426,7 @@ def generate_video_plan(
     market_data: dict = None,
     trend_context: dict = None,
     trend_intel_context: str = "",
+    title_history: list = None,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -462,7 +477,8 @@ IMPORTANT RULES:
 - Base recommendations on what has performed well in the channel data
 
 Here are the creator's past videos for reference links:
-{past_titles}"""
+{past_titles}
+{_build_title_history_section(title_history)}"""
 
     # Build trend context section if coming from Trends remix
     trend_section = ""
@@ -526,6 +542,7 @@ def regenerate_titles(
     api_key: str,
     market_data: dict = None,
     trend_context: dict = None,
+    title_history: list = None,
 ) -> list[str]:
     """Generate fresh title suggestions without regenerating the full plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -539,6 +556,7 @@ def regenerate_titles(
         )
 
     market_section = _build_market_section(market_data)
+    history_section = _build_title_history_section(title_history)
 
     trend_section = ""
     if trend_context:
@@ -550,6 +568,7 @@ Generate 5 new title options optimized for click-through rate.
 **Creator's top performing titles for reference:**
 {top_titles}
 {market_section}
+{history_section}
 
 RULES:
 - Titles must be optimized for CTR and YouTube search

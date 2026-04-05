@@ -24,6 +24,7 @@ CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 COMPETITORS_FILE = os.path.join(DATA_DIR, "competitors.json")
 CATEGORIES_FILE = os.path.join(DATA_DIR, "video_categories.json")
+TITLE_HISTORY_FILE = os.path.join(DATA_DIR, "title_history.json")
 
 # In-memory store
 video_cache = []
@@ -31,6 +32,7 @@ chat_history = []
 playlist_info = {}
 analytics_cache = {}
 competitors_cache = []  # list of {"name", "url", "category", "channel_id", "videos": [...]}
+title_history = []
 
 
 def _ensure_data_dir():
@@ -146,6 +148,20 @@ def load_categories() -> dict:
     return {}
 
 
+def save_title_history(data: list):
+    _ensure_data_dir()
+    with open(TITLE_HISTORY_FILE, "w") as f:
+        json.dump(data, f)
+    _schedule_sync_push()
+
+
+def load_title_history() -> list:
+    if os.path.exists(TITLE_HISTORY_FILE):
+        with open(TITLE_HISTORY_FILE) as f:
+            return json.load(f)
+    return []
+
+
 # Sync: pull latest data from Gist before loading
 from sync import pull_from_gist, push_to_gist, is_sync_configured
 try:
@@ -163,6 +179,7 @@ video_cache = load_video_cache()
 analytics_cache = load_analytics()
 competitors_cache = load_competitors()
 video_categories = load_categories()
+title_history = load_title_history()
 
 # Auto-refresh competitors on startup
 _google_key = _saved.get("google_key", "")
@@ -648,6 +665,7 @@ def api_generate_plan():
             market_data=market_data,
             trend_context=trend_context,
             trend_intel_context=trend_intel_context,
+            title_history=title_history,
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
@@ -662,10 +680,24 @@ def _build_scoring_context() -> dict:
         trends = analyze_trends(video_cache, competitors_cache)
     except Exception:
         trends = {}
+
+    # Extract learned keywords from saved title history
+    learned_keywords = {}
+    for entry in title_history:
+        words = entry["title"].lower().split()
+        for w in words:
+            w = w.strip("()[].,!?:;\"'")
+            if len(w) > 2:
+                learned_keywords[w] = learned_keywords.get(w, 0) + 1
+    # Only keep words that appear in 2+ saved titles
+    learned_keywords = {k: v for k, v in learned_keywords.items() if v >= 2}
+
     return {
         "hot_keywords": trends.get("hot_keywords", {}),
         "title_patterns": trends.get("title_patterns", {}),
         "overall_avg": trends.get("overall_avg_views", 1),
+        "saved_title_count": len(title_history),
+        "learned_keywords": learned_keywords,
     }
 
 
@@ -697,10 +729,64 @@ def api_regenerate_titles():
             api_key=api_key,
             market_data=market_data,
             trend_context=trend_context,
+            title_history=title_history,
         )
         return jsonify({"titles": titles, "_scoring_ctx": _build_scoring_context()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/title-history", methods=["GET"])
+def api_get_title_history():
+    return jsonify({"titles": title_history})
+
+
+@app.route("/api/title-history/save", methods=["POST"])
+def api_save_title():
+    global title_history
+    data = request.get_json()
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+
+    from datetime import datetime
+    entry = {
+        "title": title,
+        "topic": data.get("topic", ""),
+        "format": data.get("format", ""),
+        "score": data.get("score", 0),
+        "original": data.get("original", ""),
+        "saved_at": datetime.now().isoformat()[:10],
+        "used": False,
+    }
+    title_history.append(entry)
+    save_title_history(title_history)
+    return jsonify({"ok": True, "count": len(title_history)})
+
+
+@app.route("/api/title-history/delete", methods=["POST"])
+def api_delete_title():
+    global title_history
+    data = request.get_json()
+    idx = data.get("index")
+    if idx is None or idx < 0 or idx >= len(title_history):
+        return jsonify({"error": "Invalid index"}), 400
+    title_history.pop(idx)
+    save_title_history(title_history)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/title-history/mark-used", methods=["POST"])
+def api_mark_title_used():
+    global title_history
+    data = request.get_json()
+    idx = data.get("index")
+    if idx is None or idx < 0 or idx >= len(title_history):
+        return jsonify({"error": "Invalid index"}), 400
+    title_history[idx]["used"] = True
+    title_history[idx]["video_url"] = data.get("video_url", "")
+    save_title_history(title_history)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/plan-context", methods=["POST"])
@@ -1224,12 +1310,13 @@ def api_sync_connect():
         json.dump(settings, f)
 
     # Pull data from the existing Gist
-    global video_cache, analytics_cache, competitors_cache, video_categories
+    global video_cache, analytics_cache, competitors_cache, video_categories, title_history
     pull_from_gist()
     video_cache = load_video_cache()
     analytics_cache = load_analytics()
     competitors_cache = load_competitors()
     video_categories = load_categories()
+    title_history = load_title_history()
 
     return jsonify({"ok": True})
 
@@ -1248,13 +1335,14 @@ def api_sync_pull():
     """Manually trigger a sync pull."""
     if not is_sync_configured():
         return jsonify({"error": "Sync not configured"}), 400
-    global video_cache, analytics_cache, competitors_cache, video_categories
+    global video_cache, analytics_cache, competitors_cache, video_categories, title_history
     updated = pull_from_gist()
     if updated:
         video_cache = load_video_cache()
         analytics_cache = load_analytics()
         competitors_cache = load_competitors()
         video_categories = load_categories()
+        title_history = load_title_history()
     return jsonify({"ok": True, "updated": updated})
 
 
@@ -1310,17 +1398,18 @@ def api_import_data():
                 "competitors.json", "video_categories.json",
                 "btc_prices.json", "snapshots.json", "trend_intel.json",
                 "oauth_token.json",
-                "nostr_history.json",
+                "nostr_history.json", "title_history.json",
             }
             for name in zf.namelist():
                 if name in allowed:
                     zf.extract(name, DATA_DIR)
 
         # Reload in-memory caches
-        global video_cache, analytics_cache, competitors_cache
+        global video_cache, analytics_cache, competitors_cache, title_history
         video_cache = load_video_cache()
         analytics_cache = load_analytics()
         competitors_cache = load_competitors()
+        title_history = load_title_history()
 
         return jsonify({"ok": True, "message": "Data imported. Refresh the page."})
     except zipfile.BadZipFile:
