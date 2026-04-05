@@ -141,7 +141,9 @@ def push_to_gist() -> bool:
     """Push current data files to the Gist. Returns True on success."""
     gist_id, token = _get_sync_config()
     if not gist_id or not token:
+        print(f"[Sync] Push skipped — gist_id={'set' if gist_id else 'MISSING'}, token={'set' if token else 'MISSING'}")
         return False
+    print(f"[Sync] Config: gist_id={gist_id[:8]}..., token={token[:8]}...")
 
     files = {}
     for filename in SYNC_FILES:
