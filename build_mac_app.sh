@@ -50,44 +50,56 @@ PLIST
 cat > "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch" << LAUNCHER
 #!/bin/bash
 
+# Finder-launched .app bundles get a minimal PATH — set it up
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
+
 # Project directory (baked in at build time)
 PROJECT_DIR="$SCRIPT_DIR"
 cd "\$PROJECT_DIR"
 
-# Activate venv
+# Log to a file for debugging
+LOG="\$PROJECT_DIR/launch.log"
+exec > "\$LOG" 2>&1
+echo "=== Launch at \$(date) ==="
+echo "PATH: \$PATH"
+
+# Activate venv (use explicit python path as fallback)
+PYTHON=python3
 if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
+    PYTHON="\$PROJECT_DIR/venv/bin/python"
 elif [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
+    PYTHON="\$PROJECT_DIR/.venv/bin/python"
 fi
+echo "Using python: \$PYTHON"
+\$PYTHON --version
 
 # Kill any existing instance on port 5000
-lsof -ti:5000 | xargs kill -9 2>/dev/null
+/usr/sbin/lsof -ti:5000 | xargs kill -9 2>/dev/null
 sleep 0.3
 
-# Launch app (bind to 127.0.0.1 explicitly)
-python app.py &
+# Launch app
+\$PYTHON app.py &
 APP_PID=\$!
+echo "Started app.py with PID \$APP_PID"
 
 # Wait for server to be ready (up to 10 seconds)
 READY=0
 for i in {1..20}; do
-    if curl -s http://127.0.0.1:5000 >/dev/null 2>&1; then
+    if /usr/bin/curl -s http://127.0.0.1:5000 >/dev/null 2>&1; then
         READY=1
         break
     fi
     sleep 0.5
 done
 
-if [ \$READY -eq 1 ]; then
-    open http://127.0.0.1:5000
-else
-    # Open anyway — might just be slow
-    open http://127.0.0.1:5000
-fi
+echo "Server ready: \$READY"
+/usr/bin/open http://127.0.0.1:5000
 
 # Keep the .app process alive as long as the server runs
 wait \$APP_PID
+echo "App exited with code \$?"
 LAUNCHER
 chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/launch"
 
