@@ -629,7 +629,56 @@ def api_generate_plan():
             trend_context=trend_context,
             trend_intel_context=trend_intel_context,
         )
+        plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _build_scoring_context() -> dict:
+    """Build title scoring context from real channel + competitor data."""
+    from trends import analyze_trends
+    try:
+        trends = analyze_trends(video_cache, competitors_cache)
+    except Exception:
+        trends = {}
+    return {
+        "hot_keywords": trends.get("hot_keywords", {}),
+        "title_patterns": trends.get("title_patterns", {}),
+        "overall_avg": trends.get("overall_avg_views", 1),
+    }
+
+
+@app.route("/api/regenerate-titles", methods=["POST"])
+def api_regenerate_titles():
+    """Generate new title suggestions for an existing plan."""
+    data = request.get_json()
+    topic = data.get("topic", "").strip()
+    video_type = data.get("video_type", "tutorial")
+    notes = data.get("notes", "")
+    trend_context = data.get("trend_context")
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import regenerate_titles
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        titles = regenerate_titles(
+            video_type=video_type,
+            topic=topic,
+            notes=notes,
+            video_data=video_cache,
+            api_key=api_key,
+            market_data=market_data,
+            trend_context=trend_context,
+        )
+        return jsonify({"titles": titles, "_scoring_ctx": _build_scoring_context()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

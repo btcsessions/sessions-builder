@@ -603,6 +603,63 @@ tr:hover { background: var(--surface2); }
     border-bottom: 2px solid var(--accent);
     display: inline-block;
 }
+/* Title scoring rows */
+.plan-card-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.plan-card-header-row h2 { margin-bottom: 0; }
+.plan-titles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface, rgba(255,255,255,0.03));
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.title-score-badge {
+    flex-shrink: 0;
+    width: 2.2rem;
+    height: 2.2rem;
+    line-height: 2.2rem;
+    text-align: center;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: help;
+}
+.title-editable {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.95rem;
+    padding: 0.35rem 0.5rem;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+.title-editable:hover { border-color: var(--border); }
+.title-editable:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,0.03); }
+.title-score-label {
+    flex-shrink: 0;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    width: 4.5rem;
+    text-align: right;
+}
+
 .plan-option {
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--border);

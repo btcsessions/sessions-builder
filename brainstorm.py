@@ -484,6 +484,71 @@ Use this real-time data to make the plan timely and relevant. Reference specific
     return json.loads(text)
 
 
+def regenerate_titles(
+    video_type: str,
+    topic: str,
+    notes: str,
+    video_data: list[dict],
+    api_key: str,
+    market_data: dict = None,
+    trend_context: dict = None,
+) -> list[str]:
+    """Generate fresh title suggestions without regenerating the full plan."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Build context from top-performing titles
+    top_titles = ""
+    if video_data:
+        top_titles = "\n".join(
+            f"- \"{v['title']}\" ({v['view_count']:,} views)"
+            for v in sorted(video_data, key=lambda x: x["view_count"], reverse=True)[:15]
+        )
+
+    market_section = _build_market_section(market_data)
+
+    trend_section = ""
+    if trend_context:
+        trend_section = f"\nInspired by: \"{trend_context.get('title', '')}\" from {trend_context.get('source', '')} ({trend_context.get('category', '')})"
+
+    system = f"""You are a YouTube title specialist for a bitcoin/freedom tech channel (BTC Sessions).
+Generate 5 new title options optimized for click-through rate.
+
+**Creator's top performing titles for reference:**
+{top_titles}
+{market_section}
+
+RULES:
+- Titles must be optimized for CTR and YouTube search
+- Mix different proven title formats: how-to, listicles, questions, bold statements, comparisons
+- Keep titles 40-60 characters when possible (optimal for YouTube)
+- Use power words that drive clicks: best, ultimate, complete, easy, stop, never, must
+- Include numbers where natural
+- Consider brackets like [2026] or (Step by Step) for CTR boost
+- Every title must be relevant to bitcoin, freedom tech, privacy, or self-custody
+- Make each title distinctly different in structure and angle
+- Do NOT suggest generic or clickbait titles — they must be substantive
+
+Respond with ONLY a JSON array of 5 title strings. No markdown, no code fences."""
+
+    user_msg = f"Generate 5 fresh title options for a {video_type} video about: {topic}"
+    if notes:
+        user_msg += f"\nNotes: {notes}"
+    if trend_section:
+        user_msg += trend_section
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=500,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def analyze_own_video(
     video: dict,
     video_data: list[dict],

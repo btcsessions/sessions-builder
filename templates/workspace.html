@@ -204,8 +204,11 @@
 
         <div id="plan-results" class="plan-results" style="display:none">
             <section class="plan-card">
-                <h2>Title Options</h2>
-                <div id="plan-titles" class="plan-list"></div>
+                <div class="plan-card-header-row">
+                    <h2>Title Options</h2>
+                    <button class="btn small" id="regen-titles-btn" title="Generate new title suggestions">Regenerate</button>
+                </div>
+                <div id="plan-titles" class="plan-titles-list"></div>
             </section>
 
             <section class="plan-card">
@@ -384,6 +387,7 @@ form.addEventListener("submit", async (e) => {
                 style_takeaways: trendSeed.style_takeaways || [],
             };
         }
+        currentPlanPayload = payload;
         const resp = await fetch("/api/generate-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -405,9 +409,127 @@ form.addEventListener("submit", async (e) => {
     generateBtn.disabled = false;
 });
 
+/* --- Title CTR Scoring --- */
+let scoringCtx = null;
+let currentPlanPayload = null;
+
+function scoreTitle(title) {
+    if (!scoringCtx) return { score: 50, breakdown: [] };
+    const lower = title.toLowerCase();
+    const words = lower.split(/\s+/);
+    let score = 50; // baseline
+    const breakdown = [];
+
+    // 1. Title length (optimal 40-60 chars for YouTube)
+    const len = title.length;
+    if (len >= 40 && len <= 60) { score += 10; breakdown.push("+10 optimal length (" + len + " chars)"); }
+    else if (len >= 30 && len <= 70) { score += 5; breakdown.push("+5 good length (" + len + " chars)"); }
+    else if (len > 80) { score -= 10; breakdown.push("-10 too long (" + len + " chars)"); }
+    else if (len < 25) { score -= 5; breakdown.push("-5 short (" + len + " chars)"); }
+
+    // 2. Hot keywords from real data
+    const hotKw = scoringCtx.hot_keywords || {};
+    let kwHits = 0;
+    for (const [kw, data] of Object.entries(hotKw)) {
+        if (lower.includes(kw.toLowerCase())) {
+            kwHits++;
+            if (kwHits <= 3) {
+                const bonus = Math.min(8, Math.round(data.avg_views / (scoringCtx.overall_avg || 1) * 4));
+                score += bonus;
+                breakdown.push("+" + bonus + ' hot keyword "' + kw + '" (' + data.avg_views.toLocaleString() + " avg views)");
+            }
+        }
+    }
+
+    // 3. Title pattern performance from real data
+    const patterns = scoringCtx.title_patterns || {};
+    const patternChecks = {
+        "How to / Tutorial": /\b(how to|tutorial|guide|step.by.step|walkthrough|setup|install)\b/i,
+        "Listicle": /\b(top \d+|\d+ best|\d+ ways|\d+ things|\d+ reasons)\b/i,
+        "Question": /^(what|why|how|is |are |can |should |do |does |will )/i,
+        "Review / First Look": /\b(review|first look|first impressions|hands.on|unboxing)\b/i,
+        "News / Update": /\b(update|news|just released|announced|breaking|new )\b/i,
+        "Comparison": /\b(vs\.?|versus|compared|comparison|better than)\b/i,
+    };
+    for (const [label, regex] of Object.entries(patternChecks)) {
+        if (regex.test(title) && patterns[label]) {
+            const p = patterns[label];
+            const ratio = p.avg_views / (scoringCtx.overall_avg || 1);
+            const bonus = Math.round(Math.min(12, Math.max(-5, (ratio - 1) * 10)));
+            if (bonus !== 0) {
+                score += bonus;
+                breakdown.push((bonus > 0 ? "+" : "") + bonus + " " + label + " format (" + p.avg_views.toLocaleString() + " avg)");
+            }
+        }
+    }
+
+    // 4. Power words / engagement triggers
+    const powerWords = ["best", "ultimate", "complete", "easy", "fast", "free", "secret", "mistake", "never", "always", "stop", "must", "essential"];
+    const pwHits = powerWords.filter(w => lower.includes(w));
+    if (pwHits.length) {
+        const bonus = Math.min(6, pwHits.length * 3);
+        score += bonus;
+        breakdown.push("+" + bonus + ' power words: "' + pwHits.join('", "') + '"');
+    }
+
+    // 5. Numbers in title (proven CTR boost)
+    if (/\d/.test(title)) { score += 4; breakdown.push("+4 contains numbers"); }
+
+    // 6. Brackets/parentheses (thumbnail + title CTR pattern)
+    if (/[\[\(]/.test(title)) { score += 3; breakdown.push("+3 brackets/parentheses"); }
+
+    // Clamp 0-100
+    score = Math.max(0, Math.min(100, score));
+    return { score, breakdown };
+}
+
+function getScoreColor(score) {
+    if (score >= 75) return "var(--green, #4caf50)";
+    if (score >= 55) return "var(--accent)";
+    if (score >= 40) return "var(--text-muted)";
+    return "var(--red, #e53935)";
+}
+
+function getScoreLabel(score) {
+    if (score >= 80) return "Excellent";
+    if (score >= 65) return "Strong";
+    if (score >= 50) return "Average";
+    if (score >= 35) return "Weak";
+    return "Low";
+}
+
+function renderTitles(titles) {
+    const container = document.getElementById("plan-titles");
+    container.innerHTML = titles.map((t, i) => {
+        const { score, breakdown } = scoreTitle(t);
+        return `<div class="title-row" data-idx="${i}">
+            <div class="title-score-badge" style="background:${getScoreColor(score)}" title="${breakdown.map(b => esc(b)).join('\n')}">${score}</div>
+            <input type="text" class="title-editable" value="${esc(t)}" data-idx="${i}">
+            <span class="title-score-label" style="color:${getScoreColor(score)}">${getScoreLabel(score)}</span>
+        </div>`;
+    }).join("");
+
+    // Wire up live editing → rescore
+    container.querySelectorAll(".title-editable").forEach(input => {
+        input.addEventListener("input", () => {
+            const row = input.closest(".title-row");
+            const { score, breakdown } = scoreTitle(input.value);
+            const badge = row.querySelector(".title-score-badge");
+            const label = row.querySelector(".title-score-label");
+            badge.textContent = score;
+            badge.style.background = getScoreColor(score);
+            badge.title = breakdown.join("\n");
+            label.textContent = getScoreLabel(score);
+            label.style.color = getScoreColor(score);
+        });
+    });
+}
+
 function renderPlan(plan) {
-    document.getElementById("plan-titles").innerHTML = plan.titles.map((t, i) =>
-        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
+    // Store scoring context from server
+    if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
+
+    renderTitles(plan.titles);
     document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
     document.getElementById("plan-hook").textContent = plan.intro_hook;
@@ -418,6 +540,34 @@ function renderPlan(plan) {
     document.getElementById("plan-tags").innerHTML = plan.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("");
     document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
 }
+
+/* --- Regenerate Titles --- */
+document.getElementById("regen-titles-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("regen-titles-btn");
+    if (!currentPlanPayload) return;
+    btn.disabled = true;
+    btn.textContent = "Regenerating...";
+    try {
+        const resp = await fetch("/api/regenerate-titles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(currentPlanPayload),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            planError.textContent = data.error;
+            planError.style.display = "block";
+        } else {
+            if (data._scoring_ctx) scoringCtx = data._scoring_ctx;
+            renderTitles(data.titles);
+        }
+    } catch (err) {
+        planError.textContent = "Failed: " + err.message;
+        planError.style.display = "block";
+    }
+    btn.disabled = false;
+    btn.textContent = "Regenerate";
+});
 
 function esc(text) {
     const d = document.createElement("div");
