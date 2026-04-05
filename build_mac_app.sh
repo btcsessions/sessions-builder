@@ -88,6 +88,8 @@ echo "Using python: \$PYTHON"
 sleep 0.3
 
 # Launch app (foreground — the native wrapper manages the lifecycle)
+# PYTHONUNBUFFERED ensures print() output appears in the log immediately
+export PYTHONUNBUFFERED=1
 exec \$PYTHON app.py
 SERVERSCRIPT
 chmod +x "$SCRIPT_DIR/$APP_DIR/Contents/MacOS/server.sh"

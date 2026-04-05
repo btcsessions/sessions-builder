@@ -1459,7 +1459,9 @@ def api_sync_push():
     success = push_to_gist()
     if success:
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "Push failed — check your GitHub token and Gist ID"}), 500
+    from sync import get_last_sync_error
+    detail = get_last_sync_error() or "Unknown error"
+    return jsonify({"ok": False, "error": f"Push failed: {detail}"}), 500
 
 
 @app.route("/api/sync/pull", methods=["POST"])

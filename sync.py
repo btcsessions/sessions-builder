@@ -52,8 +52,11 @@ def is_sync_configured() -> bool:
     return bool(gist_id and gh_token)
 
 
+_last_sync_error = ""
+
 def _gist_api(method: str, gist_id: str, token: str, body: dict = None) -> dict | None:
     """Make a GitHub Gist API request."""
+    global _last_sync_error
     url = f"https://api.github.com/gists/{gist_id}"
     headers = {
         "Authorization": f"token {token}",
@@ -68,18 +71,26 @@ def _gist_api(method: str, gist_id: str, token: str, body: dict = None) -> dict 
     try:
         req = Request(url, data=data, headers=headers, method=method)
         with urlopen(req, timeout=30) as resp:
+            _last_sync_error = ""
             return json.loads(resp.read().decode())
     except HTTPError as e:
+        _last_sync_error = f"GitHub API {e.code} {e.reason}"
         print(f"[Sync] GitHub API error: {e.code} {e.reason}")
         try:
             err_body = e.read().decode()
             print(f"[Sync] Response: {err_body[:200]}")
+            _last_sync_error += f" — {err_body[:200]}"
         except Exception:
             pass
         return None
     except Exception as e:
+        _last_sync_error = str(e)
         print(f"[Sync] Request failed: {e}")
         return None
+
+
+def get_last_sync_error() -> str:
+    return _last_sync_error
 
 
 def pull_from_gist() -> bool:
