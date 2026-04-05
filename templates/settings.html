@@ -115,6 +115,23 @@
             <button class="btn small" id="sync-pull-btn">Pull Now</button>
             <span id="sync-status" class="form-hint" style="margin:0;"></span>
         </div>
+        <div style="margin-top:0.75rem;">
+            <details>
+                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.85rem;">Update Token or Disconnect</summary>
+                <div style="margin-top:0.5rem;">
+                    <div class="form-group">
+                        <label for="sync_token_update">New GitHub Token</label>
+                        <input type="password" id="sync_token_update" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
+                        <small>If your token expired, <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">create a new one</a> and paste it here.</small>
+                    </div>
+                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                        <button class="btn primary small" id="sync-update-token-btn">Update Token</button>
+                        <button class="btn small" id="sync-disconnect-btn" style="border-color:#aa5555; color:#aa5555;">Disconnect Sync</button>
+                        <span id="sync-manage-status" class="form-hint" style="margin:0;"></span>
+                    </div>
+                </div>
+            </details>
+        </div>
     </div>
     {% endif %}
 </div>
@@ -411,6 +428,58 @@ if (syncPullBtn) {
             syncStatus.textContent = "Failed: " + err.message;
         }
         syncPullBtn.disabled = false;
+    });
+}
+
+// Sync token update
+const syncUpdateTokenBtn = document.getElementById("sync-update-token-btn");
+const syncDisconnectBtn = document.getElementById("sync-disconnect-btn");
+const syncManageStatus = document.getElementById("sync-manage-status");
+
+if (syncUpdateTokenBtn) {
+    syncUpdateTokenBtn.addEventListener("click", async () => {
+        const token = document.getElementById("sync_token_update").value.trim();
+        if (!token) { syncManageStatus.textContent = "Enter a token first."; return; }
+        syncUpdateTokenBtn.disabled = true;
+        syncManageStatus.textContent = "Updating...";
+        try {
+            const resp = await fetch("/api/sync/update-token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                syncManageStatus.textContent = "Token updated!";
+                document.getElementById("sync_token_update").value = "";
+            } else {
+                syncManageStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            syncManageStatus.textContent = "Failed: " + err.message;
+        }
+        syncUpdateTokenBtn.disabled = false;
+    });
+}
+
+if (syncDisconnectBtn) {
+    syncDisconnectBtn.addEventListener("click", async () => {
+        if (!confirm("Disconnect sync? Your data will stay on this machine but won't sync anymore.")) return;
+        syncDisconnectBtn.disabled = true;
+        syncManageStatus.textContent = "Disconnecting...";
+        try {
+            const resp = await fetch("/api/sync/disconnect", { method: "POST" });
+            const data = await resp.json();
+            if (data.ok) {
+                syncManageStatus.textContent = "Disconnected! Reloading...";
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                syncManageStatus.textContent = "Error: " + data.error;
+            }
+        } catch (err) {
+            syncManageStatus.textContent = "Failed: " + err.message;
+        }
+        syncDisconnectBtn.disabled = false;
     });
 }
 

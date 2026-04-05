@@ -1385,6 +1385,39 @@ def api_sync_connect():
     return jsonify({"ok": True})
 
 
+@app.route("/api/sync/disconnect", methods=["POST"])
+def api_sync_disconnect():
+    """Disconnect sync by clearing Gist settings."""
+    settings = load_settings()
+    settings.pop("sync_gist_id", None)
+    settings.pop("sync_github_token", None)
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sync/update-token", methods=["POST"])
+def api_sync_update_token():
+    """Update the GitHub token for an existing sync connection."""
+    data = request.get_json()
+    token = data.get("token", "")
+    if not token:
+        return jsonify({"error": "Token is required"}), 400
+    settings = load_settings()
+    settings["sync_github_token"] = token
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    # Test the token by attempting a pull
+    from sync import pull_from_gist
+    try:
+        pull_from_gist()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": True, "warning": str(e)})
+
+
 @app.route("/api/sync/push", methods=["POST"])
 def api_sync_push():
     """Manually trigger a sync push."""
