@@ -1,4 +1,5 @@
 """Analyze video data to extract trends and patterns across own and competitor channels."""
+from __future__ import annotations
 
 import re
 from collections import defaultdict

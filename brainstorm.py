@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import anthropic
 from trends import analyze_trends, trends_to_prompt_section

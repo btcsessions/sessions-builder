@@ -3,6 +3,7 @@
 Requires a GitHub personal access token with 'gist' scope and a Gist ID.
 Stores each data file as a separate file in the Gist.
 """
+from __future__ import annotations
 
 import json
 import os

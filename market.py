@@ -1,4 +1,5 @@
 """Bitcoin market data, sentiment classification, and video longevity scoring."""
+from __future__ import annotations
 
 import json
 import os

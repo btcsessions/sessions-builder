@@ -15,6 +15,7 @@ Sources:
     - GitHub: trending repos from the past week
     - TechCrunch, Wired, TechRadar: latest headlines via RSS
 """
+from __future__ import annotations
 
 import json
 import os
