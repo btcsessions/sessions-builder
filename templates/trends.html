@@ -106,6 +106,7 @@
         <h2>Video Analysis</h2>
         <div style="display:flex;gap:0.5rem">
             <button class="btn small secondary" id="remix-btn">Remix</button>
+            <button class="btn small primary" id="quick-plan-btn">Plan Video</button>
             <button class="btn small" id="close-analysis">Close</button>
         </div>
     </div>
@@ -165,6 +166,10 @@
             <div id="remix-ideas" class="remix-ideas-list"></div>
             <h3>Style Takeaways</h3>
             <div id="remix-takeaways" class="remix-takeaways-list"></div>
+            <div class="remix-plan-action">
+                <button class="btn primary" id="plan-this-video">Plan This Video</button>
+                <span class="form-hint">Take these ideas to the Planner</span>
+            </div>
         </div>
     </div>
 </div>
@@ -665,6 +670,7 @@ function showAnalysis(data, title, videoId, thumbUrl, source, category) {
             source: source || "You",
             category: category || "Bitcoin/Crypto",
             summary: (data.performance_summary || "") + " " + (data.topic_analysis || ""),
+            thumb: thumbUrl || "",
         };
         document.getElementById("analysis-video-title").textContent = title;
         document.getElementById("analysis-yt-link").href = "https://youtube.com/watch?v=" + encodeURIComponent(videoId);
@@ -784,9 +790,38 @@ document.getElementById("close-remix").addEventListener("click", () => {
     remixModal.style.display = "none";
 });
 
+/* Quick Plan — go straight to Planner without remix */
+document.getElementById("quick-plan-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("quick-plan-btn");
+    btn.disabled = true;
+    btn.textContent = "Opening Planner...";
+    try {
+        await fetch("/api/plan-context", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                title: currentAnalysis.title,
+                source: currentAnalysis.source,
+                category: currentAnalysis.category,
+                thumb: currentAnalysis.thumb || "",
+                analysis_summary: currentAnalysis.summary.substring(0, 500),
+                focus_topic: "",
+                remix_ideas: [],
+                style_takeaways: [],
+            }),
+        });
+        window.location.href = "/";
+    } catch (err) {
+        btn.textContent = "Failed — try again";
+        btn.disabled = false;
+    }
+});
+
 remixModal.addEventListener("click", (e) => {
     if (e.target === remixModal) remixModal.style.display = "none";
 });
+
+let lastRemixData = null;
 
 document.getElementById("remix-generate").addEventListener("click", async () => {
     const btn = document.getElementById("remix-generate");
@@ -814,6 +849,7 @@ document.getElementById("remix-generate").addEventListener("click", async () => 
             remixError.textContent = data.error;
             remixError.style.display = "block";
         } else {
+            lastRemixData = data;
             const ideas = data.remix_ideas || [];
             document.getElementById("remix-ideas").innerHTML = ideas.map(idea =>
                 `<div class="remix-idea-card">
@@ -833,6 +869,33 @@ document.getElementById("remix-generate").addEventListener("click", async () => 
     remixLoading.style.display = "none";
     btn.disabled = false;
     btn.textContent = "Generate Ideas";
+});
+
+/* --- Plan This Video: hand off to Workspace --- */
+document.getElementById("plan-this-video").addEventListener("click", async () => {
+    const btn = document.getElementById("plan-this-video");
+    btn.disabled = true;
+    btn.textContent = "Sending to Planner...";
+    try {
+        await fetch("/api/plan-context", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                title: currentAnalysis.title,
+                source: currentAnalysis.source,
+                category: currentAnalysis.category,
+                thumb: currentAnalysis.thumb || "",
+                analysis_summary: currentAnalysis.summary.substring(0, 500),
+                focus_topic: document.getElementById("remix-focus").value.trim(),
+                remix_ideas: lastRemixData ? lastRemixData.remix_ideas || [] : [],
+                style_takeaways: lastRemixData ? lastRemixData.style_takeaways || [] : [],
+            }),
+        });
+        window.location.href = "/";
+    } catch (err) {
+        btn.textContent = "Failed — try again";
+        btn.disabled = false;
+    }
 });
 
 document.getElementById("remix-focus").addEventListener("keydown", (e) => {

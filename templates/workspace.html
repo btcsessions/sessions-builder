@@ -2,6 +2,9 @@
 {% block title %}YouTube Planner{% endblock %}
 
 {% block content %}
+{% if trend_seed %}
+<script type="application/json" id="trend-seed-data">{{ trend_seed | tojson }}</script>
+{% endif %}
 <div class="workspace">
 
     <!-- LEFT SIDEBAR -->
@@ -109,6 +112,27 @@
     <section class="ws-center">
         <div class="planner-header">
             <h2>Plan a Video</h2>
+        </div>
+
+        <!-- Trend Context Card (shown when coming from Trends remix) -->
+        <div id="trend-context-card" class="trend-context-card" style="display:none">
+            <div class="trend-context-header">
+                <span class="trend-context-label">Inspired by</span>
+                <button type="button" class="btn small" id="clear-trend-context" title="Remove trend context">&times;</button>
+            </div>
+            <div class="trend-context-body">
+                <div class="trend-context-video">
+                    <img id="trend-context-thumb" src="" alt="" class="trend-context-thumb">
+                    <div class="trend-context-info">
+                        <div id="trend-context-title" class="trend-context-title"></div>
+                        <div id="trend-context-meta" class="trend-context-meta"></div>
+                    </div>
+                </div>
+                <div id="trend-context-remix" class="trend-context-remix" style="display:none">
+                    <div class="trend-context-remix-label">Remix Ideas</div>
+                    <div id="trend-context-ideas"></div>
+                </div>
+            </div>
         </div>
 
         <form id="plan-form" class="ws-plan-form">
@@ -349,10 +373,21 @@ form.addEventListener("submit", async (e) => {
     results.style.display = "none";
 
     try {
+        const payload = { video_type: videoType, topic, links, competitors, notes };
+        if (trendSeed) {
+            payload.trend_context = {
+                title: trendSeed.title,
+                source: trendSeed.source,
+                category: trendSeed.category,
+                analysis_summary: trendSeed.analysis_summary || "",
+                remix_ideas: trendSeed.remix_ideas || [],
+                style_takeaways: trendSeed.style_takeaways || [],
+            };
+        }
         const resp = await fetch("/api/generate-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ video_type: videoType, topic, links, competitors, notes }),
+            body: JSON.stringify(payload),
         });
         const data = await resp.json();
         if (data.error) {
@@ -505,5 +540,51 @@ function renderAnalysis(data, title, videoId, thumbUrl) {
     document.getElementById("analysis-ideas").innerHTML = (data.video_ideas || []).map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
 }
+
+/* --- Trend context seed (from Trends → Plan This Video) --- */
+let trendSeed = null;
+(function initTrendContext() {
+    const raw = document.getElementById("trend-seed-data");
+    if (!raw) return;
+    try {
+        const seed = JSON.parse(raw.textContent);
+        if (!seed || !seed.title) return;
+        trendSeed = seed;
+
+        const card = document.getElementById("trend-context-card");
+        document.getElementById("trend-context-title").textContent = seed.title;
+        document.getElementById("trend-context-meta").textContent =
+            `${seed.source || "Unknown"} · ${seed.category || ""}`;
+        const thumb = document.getElementById("trend-context-thumb");
+        if (seed.thumb) { thumb.src = seed.thumb; thumb.style.display = ""; }
+        else { thumb.style.display = "none"; }
+
+        if (seed.remix_ideas && seed.remix_ideas.length) {
+            document.getElementById("trend-context-ideas").innerHTML = seed.remix_ideas.map(idea =>
+                `<div class="trend-context-idea">${esc(idea.title_concept)}: ${esc(idea.angle)}</div>`
+            ).join("");
+            document.getElementById("trend-context-remix").style.display = "";
+        }
+
+        card.style.display = "";
+
+        // Pre-fill topic if a focus was provided
+        if (seed.focus_topic) {
+            document.getElementById("video-topic").value = seed.focus_topic;
+        }
+        // Pre-fill notes with remix context
+        if (seed.analysis_summary) {
+            const notes = document.getElementById("video-notes");
+            notes.value = `Inspired by "${seed.title}" (${seed.source}). ${seed.analysis_summary}`;
+        }
+    } catch (e) {
+        console.warn("No trend seed data", e);
+    }
+})();
+
+document.getElementById("clear-trend-context")?.addEventListener("click", () => {
+    document.getElementById("trend-context-card").style.display = "none";
+    trendSeed = null;
+});
 </script>
 {% endblock %}

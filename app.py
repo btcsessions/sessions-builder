@@ -262,6 +262,9 @@ def index():
     recent_videos.sort(key=lambda v: v["_date"], reverse=True)
     recent_videos = recent_videos[:20]
 
+    # Check for trend seed from Trends → Plan This Video handoff
+    trend_seed = session.pop("trend_seed", None)
+
     return render_template(
         "workspace.html",
         competitors=competitors_cache,
@@ -269,6 +272,7 @@ def index():
         recent_videos=recent_videos,
         market_info=market_info,
         chat_history=chat_history,
+        trend_seed=trend_seed,
     )
 
 
@@ -594,11 +598,23 @@ def api_generate_plan():
     if not api_key:
         return jsonify({"error": "Anthropic API key not configured. Set it in Settings."}), 400
 
+    trend_context = data.get("trend_context")
+
     try:
         market_data = {
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
         }
+
+        # Gather real-time trend intel
+        trend_intel_context = ""
+        try:
+            from trend_intel import gather_trend_intel, intel_to_prompt_context
+            intel = gather_trend_intel()
+            trend_intel_context = intel_to_prompt_context(intel)
+        except Exception as e:
+            print(f"[Plan] Trend intel fetch failed: {e}")
+
         plan = generate_video_plan(
             video_type=video_type,
             topic=topic,
@@ -610,10 +626,29 @@ def api_generate_plan():
             competitors_data=competitors_cache,
             api_key=api_key,
             market_data=market_data,
+            trend_context=trend_context,
+            trend_intel_context=trend_intel_context,
         )
         return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/plan-context", methods=["POST"])
+def api_plan_context():
+    """Store trend context in session for Trends → Workspace handoff."""
+    data = request.get_json()
+    session["trend_seed"] = {
+        "title": data.get("title", ""),
+        "source": data.get("source", ""),
+        "category": data.get("category", ""),
+        "thumb": data.get("thumb", ""),
+        "analysis_summary": data.get("analysis_summary", ""),
+        "focus_topic": data.get("focus_topic", ""),
+        "remix_ideas": data.get("remix_ideas", []),
+        "style_takeaways": data.get("style_takeaways", []),
+    }
+    return jsonify({"ok": True})
 
 
 @app.route("/competitors")

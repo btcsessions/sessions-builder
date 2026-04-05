@@ -376,6 +376,8 @@ def generate_video_plan(
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
+    trend_context: dict = None,
+    trend_intel_context: str = "",
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -428,6 +430,30 @@ IMPORTANT RULES:
 Here are the creator's past videos for reference links:
 {past_titles}"""
 
+    # Build trend context section if coming from Trends remix
+    trend_section = ""
+    if trend_context:
+        trend_section = f"""
+**INSPIRATION VIDEO:**
+This plan is inspired by: "{trend_context.get('title', '')}" from {trend_context.get('source', 'Unknown')} ({trend_context.get('category', '')})
+Analysis: {trend_context.get('analysis_summary', '')}"""
+        remix_ideas = trend_context.get("remix_ideas", [])
+        if remix_ideas:
+            ideas_text = "\n".join(f"  - {r.get('title_concept', '')}: {r.get('angle', '')}" for r in remix_ideas[:5])
+            trend_section += f"\nRemix ideas already generated:\n{ideas_text}"
+        style_takeaways = trend_context.get("style_takeaways", [])
+        if style_takeaways:
+            trend_section += "\nStyle takeaways: " + "; ".join(style_takeaways[:4])
+        trend_section += "\nIncorporate what works from this video into the plan."
+
+    # Real-time trend intelligence
+    intel_section = ""
+    if trend_intel_context:
+        intel_section = f"""
+**CURRENT TRENDS & MARKET INTELLIGENCE:**
+{trend_intel_context}
+Use this real-time data to make the plan timely and relevant. Reference specific trending topics where natural."""
+
     user_msg = f"""Generate a full video plan:
 
 **Type:** {video_type}
@@ -440,7 +466,9 @@ Here are the creator's past videos for reference links:
 {competitors_text}
 
 **General Notes:**
-{notes_text}"""
+{notes_text}
+{trend_section}
+{intel_section}"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
