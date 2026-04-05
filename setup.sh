@@ -46,12 +46,30 @@ fi
 if [ ! -d "venv" ]; then
     echo ""
     echo "  Creating virtual environment..."
-    "$PYTHON" -m venv venv
+    if ! "$PYTHON" -m venv venv 2>/dev/null; then
+        echo ""
+        echo "  ERROR: Failed to create virtual environment."
+        echo "  On Arch/CachyOS, install the venv module:"
+        echo "    sudo pacman -S python-virtualenv"
+        echo "  Or: sudo pacman -S python"
+        echo ""
+        echo "  On Debian/Ubuntu:"
+        echo "    sudo apt install python3-venv"
+        exit 1
+    fi
 fi
 
 # Activate
-source venv/bin/activate
-echo "  Venv:     activated"
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    echo "  Venv:     activated"
+else
+    echo ""
+    echo "  ERROR: Virtual environment is broken (venv/bin/activate missing)."
+    echo "  Delete the venv directory and re-run setup.sh:"
+    echo "    rm -rf venv && bash setup.sh"
+    exit 1
+fi
 
 # Install/update dependencies
 echo ""
