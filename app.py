@@ -215,7 +215,7 @@ def _background_startup():
                     analytics_cache = load_analytics()
                     competitors_cache = load_competitors()
                     title_history = load_title_history()
-plans_cache = load_plans()
+                    plans_cache = load_plans()
                     _saved_inner = load_settings()
                     playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
                     playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
@@ -1692,7 +1692,7 @@ def api_sync_connect():
     competitors_cache = load_competitors()
     video_categories = load_categories()
     title_history = load_title_history()
-plans_cache = load_plans()
+    plans_cache = load_plans()
 
     return jsonify({"ok": True})
 
@@ -1763,7 +1763,7 @@ def api_sync_pull():
         competitors_cache = load_competitors()
         video_categories = load_categories()
         title_history = load_title_history()
-plans_cache = load_plans()
+        plans_cache = load_plans()
     return jsonify({"ok": True, "updated": updated})
 
 
@@ -1831,7 +1831,7 @@ def api_import_data():
         analytics_cache = load_analytics()
         competitors_cache = load_competitors()
         title_history = load_title_history()
-plans_cache = load_plans()
+        plans_cache = load_plans()
 
         return jsonify({"ok": True, "message": "Data imported. Refresh the page."})
     except zipfile.BadZipFile:
