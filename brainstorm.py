@@ -886,6 +886,7 @@ def suggest_channels(
     competitors_data: list[dict],
     api_key: str,
     market_data: dict = None,
+    exclude_handles: list[str] = None,
 ) -> dict:
     """Suggest YouTube channels to follow for inspiration."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -894,17 +895,32 @@ def suggest_channels(
         f"  - {v['title'][:70]}" for v in video_data[:15]
     )
 
+    # Calculate creator's own average views for benchmarking
+    avg_views = 0
+    if video_data:
+        avg_views = sum(v.get("view_count", 0) for v in video_data) / len(video_data)
+        creator_stats = f"\n**Creator's Average Views Per Video:** ~{int(avg_views):,}"
+    else:
+        creator_stats = ""
+
     existing = [c["name"] for c in competitors_data] if competitors_data else []
     existing_str = ", ".join(existing) if existing else "None"
 
+    exclude_handles = exclude_handles or []
+    exclude_section = ""
+    if exclude_handles:
+        exclude_section = f"\n**Also exclude these previously suggested handles:** {', '.join(exclude_handles)}"
+
     market_section = _build_market_section(market_data)
 
-    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech creator wants to discover new channels to learn from — both crypto-native channels and mainstream tech channels that are currently doing well.
+    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech tutorial creator wants to discover new channels to learn from — both crypto-native channels and mainstream tech channels that are currently doing well.
 
 **The Creator's Recent Content:**
 {topic_sample}
+{creator_stats}
 
 **Channels Already Tracked:** {existing_str}
+{exclude_section}
 {market_section}
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -931,17 +947,22 @@ RULES:
 - Suggest 5-6 crypto/bitcoin channels and 4-5 mainstream tech channels
 - Do NOT suggest channels already tracked: {existing_str}
 - Focus on channels that are CURRENTLY doing well — growing, getting high engagement, producing consistently
-- For crypto channels: include bitcoin-focused, privacy/freedom tech, and broader crypto education channels
+- IMPORTANT: Only suggest channels pulling in views AT LEAST comparable to the creator's own average ({f'~{int(avg_views):,} views/video' if avg_views else 'unknown — aim high'}), preferably substantially more. The goal is to study channels that are outperforming, not smaller channels.
+- For crypto channels: include a MIX of:
+  * Bitcoin-focused tutorial/education channels
+  * Privacy/freedom tech channels
+  * Bitcoin/crypto PODCAST channels that cover geopolitics, sovereignty, and government overreach — these won't be tutorial-related but their coverage of current sentiment around freedom, self-sovereignty, and macro trends can inform how episodes are packaged and framed to resonate with what the audience cares about RIGHT NOW
 - For tech channels: include channels whose format, editing, storytelling, or thumbnail strategy could be studied — even if their topic is completely different (hardware reviews, app reviews, explainers, etc.)
 - The handle should be their actual YouTube @handle if you know it, otherwise best guess
 - Be specific about what to learn from each — not generic praise
-- Prioritize channels with strong recent momentum over legacy channels coasting on old subscribers"""
+- Prioritize channels with strong recent momentum over legacy channels coasting on old subscribers
+- Suggest DIFFERENT channels each time — variety matters for discovery"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=system,
-        messages=[{"role": "user", "content": "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them."}],
+        messages=[{"role": "user", "content": "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them. Mix in some bitcoin podcast/commentary channels covering sovereignty, geopolitics, and government overreach — their framing of current events can help us package our tutorial content to match the audience's current mindset."}],
     )
 
     text = response.content[0].text.strip()

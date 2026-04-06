@@ -164,6 +164,50 @@ def fetch_channel_videos(channel_input: str, api_key: str, max_videos: int = 30)
     }
 
 
+def search_channels(query: str, api_key: str, max_results: int = 10) -> list[dict]:
+    """Search YouTube for channels matching a query.
+
+    Returns list of {"channel_id", "name", "handle", "avatar_url", "description", "subscriber_count"}.
+    """
+    youtube = build("youtube", "v3", developerKey=api_key)
+
+    resp = youtube.search().list(
+        q=query,
+        type="channel",
+        part="snippet",
+        maxResults=max_results,
+        order="relevance",
+    ).execute()
+
+    channel_ids = [item["snippet"]["channelId"] for item in resp.get("items", [])]
+    if not channel_ids:
+        return []
+
+    # Fetch channel details (statistics + snippet) for subscriber counts and handles
+    details_resp = youtube.channels().list(
+        id=",".join(channel_ids),
+        part="snippet,statistics",
+    ).execute()
+
+    results = []
+    for item in details_resp.get("items", []):
+        snippet = item["snippet"]
+        stats = item.get("statistics", {})
+        thumbs = snippet.get("thumbnails", {})
+        avatar = (thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url", "")
+        handle = snippet.get("customUrl", "")
+        results.append({
+            "channel_id": item["id"],
+            "name": snippet["title"],
+            "handle": handle,
+            "avatar_url": avatar,
+            "description": snippet.get("description", "")[:150],
+            "subscriber_count": int(stats.get("subscriberCount", 0)),
+        })
+
+    return results
+
+
 def fetch_playlist_videos(playlist_id: str, api_key: str) -> list[dict]:
     """Fetch all videos from a playlist with their statistics."""
     youtube = build("youtube", "v3", developerKey=api_key)

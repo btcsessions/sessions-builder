@@ -1030,6 +1030,10 @@ def api_suggest_channels():
     if not video_cache:
         return jsonify({"error": "No videos loaded. Fetch your playlist first."}), 400
 
+    # Accept exclude_handles from client to get fresh suggestions on refresh
+    body = request.get_json(silent=True) or {}
+    exclude_handles = body.get("exclude_handles", [])
+
     try:
         market_data = {
             "info": get_current_market_info(_btc_prices),
@@ -1040,6 +1044,7 @@ def api_suggest_channels():
             competitors_data=competitors_cache,
             api_key=api_key,
             market_data=market_data,
+            exclude_handles=exclude_handles,
         )
 
         # Enrich suggestions with avatars from YouTube API
@@ -1055,6 +1060,30 @@ def api_suggest_channels():
                         ch["avatar_url"] = ""
 
         return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/search-channels", methods=["POST"])
+def api_search_channels():
+    settings = load_settings()
+    google_key = settings.get("google_key", "") or os.environ.get("GOOGLE_API_KEY", "")
+    if not google_key:
+        return jsonify({"error": "Google API key not configured."}), 400
+
+    body = request.get_json(silent=True) or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return jsonify({"error": "Search query is required."}), 400
+
+    try:
+        from youtube import search_channels
+        results = search_channels(query, google_key, max_results=8)
+        # Mark channels already tracked
+        tracked_ids = {c["channel_id"] for c in competitors_cache}
+        for ch in results:
+            ch["already_tracked"] = ch["channel_id"] in tracked_ids
+        return jsonify({"channels": results})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

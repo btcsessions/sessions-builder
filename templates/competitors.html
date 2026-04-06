@@ -69,6 +69,16 @@
             <button id="discover-btn" class="btn small secondary">Refresh</button>
         </div>
 
+        <!-- Channel Search -->
+        <div class="insp-add-form">
+            <input type="text" id="channel-search-input" placeholder="Search YouTube channels..." class="insp-add-input" style="flex:1;">
+            <button id="channel-search-btn" class="btn small">Search</button>
+        </div>
+        <div id="search-results" style="display:none;">
+            <div class="insp-discover-label" style="color:var(--text-muted);">Search Results</div>
+            <div id="search-list" class="insp-discover-list"></div>
+        </div>
+
         <div id="discover-loading" class="plan-loading">Finding channels...</div>
         <div id="discover-error" style="display:none" class="form-hint"></div>
 
@@ -162,6 +172,102 @@ document.getElementById("refresh-all-btn").addEventListener("click", async (e) =
     btn.textContent = "Refresh All";
 });
 
+// Track previously seen handles so refresh gives new suggestions
+let seenHandles = [];
+
+// Channel search
+const searchInput = document.getElementById("channel-search-input");
+const searchBtn = document.getElementById("channel-search-btn");
+const searchResults = document.getElementById("search-results");
+const searchList = document.getElementById("search-list");
+
+searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") searchBtn.click(); });
+
+searchBtn.addEventListener("click", async () => {
+    const query = searchInput.value.trim();
+    if (!query) return;
+    searchBtn.disabled = true;
+    searchBtn.textContent = "Searching...";
+    searchResults.style.display = "none";
+    try {
+        const resp = await fetch("/api/search-channels", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+        });
+        const data = await resp.json();
+        if (data.error) { status.textContent = data.error; }
+        else if (data.channels && data.channels.length) {
+            searchList.innerHTML = data.channels.map(ch => renderSearchResult(ch)).join("");
+            searchResults.style.display = "block";
+            wireSearchAddButtons();
+        } else {
+            searchList.innerHTML = '<div class="form-hint" style="padding:0.5rem 0.75rem;">No channels found.</div>';
+            searchResults.style.display = "block";
+        }
+    } catch (err) { status.textContent = "Search failed: " + err.message; }
+    searchBtn.disabled = false;
+    searchBtn.textContent = "Search";
+});
+
+function renderSearchResult(ch) {
+    const avatarHtml = ch.avatar_url
+        ? `<img src="${esc(ch.avatar_url)}" alt="" class="insp-avatar">`
+        : `<div class="insp-avatar-placeholder">${esc(ch.name[0])}</div>`;
+    const subsText = ch.subscriber_count ? `${(ch.subscriber_count / 1000).toFixed(0)}K subs` : '';
+    const tracked = ch.already_tracked;
+    return `<div class="insp-discover-card">
+        ${avatarHtml}
+        <div class="insp-discover-info">
+            <div class="insp-discover-name">
+                <strong>${esc(ch.name)}</strong>
+                <span class="suggestion-handle">${esc(ch.handle)}</span>
+            </div>
+            <p class="insp-discover-why">${esc(ch.description)}</p>
+            ${subsText ? `<p class="insp-discover-learn" style="color:var(--text-muted); font-size:0.72rem;">${subsText}</p>` : ''}
+        </div>
+        <div class="insp-discover-actions">
+            <select class="insp-add-cat-select search-cat-select" data-channel-id="${esc(ch.channel_id)}" data-handle="${esc(ch.handle)}">
+                <option value="Bitcoin/Crypto">Bitcoin/Crypto</option>
+                <option value="Freedom Tech">Freedom Tech</option>
+                <option value="Mainstream Tech">Mainstream Tech</option>
+            </select>
+            <button class="btn small primary add-search-btn"
+                    data-handle="${esc(ch.handle)}"
+                    ${tracked ? 'disabled' : ''}>${tracked ? 'Tracked' : '+ Add'}</button>
+        </div>
+    </div>`;
+}
+
+function wireSearchAddButtons() {
+    document.querySelectorAll(".add-search-btn").forEach(btn => {
+        if (btn.disabled) return;
+        btn.addEventListener("click", async () => {
+            const handle = btn.dataset.handle;
+            const catSelect = btn.closest(".insp-discover-card").querySelector(".search-cat-select");
+            const category = catSelect.value;
+            const url = "https://youtube.com/" + handle;
+            btn.disabled = true;
+            btn.textContent = "Adding...";
+            try {
+                const resp = await fetch("/api/competitors/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, category, custom_label: "" }),
+                });
+                const result = await resp.json();
+                if (result.error) {
+                    btn.textContent = result.error.length > 25 ? "Already added" : result.error;
+                } else {
+                    btn.textContent = "Added!";
+                    btn.style.borderColor = "var(--accent)";
+                    btn.style.color = "var(--accent)";
+                }
+            } catch (err) { btn.textContent = "Failed"; }
+        });
+    });
+}
+
 // Discover channels
 function renderSuggestion(ch, section) {
     const avatarHtml = ch.avatar_url
@@ -226,7 +332,11 @@ async function loadDiscovery() {
     document.getElementById("tech-suggestions").style.display = "none";
 
     try {
-        const resp = await fetch("/api/suggest-channels", { method: "POST" });
+        const resp = await fetch("/api/suggest-channels", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exclude_handles: seenHandles }),
+        });
         const data = await resp.json();
         loading.style.display = "none";
 
@@ -234,6 +344,14 @@ async function loadDiscovery() {
             errorEl.textContent = data.error;
             errorEl.style.display = "block";
         } else {
+            // Track all suggested handles so next refresh gives new ones
+            for (const group of ["crypto_channels", "tech_channels"]) {
+                for (const ch of (data[group] || [])) {
+                    if (ch.handle && !seenHandles.includes(ch.handle)) {
+                        seenHandles.push(ch.handle);
+                    }
+                }
+            }
             if (data.crypto_channels && data.crypto_channels.length) {
                 document.getElementById("crypto-list").innerHTML = data.crypto_channels.map(ch => renderSuggestion(ch, 'crypto')).join("");
                 document.getElementById("crypto-suggestions").style.display = "block";
