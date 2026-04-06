@@ -573,7 +573,7 @@ def trends_page():
     for comp in competitors_cache:
         vids = comp.get("videos", [])
         if not vids:
-            scored_competitors.append(comp)
+            scored_competitors.append({**comp, "scored_videos": [], "avg_views": 0})
             continue
         comp_avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
         dated_comp = []
