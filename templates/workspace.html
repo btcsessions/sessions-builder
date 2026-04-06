@@ -430,11 +430,12 @@ function scoreTitle(title) {
     let score = 50; // baseline
     const breakdown = [];
 
-    // 1. Title length (optimal 40-60 chars for YouTube)
+    // 1. Title length (optimal 40-65 chars for YouTube)
     const len = title.length;
-    if (len >= 40 && len <= 60) { score += 10; breakdown.push("+10 optimal length (" + len + " chars)"); }
-    else if (len >= 30 && len <= 70) { score += 5; breakdown.push("+5 good length (" + len + " chars)"); }
-    else if (len > 80) { score -= 10; breakdown.push("-10 too long (" + len + " chars)"); }
+    if (len >= 40 && len <= 65) { score += 10; breakdown.push("+10 optimal length (" + len + " chars)"); }
+    else if (len >= 30 && len <= 75) { score += 5; breakdown.push("+5 good length (" + len + " chars)"); }
+    else if (len > 85) { score -= 10; breakdown.push("-10 too long (" + len + " chars)"); }
+    else if (len > 75) { score -= 3; breakdown.push("-3 slightly long (" + len + " chars)"); }
     else if (len < 25) { score -= 5; breakdown.push("-5 short (" + len + " chars)"); }
 
     // 2. Hot keywords from real data
@@ -501,6 +502,61 @@ function scoreTitle(title) {
                 breakdown.push("+" + bonus + ' ' + label + ' word "' + kw + '" (weight: ' + weight + ")");
             }
         }
+    }
+
+    // 8. Specificity & value clarity — reward titles with concrete details
+    // Product/brand names (capitalized words that aren't common English)
+    const commonUpper = new Set(["the","a","an","i","my","your","how","what","why","this","that","and","or","but","for","with","from","not","all","are","you","can","will","don't","do","does","is","it","in","to","of","on","by","at","no","so","if","just","get","got","one","new","use","has"]);
+    const specificWords = title.split(/\s+/).filter(w => {
+        const clean = w.replace(/[^a-zA-Z0-9]/g, '');
+        return clean.length > 1 && /^[A-Z]/.test(w) && !commonUpper.has(clean.toLowerCase());
+    });
+    if (specificWords.length >= 2) {
+        score += 6;
+        breakdown.push("+6 specific/concrete (" + specificWords.slice(0, 3).join(", ") + ")");
+    } else if (specificWords.length === 1) {
+        score += 3;
+        breakdown.push("+3 includes specific term (" + specificWords[0] + ")");
+    }
+
+    // Clear value proposition — title states what viewer gets or learns
+    if (/\b(replace|escape|protect|secure|control|own|build|run|host|set up|switch|ditch|migrate)\b/i.test(title)) {
+        score += 4;
+        breakdown.push("+4 clear action/outcome");
+    }
+
+    // 9. Front-loading — first 40 chars should contain the hook
+    const front = title.substring(0, 40);
+    const frontLower = front.toLowerCase();
+    const hasHookInFront = specificWords.some(w => front.includes(w)) ||
+        /\b(how|why|best|easy|free|complete|replace|escape|build|ultimate)\b/i.test(frontLower);
+    if (len > 40 && hasHookInFront) {
+        score += 4;
+        breakdown.push("+4 hook front-loaded (visible on mobile)");
+    }
+
+    // 10. Penalties for quality issues
+    // Truncated title (unmatched parentheses/brackets)
+    const openParens = (title.match(/\(/g) || []).length;
+    const closeParens = (title.match(/\)/g) || []).length;
+    const openBrackets = (title.match(/\[/g) || []).length;
+    const closeBrackets = (title.match(/\]/g) || []).length;
+    if (openParens !== closeParens || openBrackets !== closeBrackets) {
+        score -= 10;
+        breakdown.push("-10 unmatched brackets/parentheses (looks truncated)");
+    }
+
+    // Excessive ALL CAPS (1-2 cap words for emphasis is fine, more is spammy)
+    const capsWords = title.split(/\s+/).filter(w => /^[A-Z]{2,}$/.test(w.replace(/[^A-Z]/g, '')) && w.replace(/[^A-Z]/g, '').length >= 2);
+    if (capsWords.length > 3) {
+        score -= 5;
+        breakdown.push("-5 excessive ALL CAPS (" + capsWords.length + " words)");
+    }
+
+    // Vague/generic title — no specific product, tool, or clear topic
+    if (specificWords.length === 0 && !/\d/.test(title)) {
+        score -= 5;
+        breakdown.push("-5 vague — no specific product/tool/topic named");
     }
 
     // Clamp 0-100
