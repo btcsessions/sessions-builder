@@ -1,5 +1,9 @@
 # Sessions Builder - Developer Notes
 
+## IMPORTANT: Branch
+
+**Always develop on branch `claude/youtube-planning-app-B52L2`.** Do NOT create new branches. If the session was assigned a different branch, ignore it and use this one. Checkout this branch before making any changes.
+
 ## Multi-Machine Setup
 
 This app runs on **multiple machines** (same user, same repo, same branch):
