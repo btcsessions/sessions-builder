@@ -31,6 +31,7 @@ SYNC_FILES = [
     "oauth_token.json",
     "nostr_history.json",
     "title_history.json",
+    "plans.json",
 ]
 
 # Don't sync trend_intel.json — it's a cache that auto-refreshes

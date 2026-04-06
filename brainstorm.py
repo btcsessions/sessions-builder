@@ -724,6 +724,61 @@ Be honest and calibrated. A score of 50 is genuinely average. Most titles should
     return json.loads(text)
 
 
+def generate_plan_postmortem(
+    plan: dict,
+    video_data: list[dict],
+    api_key: str,
+) -> dict:
+    """Generate a post-mortem analysis comparing a plan's predictions vs actual performance."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    avg_views = sum(v.get("view_count", 0) for v in video_data) / len(video_data) if video_data else 1
+
+    system = """You are a YouTube analytics coach reviewing the performance of a video that was planned with AI assistance. Compare what was planned vs what actually happened, and extract lessons for future planning.
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+{
+  "verdict": "outperformed" | "met_expectations" | "underperformed",
+  "summary": "2-3 sentence overall assessment",
+  "title_analysis": "Did the chosen title work? Would another from the options have been better?",
+  "what_worked": ["lesson 1", "lesson 2"],
+  "what_to_improve": ["lesson 1", "lesson 2"],
+  "keyword_insights": ["keyword or phrase to boost in future", "keyword to avoid"],
+  "score_accuracy": "Was the AI score predictive? Brief assessment."
+}
+
+Be honest and specific. Reference the actual numbers."""
+
+    user_msg = f"""Post-mortem for this planned video:
+
+**Plan Created:** {plan.get('created_at', 'Unknown')}
+**Topic:** {plan.get('topic', 'Unknown')}
+**Video Type:** {plan.get('video_type', 'Unknown')}
+**Chosen Title:** "{plan.get('chosen_title', '')}"
+**AI Score at Planning:** {plan.get('ai_score', 'N/A')}
+**Other Title Options Considered:** {', '.join(f'"{t}"' for t in plan.get('all_titles', []) if t != plan.get('chosen_title', ''))}
+
+**Actual Results:**
+**Published Title:** "{plan.get('actual_title', '')}"
+**Views:** {plan.get('actual_views', 0):,}
+**Channel Average:** ~{int(avg_views):,} views
+**Performance Ratio:** {plan.get('perf_ratio', 0)}x average
+**Engagement Rate:** {plan.get('engagement_rate', 0)}%
+**Market Phase:** {plan.get('market_phase', 'unknown')}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=800,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def analyze_own_video(
     video: dict,
     video_data: list[dict],

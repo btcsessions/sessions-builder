@@ -25,6 +25,7 @@ ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 COMPETITORS_FILE = os.path.join(DATA_DIR, "competitors.json")
 CATEGORIES_FILE = os.path.join(DATA_DIR, "video_categories.json")
 TITLE_HISTORY_FILE = os.path.join(DATA_DIR, "title_history.json")
+PLANS_FILE = os.path.join(DATA_DIR, "plans.json")
 
 # In-memory store
 video_cache = []
@@ -32,6 +33,7 @@ chat_history = []
 playlist_info = {}
 analytics_cache = {}
 competitors_cache = []  # list of {"name", "url", "category", "channel_id", "videos": [...]}
+plans_cache = []  # list of saved plans with performance tracking
 title_history = []
 
 
@@ -163,6 +165,20 @@ def load_title_history() -> list:
     return []
 
 
+def save_plans(data: list):
+    _ensure_data_dir()
+    with open(PLANS_FILE, "w") as f:
+        json.dump(data, f)
+    _schedule_sync_push()
+
+
+def load_plans() -> list:
+    if os.path.exists(PLANS_FILE):
+        with open(PLANS_FILE) as f:
+            return json.load(f)
+    return []
+
+
 # Load persisted data on startup (local files only — instant)
 from sync import pull_from_gist, push_to_gist, is_sync_configured
 
@@ -176,6 +192,7 @@ analytics_cache = load_analytics()
 competitors_cache = load_competitors()
 video_categories = load_categories()
 title_history = load_title_history()
+plans_cache = load_plans()
 
 # Heavy startup work (network calls) runs in background so the server starts fast
 _btc_prices = {}
@@ -183,7 +200,7 @@ _snapshots = {}
 _startup_done = threading.Event()
 
 def _background_startup():
-    global _btc_prices, _snapshots, video_cache, analytics_cache, competitors_cache, title_history
+    global _btc_prices, _snapshots, video_cache, analytics_cache, competitors_cache, title_history, plans_cache
     try:
         # Sync pull — only auto-pull if a sync password is set (encrypted sync).
         # Without a password, auto-pull would overwrite local API keys with the
@@ -198,6 +215,7 @@ def _background_startup():
                     analytics_cache = load_analytics()
                     competitors_cache = load_competitors()
                     title_history = load_title_history()
+plans_cache = load_plans()
                     _saved_inner = load_settings()
                     playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
                     playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
@@ -746,6 +764,21 @@ def _build_scoring_context() -> dict:
             if len(w) > 2 and w not in stop_words:
                 learned_keywords[w] = learned_keywords.get(w, 0) + combined_weight
 
+    # Incorporate keyword insights from post-mortems
+    for plan in plans_cache:
+        pm = plan.get("postmortem")
+        if not pm:
+            continue
+        perf = plan.get("perf_ratio", 1.0) or 1.0
+        for kw in pm.get("keyword_insights", []):
+            kw_lower = kw.lower().strip()
+            for w in kw_lower.split():
+                w = w.strip("()[].,!?:;\"'")
+                if len(w) > 2 and w not in stop_words:
+                    # Boost keywords from outperforming plans, penalize from underperforming
+                    weight = min(3.0, max(0.3, perf))
+                    learned_keywords[w] = learned_keywords.get(w, 0) + weight
+
     # Only keep words with meaningful weight (roughly 2+ recent titles)
     learned_keywords = {
         k: round(v, 2)
@@ -919,6 +952,163 @@ def api_mark_title_used():
 
     save_title_history(title_history)
     return jsonify({"ok": True, "matched": best_match is not None})
+
+
+@app.route("/api/plans/save", methods=["POST"])
+def api_save_plan():
+    """Save a full plan for later post-mortem tracking."""
+    global plans_cache
+    data = request.get_json()
+    plan_data = data.get("plan", {})
+    chosen_title = data.get("chosen_title", "")
+    topic = data.get("topic", "")
+    video_type = data.get("video_type", "")
+    ai_score = data.get("ai_score")
+
+    if not chosen_title:
+        return jsonify({"error": "No title selected."}), 400
+
+    from datetime import datetime
+    plan_entry = {
+        "id": datetime.now().strftime("%Y%m%d%H%M%S"),
+        "created_at": datetime.now().isoformat()[:10],
+        "topic": topic,
+        "video_type": video_type,
+        "chosen_title": chosen_title,
+        "all_titles": plan_data.get("titles", []),
+        "ai_score": ai_score,
+        "thumbnail_ideas": plan_data.get("thumbnail_ideas", []),
+        "tags": plan_data.get("tags", []),
+        "outline_sections": len(plan_data.get("outline", [])),
+        # Tracking fields — filled in when video is published
+        "video_id": None,
+        "published": False,
+        "actual_title": None,
+        "actual_views": None,
+        "perf_ratio": None,
+        "postmortem": None,
+    }
+
+    plans_cache.append(plan_entry)
+    save_plans(plans_cache)
+    return jsonify({"ok": True, "plan_id": plan_entry["id"]})
+
+
+@app.route("/api/plans", methods=["GET"])
+def api_get_plans():
+    return jsonify({"plans": plans_cache})
+
+
+@app.route("/api/plans/link-video", methods=["POST"])
+def api_link_video_to_plan():
+    """Link a published video to a saved plan for post-mortem tracking."""
+    global plans_cache
+    data = request.get_json()
+    plan_id = data.get("plan_id")
+    video_id = data.get("video_id")
+
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+
+    # Find the video in our cache
+    video = next((v for v in video_cache if v["video_id"] == video_id), None)
+    if not video:
+        return jsonify({"error": "Video not found in playlist."}), 404
+
+    avg_views = sum(v["view_count"] for v in video_cache) // len(video_cache) if video_cache else 1
+    perf_ratio = round(video["view_count"] / avg_views, 2) if avg_views else 0
+
+    plan["video_id"] = video_id
+    plan["published"] = True
+    plan["actual_title"] = video["title"]
+    plan["actual_views"] = video["view_count"]
+    plan["perf_ratio"] = perf_ratio
+    plan["engagement_rate"] = video.get("engagement_rate", 0)
+    plan["published_at"] = video.get("published_at", "")
+
+    # Tag market phase
+    tagged = tag_video_market_phase(dict(video), _btc_prices)
+    plan["market_phase"] = tagged.get("_market_phase", "unknown")
+
+    save_plans(plans_cache)
+    return jsonify({"ok": True, "perf_ratio": perf_ratio})
+
+
+@app.route("/api/plans/auto-match", methods=["POST"])
+def api_auto_match_plans():
+    """Try to auto-match unlinked plans to published videos by title similarity."""
+    global plans_cache
+    matched = 0
+    avg_views = sum(v["view_count"] for v in video_cache) // len(video_cache) if video_cache else 1
+
+    for plan in plans_cache:
+        if plan.get("video_id"):
+            continue  # already linked
+
+        chosen = plan["chosen_title"].lower().strip()
+        best_match = None
+        best_ratio = 0
+
+        for v in video_cache:
+            vt = v["title"].lower().strip()
+            if vt == chosen:
+                best_match = v
+                break
+            saved_words = set(chosen.split())
+            vid_words = set(vt.split())
+            if not saved_words:
+                continue
+            overlap = len(saved_words & vid_words) / max(len(saved_words), len(vid_words))
+            if overlap > best_ratio and overlap >= 0.6:
+                best_ratio = overlap
+                best_match = v
+
+        if best_match:
+            perf_ratio = round(best_match["view_count"] / avg_views, 2) if avg_views else 0
+            plan["video_id"] = best_match["video_id"]
+            plan["published"] = True
+            plan["actual_title"] = best_match["title"]
+            plan["actual_views"] = best_match["view_count"]
+            plan["perf_ratio"] = perf_ratio
+            plan["engagement_rate"] = best_match.get("engagement_rate", 0)
+            plan["published_at"] = best_match.get("published_at", "")
+            tagged = tag_video_market_phase(dict(best_match), _btc_prices)
+            plan["market_phase"] = tagged.get("_market_phase", "unknown")
+            matched += 1
+
+    if matched:
+        save_plans(plans_cache)
+    return jsonify({"ok": True, "matched": matched})
+
+
+@app.route("/api/plans/postmortem", methods=["POST"])
+def api_plan_postmortem():
+    """Generate an AI post-mortem for a linked plan."""
+    data = request.get_json()
+    plan_id = data.get("plan_id")
+
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan or not plan.get("video_id"):
+        return jsonify({"error": "Plan not found or no video linked."}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import generate_plan_postmortem
+        result = generate_plan_postmortem(
+            plan=plan,
+            video_data=video_cache,
+            api_key=api_key,
+        )
+        plan["postmortem"] = result
+        save_plans(plans_cache)
+        return jsonify({"ok": True, "postmortem": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/plan-context", methods=["POST"])
@@ -1495,13 +1685,14 @@ def api_sync_connect():
         json.dump(settings, f)
 
     # Pull data from the existing Gist
-    global video_cache, analytics_cache, competitors_cache, video_categories, title_history
+    global video_cache, analytics_cache, competitors_cache, video_categories, title_history, plans_cache
     pull_from_gist()
     video_cache = load_video_cache()
     analytics_cache = load_analytics()
     competitors_cache = load_competitors()
     video_categories = load_categories()
     title_history = load_title_history()
+plans_cache = load_plans()
 
     return jsonify({"ok": True})
 
@@ -1564,7 +1755,7 @@ def api_sync_pull():
     """Manually trigger a sync pull."""
     if not is_sync_configured():
         return jsonify({"error": "Sync not configured"}), 400
-    global video_cache, analytics_cache, competitors_cache, video_categories, title_history
+    global video_cache, analytics_cache, competitors_cache, video_categories, title_history, plans_cache
     updated = pull_from_gist()
     if updated:
         video_cache = load_video_cache()
@@ -1572,6 +1763,7 @@ def api_sync_pull():
         competitors_cache = load_competitors()
         video_categories = load_categories()
         title_history = load_title_history()
+plans_cache = load_plans()
     return jsonify({"ok": True, "updated": updated})
 
 
@@ -1634,11 +1826,12 @@ def api_import_data():
                     zf.extract(name, DATA_DIR)
 
         # Reload in-memory caches
-        global video_cache, analytics_cache, competitors_cache, title_history
+        global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
         video_cache = load_video_cache()
         analytics_cache = load_analytics()
         competitors_cache = load_competitors()
         title_history = load_title_history()
+plans_cache = load_plans()
 
         return jsonify({"ok": True, "message": "Data imported. Refresh the page."})
     except zipfile.BadZipFile:
