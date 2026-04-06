@@ -586,6 +586,82 @@ Use this real-time data to make the plan timely and relevant. Reference specific
     return json.loads(text)
 
 
+def parse_notes_to_plan(
+    notes: str,
+    topic: str,
+    video_type: str,
+    api_key: str,
+    existing_plan: dict = None,
+) -> dict:
+    """Parse freeform notes/outline into a structured video plan."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    if existing_plan:
+        mode = "amend"
+        existing_json = json.dumps({
+            "titles": existing_plan.get("titles", []),
+            "thumbnail_ideas": existing_plan.get("thumbnail_ideas", []),
+            "intro_hook": existing_plan.get("intro_hook", ""),
+            "outline": existing_plan.get("outline", []),
+            "tags": existing_plan.get("tags", []),
+            "description": existing_plan.get("description", ""),
+        }, indent=2)
+        context = f"""There is an EXISTING plan that should be amended/merged with the new notes.
+Preserve what's already good, integrate the new information, and improve where the notes suggest changes.
+
+**Existing plan:**
+{existing_json}"""
+    else:
+        mode = "create"
+        context = "Create the plan entirely from the notes provided."
+
+    system = f"""You are a YouTube video planning assistant. Parse the user's freeform notes into a structured video plan.
+
+{context}
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "titles": ["title option 1", "title option 2", "title option 3"],
+  "thumbnail_ideas": ["idea 1", "idea 2", "idea 3"],
+  "intro_hook": "A compelling 2-3 sentence opening hook",
+  "outline": [
+    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~X min"}}
+  ],
+  "tags": ["tag1", "tag2", "tag3"],
+  "description": "YouTube description with [LINK] and [TIMESTAMP] placeholders where URLs and timestamps should go"
+}}
+
+RULES:
+- Extract structure from the notes — section headings, bullet points, key topics
+- If the notes contain title ideas, use them. If not, generate 3 based on the content.
+- Infer logical sections and timing from the outline depth
+- Use [LINK] and [TIMESTAMP] as placeholders — never generate actual URLs or timestamps
+- Keep the creator's voice and phrasing where possible — don't over-polish their notes
+- If {'amending' if existing_plan else 'creating'}: {'merge intelligently — dont discard existing work, integrate the new notes' if existing_plan else 'build the full plan from scratch based on the notes'}
+- This is a **{video_type}** video"""
+
+    user_msg = f"""Parse these notes into a structured video plan:
+
+**Video Type:** {video_type}
+**Topic:** {topic}
+
+**Notes:**
+{notes}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=3000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def regenerate_titles(
     video_type: str,
     topic: str,

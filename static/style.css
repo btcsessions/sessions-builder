@@ -982,6 +982,51 @@ tr:hover { background: var(--surface2); }
 .tag-removable:hover { opacity: 0.6; }
 .tag-x { font-size: 0.7rem; margin-left: 0.2rem; }
 
+.plan-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.action-divider {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+.import-notes-section {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.import-notes-text {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+    padding: 0.5rem 0.6rem;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+}
+.import-notes-text:focus { outline: none; border-color: var(--accent); }
+.import-notes-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    justify-content: flex-end;
+}
+.import-file-label {
+    cursor: pointer;
+}
+.plan-import-amend {
+    margin-bottom: 0.75rem;
+}
+.plan-import-amend .import-notes-text { margin-top: 0.5rem; }
+
 .plan-save-bar {
     display: flex;
     align-items: center;

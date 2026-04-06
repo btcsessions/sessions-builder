@@ -193,7 +193,23 @@
                 <textarea id="video-notes" rows="2" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
             </div>
 
-            <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
+            <div class="plan-form-actions">
+                <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
+                <span class="action-divider">or</span>
+                <button type="button" class="btn secondary" id="import-toggle-btn">Import Notes</button>
+            </div>
+
+            <div id="import-notes-section" class="import-notes-section" style="display:none">
+                <textarea id="import-notes-text" class="import-notes-text" rows="8" placeholder="Paste your outline, notes, or conversation export here..."></textarea>
+                <div class="import-notes-actions">
+                    <label class="btn small import-file-label">
+                        Upload File
+                        <input type="file" id="import-file-input" accept=".txt,.md,.text" style="display:none">
+                    </label>
+                    <button type="button" class="btn primary" id="parse-notes-btn">Parse</button>
+                </div>
+                <div id="parse-status" class="form-hint"></div>
+            </div>
         </form>
 
         <div id="plan-loading" class="plan-loading" style="display:none">
@@ -203,6 +219,22 @@
         <div id="plan-error" class="alert error" style="display:none"></div>
 
         <div id="plan-results" class="plan-results" style="display:none">
+            <!-- Import notes into existing plan -->
+            <div class="plan-import-amend">
+                <button type="button" class="btn small secondary" id="amend-toggle-btn">Import Notes</button>
+                <div id="amend-notes-section" style="display:none">
+                    <textarea id="amend-notes-text" class="import-notes-text" rows="6" placeholder="Paste notes to merge into this plan..."></textarea>
+                    <div class="import-notes-actions">
+                        <label class="btn small import-file-label">
+                            Upload File
+                            <input type="file" class="amend-file-input" accept=".txt,.md,.text" style="display:none">
+                        </label>
+                        <button type="button" class="btn primary" id="amend-parse-btn">Parse</button>
+                    </div>
+                    <div id="amend-status" class="form-hint"></div>
+                </div>
+            </div>
+
             <section class="plan-card">
                 <div class="plan-card-header-row">
                     <h2>Title Options</h2>
@@ -546,6 +578,119 @@ form.addEventListener("submit", async (e) => {
     }
     loading.style.display = "none";
     generateBtn.disabled = false;
+});
+
+/* --- Import Notes --- */
+// Toggle import section
+document.getElementById("import-toggle-btn")?.addEventListener("click", () => {
+    const sec = document.getElementById("import-notes-section");
+    sec.style.display = sec.style.display === "none" ? "" : "none";
+});
+
+// File upload → textarea (new plan)
+document.getElementById("import-file-input")?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById("import-notes-text").value = reader.result; };
+    reader.readAsText(file);
+});
+
+// Parse button (new plan from notes)
+document.getElementById("parse-notes-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("parse-notes-btn");
+    const status = document.getElementById("parse-status");
+    const notes = document.getElementById("import-notes-text").value.trim();
+    if (!notes) { status.textContent = "Paste or upload some notes first."; return; }
+
+    const topic = document.getElementById("video-topic")?.value.trim() || "";
+    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+
+    btn.disabled = true;
+    btn.textContent = "Parsing...";
+    status.textContent = "";
+    loading.style.display = "block";
+    planError.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/parse-notes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ notes, topic, video_type: videoType }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            planError.textContent = data.error;
+            planError.style.display = "block";
+        } else {
+            currentPlanId = null;
+            renderPlan(data);
+            results.style.display = "block";
+            document.getElementById("import-notes-section").style.display = "none";
+        }
+    } catch (err) {
+        planError.textContent = "Failed: " + err.message;
+        planError.style.display = "block";
+    }
+    loading.style.display = "none";
+    btn.disabled = false;
+    btn.textContent = "Parse";
+});
+
+// Toggle amend section (inside existing plan)
+document.getElementById("amend-toggle-btn")?.addEventListener("click", () => {
+    const sec = document.getElementById("amend-notes-section");
+    sec.style.display = sec.style.display === "none" ? "" : "none";
+});
+
+// File upload → textarea (amend)
+document.querySelector(".amend-file-input")?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById("amend-notes-text").value = reader.result; };
+    reader.readAsText(file);
+});
+
+// Parse button (amend existing plan)
+document.getElementById("amend-parse-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("amend-parse-btn");
+    const status = document.getElementById("amend-status");
+    const notes = document.getElementById("amend-notes-text").value.trim();
+    if (!notes) { status.textContent = "Paste or upload some notes first."; return; }
+
+    const topic = document.getElementById("video-topic")?.value.trim() || "";
+    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    const existingPlan = getCurrentPlanFromDOM();
+
+    btn.disabled = true;
+    btn.textContent = "Parsing...";
+    status.textContent = "";
+
+    try {
+        const resp = await fetch("/api/parse-notes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ notes, topic, video_type: videoType, existing_plan: existingPlan }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            status.textContent = data.error;
+        } else {
+            lastPlanData = data;
+            if (data._scoring_ctx) scoringCtx = data._scoring_ctx;
+            renderTitles(data.titles);
+            fetchAiScores(data.titles);
+            renderEditableSections(data);
+            document.getElementById("amend-notes-section").style.display = "none";
+            document.getElementById("amend-notes-text").value = "";
+            savePlannerState();
+        }
+    } catch (err) {
+        status.textContent = "Failed: " + err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = "Parse";
 });
 
 /* --- Title CTR Scoring --- */

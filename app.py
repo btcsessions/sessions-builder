@@ -838,6 +838,38 @@ def _build_scoring_context() -> dict:
     }
 
 
+@app.route("/api/parse-notes", methods=["POST"])
+def api_parse_notes():
+    """Parse freeform notes into a structured plan."""
+    data = request.get_json()
+    notes = (data.get("notes") or "").strip()
+    topic = (data.get("topic") or "").strip()
+    video_type = data.get("video_type", "tutorial")
+    existing_plan = data.get("existing_plan")
+
+    if not notes:
+        return jsonify({"error": "No notes to parse."}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import parse_notes_to_plan
+        result = parse_notes_to_plan(
+            notes=notes,
+            topic=topic,
+            video_type=video_type,
+            api_key=api_key,
+            existing_plan=existing_plan,
+        )
+        result["_scoring_ctx"] = _build_scoring_context()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/regenerate-titles", methods=["POST"])
 def api_regenerate_titles():
     """Generate new title suggestions for an existing plan."""
