@@ -172,10 +172,53 @@ def save_plans(data: list):
     _schedule_sync_push()
 
 
+CURRENT_PLAN_SCHEMA = 2
+
+
+def migrate_plan(plan: dict) -> dict:
+    """Migrate a plan to the current schema version."""
+    v = plan.get("schema_version", 1)
+
+    if v < 2:
+        # v1 → v2: add full_plan and form_state from available fields
+        if "full_plan" not in plan or not plan["full_plan"]:
+            plan["full_plan"] = {
+                "titles": plan.get("all_titles", []),
+                "thumbnail_ideas": plan.get("thumbnail_ideas", []),
+                "intro_hook": "",
+                "outline": [],
+                "tags": plan.get("tags", []),
+                "description": "",
+            }
+        if "form_state" not in plan:
+            plan["form_state"] = {
+                "topic": plan.get("topic", ""),
+                "video_type": plan.get("video_type", ""),
+                "notes": "",
+                "links": [],
+                "competitors": [],
+            }
+
+    # Future migrations go here:
+    # if v < 3:
+    #     plan["new_field"] = default_value
+
+    plan["schema_version"] = CURRENT_PLAN_SCHEMA
+    return plan
+
+
 def load_plans() -> list:
     if os.path.exists(PLANS_FILE):
         with open(PLANS_FILE) as f:
-            return json.load(f)
+            plans = json.load(f)
+        migrated = False
+        for i, p in enumerate(plans):
+            if p.get("schema_version", 1) < CURRENT_PLAN_SCHEMA:
+                plans[i] = migrate_plan(p)
+                migrated = True
+        if migrated:
+            save_plans(plans)
+        return plans
     return []
 
 
@@ -993,11 +1036,13 @@ def api_save_plan():
             plan["full_plan"] = full_plan
             plan["form_state"] = data.get("form_state", {})
             plan["updated_at"] = datetime.now().isoformat()[:10]
+            plan["schema_version"] = CURRENT_PLAN_SCHEMA
             save_plans(plans_cache)
             return jsonify({"ok": True, "plan_id": plan_id})
 
     # Create new plan
     plan_entry = {
+        "schema_version": CURRENT_PLAN_SCHEMA,
         "id": datetime.now().strftime("%Y%m%d%H%M%S"),
         "created_at": datetime.now().isoformat()[:10],
         "topic": topic,
