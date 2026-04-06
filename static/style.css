@@ -823,6 +823,28 @@ tr:hover { background: var(--surface2); }
     font-size: 0.8rem;
     font-weight: 700;
     cursor: help;
+    position: relative;
+}
+.title-score-badge.ai-scored {
+    box-shadow: 0 0 0 2px var(--accent-blue, #42a5f5);
+}
+.ai-badge-label {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    font-size: 0.45rem;
+    background: var(--accent-blue, #42a5f5);
+    color: #fff;
+    border-radius: 3px;
+    padding: 0 3px;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+.title-rescore-btn, .title-revert-btn {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
 }
 .title-editable {
     flex: 1;

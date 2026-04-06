@@ -654,6 +654,76 @@ Respond with ONLY a JSON array of 5 title strings. No markdown, no code fences."
     return json.loads(text)
 
 
+def score_titles_ai(
+    titles: list[str],
+    topic: str,
+    video_type: str,
+    video_data: list[dict],
+    api_key: str,
+    market_data: dict = None,
+) -> list[dict]:
+    """Have Claude score and critique title options with rationale."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    top_titles = ""
+    if video_data:
+        top_titles = "\n".join(
+            f"- \"{v['title']}\" ({v['view_count']:,} views)"
+            for v in sorted(video_data, key=lambda x: x["view_count"], reverse=True)[:10]
+        )
+
+    avg_views = 0
+    if video_data:
+        avg_views = sum(v.get("view_count", 0) for v in video_data) / len(video_data)
+
+    market_section = _build_market_section(market_data)
+
+    titles_text = "\n".join(f'{i+1}. "{t}"' for i, t in enumerate(titles))
+
+    system = f"""You are a YouTube title scoring expert for a bitcoin/freedom tech channel.
+
+**Channel's top-performing titles:**
+{top_titles}
+
+**Channel average views:** ~{int(avg_views):,}
+{market_section}
+
+Score each title on a 0-100 scale based on:
+- **Clarity of value** (30pts): Does the viewer instantly know what they'll get?
+- **CTR potential** (25pts): Would this stand out in a feed and compel a click?
+- **Search/discovery** (20pts): Does it contain terms people actually search for?
+- **Specificity** (15pts): Does it name concrete products, tools, or outcomes vs vague claims?
+- **Channel fit** (10pts): Does it match what this channel's audience expects?
+
+You must respond with ONLY valid JSON (no markdown, no code fences) — an array of objects:
+[
+  {{
+    "title": "the exact title",
+    "score": 78,
+    "rationale": "1-2 sentence explanation of the score",
+    "suggestion": "Optional: brief improvement suggestion, or null if score >= 80"
+  }}
+]
+
+Be honest and calibrated. A score of 50 is genuinely average. Most titles should land 55-80. Only truly excellent titles get 85+. Don't grade inflate."""
+
+    user_msg = f"""Score these title options for a {video_type} video about: {topic}
+
+{titles_text}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def analyze_own_video(
     video: dict,
     video_data: list[dict],

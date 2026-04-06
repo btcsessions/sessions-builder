@@ -580,32 +580,117 @@ function getScoreLabel(score) {
 }
 
 let originalTitles = []; // track originals for save comparison
+let aiScores = {}; // idx -> {score, rationale, suggestion}
 
-function renderTitles(titles) {
+function renderTitles(titles, existingAiScores) {
     originalTitles = [...titles];
+    if (existingAiScores) {
+        aiScores = {};
+        existingAiScores.forEach((s, i) => { aiScores[i] = s; });
+    }
     const container = document.getElementById("plan-titles");
     container.innerHTML = titles.map((t, i) => {
-        const { score, breakdown } = scoreTitle(t);
+        const ai = aiScores[i];
+        const { score: localScore, breakdown } = scoreTitle(t);
+        const displayScore = ai ? ai.score : localScore;
+        const tooltipText = ai
+            ? ai.rationale + (ai.suggestion ? "\n\nSuggestion: " + ai.suggestion : "")
+            : breakdown.join("\n");
+        const aiLabel = ai ? "AI" : "";
         return `<div class="title-row" data-idx="${i}" data-original="${esc(t)}">
-            <div class="title-score-badge" style="background:${getScoreColor(score)}" title="${breakdown.map(b => esc(b)).join('\n')}">${score}</div>
+            <div class="title-score-badge${ai ? ' ai-scored' : ''}" style="background:${getScoreColor(displayScore)}" title="${esc(tooltipText)}">${displayScore}${aiLabel ? '<span class="ai-badge-label">AI</span>' : ''}</div>
             <input type="text" class="title-editable" value="${esc(t)}" data-idx="${i}">
-            <span class="title-score-label" style="color:${getScoreColor(score)}">${getScoreLabel(score)}</span>
+            <span class="title-score-label" style="color:${getScoreColor(displayScore)}">${getScoreLabel(displayScore)}</span>
+            <button class="btn small title-rescore-btn" data-idx="${i}" title="Get AI score for this title" style="display:none">Re-score</button>
+            <button class="btn small title-revert-btn" data-idx="${i}" title="Revert to original" style="display:none">Revert</button>
             <button class="btn small title-save-btn" data-idx="${i}" title="Save this title to your preferences">Save</button>
         </div>`;
     }).join("");
 
-    // Wire up live editing → rescore
+    // Wire up live editing → show revert/rescore, update local score
     container.querySelectorAll(".title-editable").forEach(input => {
         input.addEventListener("input", () => {
             const row = input.closest(".title-row");
-            const { score, breakdown } = scoreTitle(input.value);
+            const idx = parseInt(input.dataset.idx);
+            const original = row.dataset.original;
+            const current = input.value;
+            const changed = current !== original;
+
+            // Show/hide revert and rescore buttons
+            row.querySelector(".title-revert-btn").style.display = changed ? "" : "none";
+            row.querySelector(".title-rescore-btn").style.display = changed ? "" : "none";
+
+            // Clear AI score on edit, fall back to local
+            if (changed) delete aiScores[idx];
+
+            const { score, breakdown } = scoreTitle(current);
             const badge = row.querySelector(".title-score-badge");
             const label = row.querySelector(".title-score-label");
             badge.textContent = score;
+            badge.classList.remove("ai-scored");
+            badge.innerHTML = score;
             badge.style.background = getScoreColor(score);
             badge.title = breakdown.join("\n");
             label.textContent = getScoreLabel(score);
             label.style.color = getScoreColor(score);
+        });
+    });
+
+    // Wire up revert buttons
+    container.querySelectorAll(".title-revert-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const idx = parseInt(btn.dataset.idx);
+            const row = btn.closest(".title-row");
+            const input = row.querySelector(".title-editable");
+            const original = row.dataset.original;
+            input.value = original;
+            input.dispatchEvent(new Event("input"));
+            // Restore AI score if we had one for the original
+            btn.style.display = "none";
+            row.querySelector(".title-rescore-btn").style.display = "none";
+        });
+    });
+
+    // Wire up rescore buttons
+    container.querySelectorAll(".title-rescore-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const idx = parseInt(btn.dataset.idx);
+            const row = btn.closest(".title-row");
+            const input = row.querySelector(".title-editable");
+            const title = input.value.trim();
+            if (!title) return;
+
+            btn.disabled = true;
+            btn.textContent = "Scoring...";
+            try {
+                const topic = document.getElementById("video-topic")?.value || "";
+                const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+                const resp = await fetch("/api/score-titles", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ titles: [title], topic, video_type: videoType }),
+                });
+                const data = await resp.json();
+                if (data.scores && data.scores.length) {
+                    const ai = data.scores[0];
+                    aiScores[idx] = ai;
+                    const badge = row.querySelector(".title-score-badge");
+                    const label = row.querySelector(".title-score-label");
+                    badge.innerHTML = ai.score + '<span class="ai-badge-label">AI</span>';
+                    badge.classList.add("ai-scored");
+                    badge.style.background = getScoreColor(ai.score);
+                    badge.title = ai.rationale + (ai.suggestion ? "\n\nSuggestion: " + ai.suggestion : "");
+                    label.textContent = getScoreLabel(ai.score);
+                    label.style.color = getScoreColor(ai.score);
+                    btn.style.display = "none";
+                } else {
+                    btn.textContent = "Failed";
+                }
+            } catch (err) {
+                btn.textContent = "Failed";
+            }
+            btn.disabled = false;
+            btn.textContent = "Re-score";
         });
     });
 
@@ -618,7 +703,8 @@ function renderTitles(titles) {
             const title = input.value.trim();
             if (!title) return;
 
-            const { score } = scoreTitle(title);
+            const ai = aiScores[idx];
+            const score = ai ? ai.score : scoreTitle(title).score;
             const topic = document.getElementById("video-topic")?.value || "";
             const format = document.querySelector('input[name="video-type"]:checked')?.value || "";
 
@@ -651,11 +737,46 @@ function renderTitles(titles) {
     });
 }
 
+async function fetchAiScores(titles) {
+    const topic = document.getElementById("video-topic")?.value || "";
+    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    try {
+        const resp = await fetch("/api/score-titles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ titles, topic, video_type: videoType }),
+        });
+        const data = await resp.json();
+        if (data.scores && data.scores.length) {
+            aiScores = {};
+            data.scores.forEach((s, i) => { aiScores[i] = s; });
+            // Re-render with AI scores
+            const container = document.getElementById("plan-titles");
+            container.querySelectorAll(".title-row").forEach((row, i) => {
+                const ai = aiScores[i];
+                if (!ai) return;
+                const badge = row.querySelector(".title-score-badge");
+                const label = row.querySelector(".title-score-label");
+                badge.innerHTML = ai.score + '<span class="ai-badge-label">AI</span>';
+                badge.classList.add("ai-scored");
+                badge.style.background = getScoreColor(ai.score);
+                badge.title = ai.rationale + (ai.suggestion ? "\n\nSuggestion: " + ai.suggestion : "");
+                label.textContent = getScoreLabel(ai.score);
+                label.style.color = getScoreColor(ai.score);
+            });
+        }
+    } catch (err) {
+        console.log("AI scoring failed, keeping local scores:", err);
+    }
+}
+
 function renderPlan(plan) {
     // Store scoring context from server
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
 
     renderTitles(plan.titles);
+    // Fire off AI scoring in background — titles show local scores first, then upgrade
+    fetchAiScores(plan.titles);
     document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
         `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
     document.getElementById("plan-hook").textContent = plan.intro_hook;
@@ -686,6 +807,7 @@ document.getElementById("regen-titles-btn").addEventListener("click", async () =
         } else {
             if (data._scoring_ctx) scoringCtx = data._scoring_ctx;
             renderTitles(data.titles);
+            fetchAiScores(data.titles);
         }
     } catch (err) {
         planError.textContent = "Failed: " + err.message;

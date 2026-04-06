@@ -797,6 +797,41 @@ def api_regenerate_titles():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/score-titles", methods=["POST"])
+def api_score_titles():
+    """Have Claude score and critique title options."""
+    data = request.get_json()
+    titles = data.get("titles", [])
+    topic = data.get("topic", "").strip()
+    video_type = data.get("video_type", "tutorial")
+
+    if not titles:
+        return jsonify({"error": "No titles to score."}), 400
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import score_titles_ai
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        scores = score_titles_ai(
+            titles=titles,
+            topic=topic,
+            video_type=video_type,
+            video_data=video_cache,
+            api_key=api_key,
+            market_data=market_data,
+        )
+        return jsonify({"scores": scores})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/title-history", methods=["GET"])
 def api_get_title_history():
     return jsonify({"titles": title_history})
