@@ -213,27 +213,28 @@
 
             <section class="plan-card">
                 <h2>Thumbnail Ideas</h2>
-                <div id="plan-thumbnails" class="plan-list"></div>
+                <div id="plan-thumbnails" class="plan-list plan-editable-list"></div>
             </section>
 
             <section class="plan-card">
                 <h2>Intro Hook</h2>
-                <div id="plan-hook" class="plan-text"></div>
+                <textarea id="plan-hook" class="plan-editable-text" rows="3"></textarea>
             </section>
 
             <section class="plan-card">
                 <h2>Video Outline</h2>
-                <div id="plan-outline" class="plan-outline"></div>
+                <div id="plan-outline" class="plan-outline plan-editable-outline"></div>
             </section>
 
             <section class="plan-card">
                 <h2>Tags</h2>
                 <div id="plan-tags" class="plan-tags"></div>
+                <input type="text" id="plan-tags-input" class="plan-editable-tags-input" placeholder="Add tag and press Enter">
             </section>
 
             <section class="plan-card">
                 <h2>Description</h2>
-                <div id="plan-description" class="plan-text"></div>
+                <textarea id="plan-description" class="plan-editable-text" rows="10"></textarea>
             </section>
 
             <div class="plan-save-bar">
@@ -378,8 +379,8 @@ function savePlannerState() {
         notes: document.getElementById("video-notes")?.value || "",
         links: [...document.querySelectorAll(".supporting-link")].map(el => el.value),
         competitors: [...document.querySelectorAll(".competitor-link")].map(el => el.value),
-        // Plan results
-        planData: lastPlanData,
+        // Plan results — capture current edits from DOM
+        planData: getCurrentPlanFromDOM() || lastPlanData,
         planVisible: results.style.display !== "none",
         scoringCtx: scoringCtx,
         aiScores: aiScores,
@@ -469,15 +470,7 @@ function renderPlanFromCache(plan, cachedAiScores, titleEdits) {
         });
     }
 
-    document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
-        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
-    document.getElementById("plan-hook").textContent = plan.intro_hook;
-    document.getElementById("plan-outline").innerHTML = plan.outline.map(s => {
-        const pts = s.points.map(p => `<li>${esc(p)}</li>`).join("");
-        return `<div class="outline-section"><div class="outline-header"><strong>${esc(s.section)}</strong><span class="duration">${esc(s.duration_hint)}</span></div><ul>${pts}</ul></div>`;
-    }).join("");
-    document.getElementById("plan-tags").innerHTML = plan.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("");
-    document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
+    renderEditableSections(plan);
 }
 
 // Auto-save on any interaction
@@ -907,23 +900,117 @@ async function fetchAiScores(titles) {
     }
 }
 
+// --- Shared editable section rendering ---
+function renderEditableSections(plan) {
+    // Thumbnails — editable inputs
+    document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
+        `<div class="plan-option editable-row">
+            <span class="option-num">${i + 1}</span>
+            <input type="text" class="plan-editable-input thumb-edit" value="${esc(t)}" data-idx="${i}">
+        </div>`).join("");
+
+    // Hook — textarea
+    document.getElementById("plan-hook").value = plan.intro_hook;
+
+    // Outline — editable sections
+    document.getElementById("plan-outline").innerHTML = plan.outline.map((s, si) => {
+        const pts = s.points.map((p, pi) =>
+            `<li><input type="text" class="plan-editable-input outline-point-edit" value="${esc(p)}" data-section="${si}" data-point="${pi}"></li>`
+        ).join("");
+        return `<div class="outline-section" data-section="${si}">
+            <div class="outline-header">
+                <input type="text" class="plan-editable-input outline-section-edit" value="${esc(s.section)}" data-section="${si}">
+                <input type="text" class="plan-editable-input outline-duration-edit" value="${esc(s.duration_hint)}" data-section="${si}" style="width:5rem; text-align:right;">
+            </div>
+            <ul>${pts}</ul>
+        </div>`;
+    }).join("");
+
+    // Tags — clickable to remove, input to add
+    renderTags(plan.tags);
+    wireTagInput();
+
+    // Description — textarea
+    document.getElementById("plan-description").value = plan.description;
+}
+
+function renderTags(tags) {
+    document.getElementById("plan-tags").innerHTML = tags.map((t, i) =>
+        `<span class="tag tag-removable" data-idx="${i}" title="Click to remove">${esc(t)} <span class="tag-x">&times;</span></span>`
+    ).join("");
+    // Wire remove
+    document.querySelectorAll(".tag-removable").forEach(tag => {
+        tag.addEventListener("click", () => {
+            tag.remove();
+            savePlannerState();
+        });
+    });
+}
+
+function wireTagInput() {
+    const input = document.getElementById("plan-tags-input");
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            const val = input.value.trim();
+            if (!val) return;
+            const container = document.getElementById("plan-tags");
+            const idx = container.querySelectorAll(".tag").length;
+            const tag = document.createElement("span");
+            tag.className = "tag tag-removable";
+            tag.dataset.idx = idx;
+            tag.title = "Click to remove";
+            tag.innerHTML = `${esc(val)} <span class="tag-x">&times;</span>`;
+            tag.addEventListener("click", () => { tag.remove(); savePlannerState(); });
+            container.appendChild(tag);
+            input.value = "";
+            savePlannerState();
+        }
+    });
+}
+
+// Read current edited plan state from the DOM
+function getCurrentPlanFromDOM() {
+    if (!lastPlanData) return null;
+    const plan = { ...lastPlanData };
+
+    // Titles
+    plan.titles = [...document.querySelectorAll(".title-editable")].map(el => el.value);
+
+    // Thumbnails
+    plan.thumbnail_ideas = [...document.querySelectorAll(".thumb-edit")].map(el => el.value);
+
+    // Hook
+    plan.intro_hook = document.getElementById("plan-hook").value;
+
+    // Outline
+    const sections = document.querySelectorAll(".outline-section[data-section]");
+    plan.outline = [...sections].map(sec => {
+        const si = sec.dataset.section;
+        return {
+            section: sec.querySelector(".outline-section-edit")?.value || "",
+            duration_hint: sec.querySelector(".outline-duration-edit")?.value || "",
+            points: [...sec.querySelectorAll(".outline-point-edit")].map(el => el.value),
+        };
+    });
+
+    // Tags
+    plan.tags = [...document.querySelectorAll("#plan-tags .tag")].map(el => el.textContent.replace("×", "").trim());
+
+    // Description
+    plan.description = document.getElementById("plan-description").value;
+
+    return plan;
+}
+
 function renderPlan(plan) {
     // Store scoring context from server
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
     lastPlanData = plan;
 
     renderTitles(plan.titles);
-    // Fire off AI scoring in background — titles show local scores first, then upgrade
     fetchAiScores(plan.titles);
-    document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
-        `<div class="plan-option"><span class="option-num">${i + 1}</span> ${esc(t)}</div>`).join("");
-    document.getElementById("plan-hook").textContent = plan.intro_hook;
-    document.getElementById("plan-outline").innerHTML = plan.outline.map(s => {
-        const pts = s.points.map(p => `<li>${esc(p)}</li>`).join("");
-        return `<div class="outline-section"><div class="outline-header"><strong>${esc(s.section)}</strong><span class="duration">${esc(s.duration_hint)}</span></div><ul>${pts}</ul></div>`;
-    }).join("");
-    document.getElementById("plan-tags").innerHTML = plan.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("");
-    document.getElementById("plan-description").innerHTML = esc(plan.description).replace(/\n/g, "<br>");
+    renderEditableSections(plan);
     savePlannerState();
 }
 
@@ -1237,12 +1324,14 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
     const status = document.getElementById("save-plan-status");
     if (!lastPlanData) { status.textContent = "No plan to save."; return; }
 
-    // Find the first title (or whichever the user has edited)
+    // Get current state of everything from the DOM (includes user edits)
+    const currentPlan = getCurrentPlanFromDOM() || lastPlanData;
+    lastPlanData = currentPlan;
+
     const titleInputs = document.querySelectorAll(".title-editable");
-    const chosenTitle = titleInputs.length ? titleInputs[0].value.trim() : (lastPlanData.titles[0] || "");
+    const chosenTitle = titleInputs.length ? titleInputs[0].value.trim() : (currentPlan.titles[0] || "");
     const ai = aiScores[0];
 
-    // Capture current form state for resuming later
     const formState = {
         topic: document.getElementById("video-topic")?.value || "",
         video_type: document.querySelector('input[name="video-type"]:checked')?.value || "tutorial",
@@ -1258,7 +1347,7 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                plan: lastPlanData,
+                plan: currentPlan,
                 plan_id: currentPlanId,
                 chosen_title: chosenTitle,
                 topic: formState.topic,

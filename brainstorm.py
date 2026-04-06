@@ -523,7 +523,7 @@ IMPORTANT RULES:
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
-- The description should be 3-5 paragraphs, include relevant links to past tutorials from the channel when applicable
+- The description should be 3-5 paragraphs. Use [LINK] as a placeholder where URLs should go and [TIMESTAMP] where chapter timestamps should go — do NOT include actual URLs or timestamps, just placeholders for the creator to fill in
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
 - If competitor videos are provided, consider what works in those videos and differentiate
 - Base recommendations on what has performed well in the channel data
