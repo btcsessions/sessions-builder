@@ -887,6 +887,7 @@ def suggest_channels(
     api_key: str,
     market_data: dict = None,
     exclude_handles: list[str] = None,
+    creator_channel: str = "",
 ) -> dict:
     """Suggest YouTube channels to follow for inspiration."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -906,10 +907,14 @@ def suggest_channels(
     existing = [c["name"] for c in competitors_data] if competitors_data else []
     existing_str = ", ".join(existing) if existing else "None"
 
+    creator_section = ""
+    if creator_channel:
+        creator_section = f"\n**Creator's Own Channel:** {creator_channel} — NEVER suggest this channel."
+
     exclude_handles = exclude_handles or []
     exclude_section = ""
     if exclude_handles:
-        exclude_section = f"\n**Also exclude these previously suggested handles:** {', '.join(exclude_handles)}"
+        exclude_section = f"\n**Do NOT suggest any of these previously suggested handles:** {', '.join(exclude_handles)}"
 
     market_section = _build_market_section(market_data)
 
@@ -918,6 +923,7 @@ def suggest_channels(
 **The Creator's Recent Content:**
 {topic_sample}
 {creator_stats}
+{creator_section}
 
 **Channels Already Tracked:** {existing_str}
 {exclude_section}
@@ -945,7 +951,9 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 
 RULES:
 - Suggest 5-6 crypto/bitcoin channels and 4-5 mainstream tech channels
+- NEVER suggest the creator's own channel{f' ({creator_channel})' if creator_channel else ''}
 - Do NOT suggest channels already tracked: {existing_str}
+- {"CRITICAL: Do NOT suggest any of these handles that were already suggested: " + ", ".join(exclude_handles) + ". You MUST suggest completely different channels." if exclude_handles else ""}
 - Focus on channels that are CURRENTLY doing well — growing, getting high engagement, producing consistently
 - IMPORTANT: Only suggest channels pulling in views AT LEAST comparable to the creator's own average ({f'~{int(avg_views):,} views/video' if avg_views else 'unknown — aim high'}), preferably substantially more. The goal is to study channels that are outperforming, not smaller channels.
 - For crypto channels: include a MIX of:
@@ -958,11 +966,15 @@ RULES:
 - Prioritize channels with strong recent momentum over legacy channels coasting on old subscribers
 - Suggest DIFFERENT channels each time — variety matters for discovery"""
 
+    user_msg = "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them. Mix in some bitcoin podcast/commentary channels covering sovereignty, geopolitics, and government overreach — their framing of current events can help us package our tutorial content to match the audience's current mindset."
+    if exclude_handles:
+        user_msg += f"\n\nIMPORTANT: I've already seen suggestions for these handles: {', '.join(exclude_handles)}. Give me COMPLETELY DIFFERENT channels this time — do not repeat any of those."
+
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=system,
-        messages=[{"role": "user", "content": "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them. Mix in some bitcoin podcast/commentary channels covering sovereignty, geopolitics, and government overreach — their framing of current events can help us package our tutorial content to match the audience's current mindset."}],
+        messages=[{"role": "user", "content": user_msg}],
     )
 
     text = response.content[0].text.strip()

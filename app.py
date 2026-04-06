@@ -1034,6 +1034,16 @@ def api_suggest_channels():
     body = request.get_json(silent=True) or {}
     exclude_handles = body.get("exclude_handles", [])
 
+    # Get creator's own channel identity to exclude from suggestions
+    creator_channel = settings.get("playlist_url", "").strip()
+    # If it's a full URL, try to extract the handle portion
+    if "/" in creator_channel:
+        parts = creator_channel.rstrip("/").split("/")
+        for p in reversed(parts):
+            if p.startswith("@"):
+                creator_channel = p
+                break
+
     try:
         market_data = {
             "info": get_current_market_info(_btc_prices),
@@ -1045,6 +1055,7 @@ def api_suggest_channels():
             api_key=api_key,
             market_data=market_data,
             exclude_handles=exclude_handles,
+            creator_channel=creator_channel,
         )
 
         # Enrich suggestions with avatars from YouTube API
