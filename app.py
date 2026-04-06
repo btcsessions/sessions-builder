@@ -956,7 +956,7 @@ def api_mark_title_used():
 
 @app.route("/api/plans/save", methods=["POST"])
 def api_save_plan():
-    """Save a full plan for later post-mortem tracking."""
+    """Save or update a full plan for resuming and post-mortem tracking."""
     global plans_cache
     data = request.get_json()
     plan_data = data.get("plan", {})
@@ -964,11 +964,39 @@ def api_save_plan():
     topic = data.get("topic", "")
     video_type = data.get("video_type", "")
     ai_score = data.get("ai_score")
+    plan_id = data.get("plan_id")  # if updating an existing plan
 
     if not chosen_title:
         return jsonify({"error": "No title selected."}), 400
 
     from datetime import datetime
+
+    # Full plan data for resuming later
+    full_plan = {
+        "titles": plan_data.get("titles", []),
+        "thumbnail_ideas": plan_data.get("thumbnail_ideas", []),
+        "intro_hook": plan_data.get("intro_hook", ""),
+        "outline": plan_data.get("outline", []),
+        "tags": plan_data.get("tags", []),
+        "description": plan_data.get("description", ""),
+    }
+
+    if plan_id:
+        # Update existing plan
+        plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+        if plan:
+            plan["chosen_title"] = chosen_title
+            plan["topic"] = topic
+            plan["video_type"] = video_type
+            plan["ai_score"] = ai_score
+            plan["all_titles"] = plan_data.get("titles", []),
+            plan["full_plan"] = full_plan
+            plan["form_state"] = data.get("form_state", {})
+            plan["updated_at"] = datetime.now().isoformat()[:10]
+            save_plans(plans_cache)
+            return jsonify({"ok": True, "plan_id": plan_id})
+
+    # Create new plan
     plan_entry = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S"),
         "created_at": datetime.now().isoformat()[:10],
@@ -977,9 +1005,8 @@ def api_save_plan():
         "chosen_title": chosen_title,
         "all_titles": plan_data.get("titles", []),
         "ai_score": ai_score,
-        "thumbnail_ideas": plan_data.get("thumbnail_ideas", []),
-        "tags": plan_data.get("tags", []),
-        "outline_sections": len(plan_data.get("outline", [])),
+        "full_plan": full_plan,
+        "form_state": data.get("form_state", {}),
         # Tracking fields — filled in when video is published
         "video_id": None,
         "published": False,
@@ -997,6 +1024,14 @@ def api_save_plan():
 @app.route("/api/plans", methods=["GET"])
 def api_get_plans():
     return jsonify({"plans": plans_cache})
+
+
+@app.route("/api/plans/<plan_id>", methods=["GET"])
+def api_get_plan(plan_id):
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+    return jsonify({"plan": plan})
 
 
 @app.route("/api/plans/link-video", methods=["POST"])

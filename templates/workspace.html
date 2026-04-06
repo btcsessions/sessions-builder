@@ -237,7 +237,7 @@
             </section>
 
             <div class="plan-save-bar">
-                <button class="btn primary" id="save-plan-btn" title="Save this plan for tracking performance after publish">Save Plan for Tracking</button>
+                <button class="btn primary" id="save-plan-btn">Save Plan</button>
                 <span id="save-plan-status" class="form-hint"></span>
             </div>
         </div>
@@ -385,6 +385,7 @@ function savePlannerState() {
         aiScores: aiScores,
         originalTitles: originalTitles,
         currentPlanPayload: currentPlanPayload,
+        currentPlanId: currentPlanId,
         // Current title edits
         titleEdits: [...document.querySelectorAll(".title-editable")].map(el => el.value),
     };
@@ -438,6 +439,7 @@ function restorePlannerState() {
             lastPlanData = state.planData;
             if (state.scoringCtx) scoringCtx = state.scoringCtx;
             if (state.currentPlanPayload) currentPlanPayload = state.currentPlanPayload;
+            if (state.currentPlanId) currentPlanId = state.currentPlanId;
 
             // Render plan without re-fetching AI scores
             renderPlanFromCache(state.planData, state.aiScores || {}, state.titleEdits || []);
@@ -1157,7 +1159,79 @@ document.getElementById("saved-titles-toggle")?.addEventListener("click", () => 
 // Load on startup
 refreshSavedTitles();
 
+/* --- Load Saved Plan --- */
+function loadSavedPlan(plan) {
+    const fp = plan.full_plan;
+    if (!fp) return;
+
+    // Restore form state
+    const fs = plan.form_state || {};
+    if (fs.video_type || plan.video_type) {
+        const vt = fs.video_type || plan.video_type;
+        const radio = document.querySelector(`input[name="video-type"][value="${vt}"]`);
+        if (radio) radio.checked = true;
+    }
+    if (fs.topic || plan.topic) document.getElementById("video-topic").value = fs.topic || plan.topic;
+    if (fs.notes) document.getElementById("video-notes").value = fs.notes;
+
+    // Restore extra link/competitor rows
+    const linksContainer = document.getElementById("links-container");
+    const compsContainer = document.getElementById("competitors-container");
+    // Reset to single row each
+    linksContainer.innerHTML = '<div class="multi-input-row"><input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small add-link-btn">+</button></div>';
+    compsContainer.innerHTML = '<div class="multi-input-row"><input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small add-competitor-btn">+</button></div>';
+
+    if (fs.links && fs.links.length > 0) {
+        document.querySelector(".supporting-link").value = fs.links[0] || "";
+        for (let i = 1; i < fs.links.length; i++) {
+            const row = document.createElement("div");
+            row.className = "multi-input-row";
+            row.innerHTML = '<input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small remove-row-btn">-</button>';
+            row.querySelector("input").value = fs.links[i];
+            linksContainer.appendChild(row);
+        }
+    }
+    if (fs.competitors && fs.competitors.length > 0) {
+        document.querySelector(".competitor-link").value = fs.competitors[0] || "";
+        for (let i = 1; i < fs.competitors.length; i++) {
+            const row = document.createElement("div");
+            row.className = "multi-input-row";
+            row.innerHTML = '<input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small remove-row-btn">-</button>';
+            row.querySelector("input").value = fs.competitors[i];
+            compsContainer.appendChild(row);
+        }
+    }
+
+    // Build plan data object matching what renderPlan expects
+    lastPlanData = fp;
+    currentPlanId = plan.id;
+    currentPlanPayload = {
+        video_type: fs.video_type || plan.video_type,
+        topic: fs.topic || plan.topic,
+        notes: fs.notes || "",
+        links: fs.links || [],
+        competitors: fs.competitors || [],
+    };
+
+    // Render the plan
+    renderPlanFromCache(fp, {}, []);
+    results.style.display = "block";
+
+    // Hide analysis view if showing
+    document.getElementById("analysis-loading").style.display = "none";
+    document.getElementById("analysis-results").style.display = "none";
+    document.getElementById("plan-form").style.display = "";
+    document.querySelector(".planner-header").style.display = "";
+
+    // Scroll to top of plan
+    results.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    savePlannerState();
+}
+
 /* --- Save Plan Button --- */
+let currentPlanId = null; // tracks if we're editing an existing saved plan
+
 document.getElementById("save-plan-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("save-plan-btn");
     const status = document.getElementById("save-plan-status");
@@ -1168,6 +1242,15 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
     const chosenTitle = titleInputs.length ? titleInputs[0].value.trim() : (lastPlanData.titles[0] || "");
     const ai = aiScores[0];
 
+    // Capture current form state for resuming later
+    const formState = {
+        topic: document.getElementById("video-topic")?.value || "",
+        video_type: document.querySelector('input[name="video-type"]:checked')?.value || "tutorial",
+        notes: document.getElementById("video-notes")?.value || "",
+        links: [...document.querySelectorAll(".supporting-link")].map(el => el.value).filter(Boolean),
+        competitors: [...document.querySelectorAll(".competitor-link")].map(el => el.value).filter(Boolean),
+    };
+
     btn.disabled = true;
     btn.textContent = "Saving...";
     try {
@@ -1176,25 +1259,29 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 plan: lastPlanData,
+                plan_id: currentPlanId,
                 chosen_title: chosenTitle,
-                topic: document.getElementById("video-topic")?.value || "",
-                video_type: document.querySelector('input[name="video-type"]:checked')?.value || "tutorial",
+                topic: formState.topic,
+                video_type: formState.video_type,
                 ai_score: ai ? ai.score : null,
+                form_state: formState,
             }),
         });
         const data = await resp.json();
         if (data.ok) {
-            btn.textContent = "Plan Saved!";
-            btn.style.borderColor = "var(--accent)";
-            status.textContent = "Plan saved for tracking. After publishing, come back to run a post-mortem.";
+            currentPlanId = data.plan_id;
+            btn.textContent = "Saved";
+            setTimeout(() => { btn.textContent = "Save Plan"; }, 2000);
+            status.textContent = "";
             refreshPlanHistory();
+            savePlannerState();
         } else {
             status.textContent = data.error || "Failed to save.";
-            btn.textContent = "Save Plan for Tracking";
+            btn.textContent = "Save Plan";
         }
     } catch (err) {
         status.textContent = "Failed: " + err.message;
-        btn.textContent = "Save Plan for Tracking";
+        btn.textContent = "Save Plan";
     }
     btn.disabled = false;
 });
@@ -1247,11 +1334,33 @@ async function refreshPlanHistory() {
                 </div>
                 ${postmortemHtml}
                 <div class="saved-title-actions">
+                    ${p.full_plan ? '<button class="btn small load-plan-btn" data-id="' + esc(p.id) + '">Load</button>' : ''}
                     ${!linked ? '<button class="btn small auto-match-plan-btn" data-id="' + esc(p.id) + '">Auto-Match Video</button>' : ''}
                     ${linked && !p.postmortem ? '<button class="btn small run-postmortem-btn" data-id="' + esc(p.id) + '">Run Post-Mortem</button>' : ''}
                 </div>
             </div>`;
         }).reverse().join("");
+
+        // Wire load buttons
+        list.querySelectorAll(".load-plan-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                btn.disabled = true;
+                btn.textContent = "Loading...";
+                try {
+                    const resp = await fetch("/api/plans/" + encodeURIComponent(btn.dataset.id));
+                    const data = await resp.json();
+                    if (data.plan) {
+                        loadSavedPlan(data.plan);
+                        btn.textContent = "Loaded!";
+                    } else {
+                        btn.textContent = "Error";
+                    }
+                } catch (err) {
+                    btn.textContent = "Error";
+                }
+                setTimeout(() => { btn.textContent = "Load"; btn.disabled = false; }, 1500);
+            });
+        });
 
         // Wire auto-match
         list.querySelectorAll(".auto-match-plan-btn").forEach(btn => {
