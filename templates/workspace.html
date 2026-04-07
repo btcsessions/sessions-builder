@@ -949,6 +949,7 @@ function getScoreLabel(score) {
 
 let originalTitles = []; // track originals for save comparison
 let aiScores = {}; // idx -> {score, rationale, suggestion}
+let aiScoredTitles = {}; // idx -> the title text that was AI-scored
 
 function renderTitles(titles, existingAiScores) {
     originalTitles = [...titles];
@@ -977,7 +978,7 @@ function renderTitles(titles, existingAiScores) {
         </div>`;
     }).join("");
 
-    // Wire up live editing → show revert/rescore, update local score
+    // Wire up live editing → show revert/rescore, update score
     container.querySelectorAll(".title-editable").forEach(input => {
         input.addEventListener("input", () => {
             const row = input.closest(".title-row");
@@ -990,19 +991,28 @@ function renderTitles(titles, existingAiScores) {
             row.querySelector(".title-revert-btn").style.display = changed ? "" : "none";
             row.querySelector(".title-rescore-btn").style.display = changed ? "" : "none";
 
-            // Clear AI score on edit, fall back to local
-            if (changed) delete aiScores[idx];
-
-            const { score, breakdown } = scoreTitle(current);
             const badge = row.querySelector(".title-score-badge");
             const label = row.querySelector(".title-score-label");
-            badge.textContent = score;
-            badge.classList.remove("ai-scored");
-            badge.innerHTML = score;
-            badge.style.background = getScoreColor(score);
-            badge.title = breakdown.join("\n");
-            label.textContent = getScoreLabel(score);
-            label.style.color = getScoreColor(score);
+
+            // Check if current text matches what was AI-scored
+            const aiMatch = aiScoredTitles[idx] && current === aiScoredTitles[idx] && aiScores[idx];
+            if (aiMatch) {
+                const ai = aiScores[idx];
+                badge.innerHTML = ai.score + '<span class="ai-badge-label">AI</span>';
+                badge.classList.add("ai-scored");
+                badge.style.background = getScoreColor(ai.score);
+                badge.title = ai.rationale + (ai.suggestion ? "\n\nSuggestion: " + ai.suggestion : "");
+                label.textContent = getScoreLabel(ai.score);
+                label.style.color = getScoreColor(ai.score);
+            } else {
+                const { score, breakdown } = scoreTitle(current);
+                badge.innerHTML = score;
+                badge.classList.remove("ai-scored");
+                badge.style.background = getScoreColor(score);
+                badge.title = breakdown.join("\n");
+                label.textContent = getScoreLabel(score);
+                label.style.color = getScoreColor(score);
+            }
         });
     });
 
@@ -1186,7 +1196,11 @@ async function fetchAiScores(titles) {
         const data = await resp.json();
         if (data.scores && data.scores.length) {
             aiScores = {};
-            data.scores.forEach((s, i) => { aiScores[i] = s; });
+            aiScoredTitles = {};
+            data.scores.forEach((s, i) => {
+                aiScores[i] = s;
+                aiScoredTitles[i] = titles[i];
+            });
             // Re-render with AI scores
             const container = document.getElementById("plan-titles");
             container.querySelectorAll(".title-row").forEach((row, i) => {
@@ -1221,6 +1235,7 @@ async function fetchSingleAiScore(idx, title) {
         if (data.scores && data.scores.length) {
             const ai = data.scores[0];
             aiScores[idx] = ai;
+            aiScoredTitles[idx] = title;
             const row = document.querySelectorAll(".title-row")[idx];
             if (row) {
                 const badge = row.querySelector(".title-score-badge");
