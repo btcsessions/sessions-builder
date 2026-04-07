@@ -526,11 +526,10 @@ IMPORTANT RULES:
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
-- The description structure should be:
-  1. A paragraph describing what the video covers
+- The description should contain:
+  1. A short paragraph (2-4 sentences) summarizing what the video covers and why it matters — NOT a section-by-section breakdown
   2. A list of relevant links to app downloads, product websites, and/or associated tutorials — use descriptive labels with [LINK] placeholders (e.g. "Download Umbrel: [LINK]")
-  3. [TIMESTAMPS] placeholder at the end
-  Do NOT include actual URLs or timestamps — just placeholders for the creator to fill in
+  Do NOT include timestamps — those are added manually later
   Do NOT include a sponsor section — that will be auto-inserted
 - For "tags": generate 8-12 topic-specific SEO tags for this video (these get COMBINED with the creator's default tags)
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
@@ -594,15 +593,17 @@ Use this real-time data to make the plan timely and relevant. Reference specific
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     plan = json.loads(text)
 
-    # Auto-append sponsor block to description
+    # Auto-append sponsor block + timestamps reminder to description
     sponsor = sponsor_template or desc_template  # fallback to old field
-    if sponsor and "description" in plan:
-        # Insert sponsor block before [TIMESTAMPS] if present, otherwise append
+    if "description" in plan:
         desc = plan["description"]
-        if "[TIMESTAMPS]" in desc:
-            desc = desc.replace("[TIMESTAMPS]", sponsor.rstrip() + "\n\n[TIMESTAMPS]")
-        else:
+        # Strip any AI-generated timestamp placeholders
+        for placeholder in ["[TIMESTAMPS]", "[TIMESTAMP]"]:
+            desc = desc.replace(placeholder, "").strip()
+        # Append sponsor block then timestamps reminder
+        if sponsor:
             desc = desc.rstrip() + "\n\n" + sponsor
+        desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
     # Build combined YouTube tags (default + generated)
@@ -691,7 +692,7 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
     {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~X min"}}
   ],
   "tags": ["tag1", "tag2", "tag3"],
-  "description": "YouTube description with [LINK] and [TIMESTAMP] placeholders where URLs and timestamps should go"
+  "description": "A short paragraph summarizing the video, then a list of relevant links with [LINK] placeholders"
 }}
 
 RULES:
@@ -699,7 +700,7 @@ RULES:
 - If the notes contain title ideas, use them. If not, generate 3 based on the content.
 - Use the channel performance data and market trends above to inform title angles, framing, and packaging — angle the content toward what's currently resonating with the audience
 - Infer logical sections and timing from the outline depth
-- Use [LINK] and [TIMESTAMP] as placeholders — never generate actual URLs or timestamps
+- The description should be a short paragraph (2-4 sentences) summarizing the video, followed by relevant links with [LINK] placeholders — NOT a section-by-section breakdown. Do NOT include timestamps.
 - Keep the creator's voice and phrasing where possible — don't over-polish their notes
 - If {'amending' if existing_plan else 'creating'}: {'merge intelligently — dont discard existing work, integrate the new notes' if existing_plan else 'build the full plan from scratch based on the notes'}
 - This is a **{video_type}** video"""
@@ -724,14 +725,15 @@ RULES:
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     plan = json.loads(text)
 
-    # Auto-append sponsor block if creating new (not amending — amend preserves existing)
+    # Auto-append sponsor block + timestamps reminder if creating new
     sponsor = sponsor_template or desc_template
-    if sponsor and not existing_plan and "description" in plan:
+    if not existing_plan and "description" in plan:
         desc = plan["description"]
-        if "[TIMESTAMPS]" in desc:
-            desc = desc.replace("[TIMESTAMPS]", sponsor.rstrip() + "\n\n[TIMESTAMPS]")
-        else:
+        for placeholder in ["[TIMESTAMPS]", "[TIMESTAMP]"]:
+            desc = desc.replace(placeholder, "").strip()
+        if sponsor:
             desc = desc.rstrip() + "\n\n" + sponsor
+        desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
     # Build combined YouTube tags
