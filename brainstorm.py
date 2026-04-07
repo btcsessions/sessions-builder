@@ -631,6 +631,9 @@ def parse_notes_to_plan(
     desc_template: str = "",
     sponsor_template: str = "",
     default_yt_tags: str = "",
+    video_data: list[dict] = None,
+    market_data: dict = None,
+    competitors_data: list = None,
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -654,9 +657,29 @@ Preserve what's already good, integrate the new information, and improve where t
         mode = "create"
         context = "Create the plan entirely from the notes provided."
 
+    # Build channel + market context (same data the full planner uses)
+    channel_context = ""
+    if video_data:
+        channel_context = _build_system_prompt(video_data, None, competitors_data, market_data)
+
+    market_section = _build_market_section(market_data)
+
+    # Trend analysis for what's currently working
+    trend_section = ""
+    if video_data:
+        try:
+            trends = analyze_trends(video_data, competitors_data)
+            trend_section = trends_to_prompt_section(trends)
+        except Exception:
+            pass
+
     system = f"""You are a YouTube video planning assistant. Parse the user's freeform notes into a structured video plan.
 
 {context}
+
+{channel_context}
+{market_section}
+{trend_section}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -674,6 +697,7 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 RULES:
 - Extract structure from the notes — section headings, bullet points, key topics
 - If the notes contain title ideas, use them. If not, generate 3 based on the content.
+- Use the channel performance data and market trends above to inform title angles, framing, and packaging — angle the content toward what's currently resonating with the audience
 - Infer logical sections and timing from the outline depth
 - Use [LINK] and [TIMESTAMP] as placeholders — never generate actual URLs or timestamps
 - Keep the creator's voice and phrasing where possible — don't over-polish their notes

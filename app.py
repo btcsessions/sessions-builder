@@ -938,6 +938,10 @@ def api_parse_notes():
 
     try:
         from brainstorm import parse_notes_to_plan
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
         result = parse_notes_to_plan(
             notes=notes,
             topic=topic,
@@ -946,6 +950,9 @@ def api_parse_notes():
             existing_plan=existing_plan,
             sponsor_template=settings.get("sponsor_template", ""),
             default_yt_tags=settings.get("default_yt_tags", ""),
+            video_data=video_cache,
+            market_data=market_data,
+            competitors_data=competitors_cache,
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
