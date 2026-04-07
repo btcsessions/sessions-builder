@@ -405,6 +405,7 @@ def settings_page():
         sync_github_token=settings.get("sync_github_token", ""),
         sync_password=settings.get("sync_password", ""),
         sync_configured=is_sync_configured(),
+        desc_template=settings.get("desc_template", ""),
     )
 
 
@@ -481,6 +482,25 @@ def save_settings_only():
                   sync_gist_id, sync_github_token, sync_password)
 
     return redirect(url_for("settings_page", success="Settings saved."))
+
+
+@app.route("/api/desc-template", methods=["GET", "POST"])
+def api_desc_template():
+    """Get or save the description template (sponsor block, etc.)."""
+    if request.method == "GET":
+        settings = load_settings()
+        return jsonify({"template": settings.get("desc_template", "")})
+
+    data = request.get_json()
+    template = data.get("template", "")
+    # Save directly to settings without going through save_settings() to avoid overwriting other fields
+    settings = load_settings()
+    settings["desc_template"] = template
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    _schedule_sync_push()
+    return jsonify({"ok": True})
 
 
 @app.route("/dashboard")
@@ -746,6 +766,9 @@ def api_generate_plan():
         except Exception as e:
             print(f"[Plan] Trend intel fetch failed: {e}")
 
+        settings = load_settings()
+        desc_template = settings.get("desc_template", "")
+
         plan = generate_video_plan(
             video_type=video_type,
             topic=topic,
@@ -760,6 +783,7 @@ def api_generate_plan():
             trend_context=trend_context,
             trend_intel_context=trend_intel_context,
             title_history=title_history,
+            desc_template=desc_template,
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
@@ -857,12 +881,14 @@ def api_parse_notes():
 
     try:
         from brainstorm import parse_notes_to_plan
+        desc_template = settings.get("desc_template", "")
         result = parse_notes_to_plan(
             notes=notes,
             topic=topic,
             video_type=video_type,
             api_key=api_key,
             existing_plan=existing_plan,
+            desc_template=desc_template,
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)

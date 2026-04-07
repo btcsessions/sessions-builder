@@ -479,6 +479,7 @@ def generate_video_plan(
     trend_context: dict = None,
     trend_intel_context: str = "",
     title_history: list = None,
+    desc_template: str = "",
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -523,7 +524,12 @@ IMPORTANT RULES:
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
-- The description should be 3-5 paragraphs. Use [LINK] as a placeholder where URLs should go and [TIMESTAMP] where chapter timestamps should go — do NOT include actual URLs or timestamps, just placeholders for the creator to fill in
+- The description structure should be:
+  1. A paragraph describing what the video covers
+  2. A list of relevant links to app downloads, product websites, and/or associated tutorials (use [LINK] placeholders)
+  3. The sponsor/boilerplate block (auto-inserted, do not generate this — it will be appended automatically)
+  4. Timestamps section (use [TIMESTAMPS] placeholder)
+  Do NOT include actual URLs or timestamps — just placeholders for the creator to fill in
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
 - If competitor videos are provided, consider what works in those videos and differentiate
 - Base recommendations on what has performed well in the channel data
@@ -583,7 +589,13 @@ Use this real-time data to make the plan timely and relevant. Reference specific
     # Handle if Claude wraps in code fences despite instructions
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    plan = json.loads(text)
+
+    # Auto-append description template (sponsor block, etc.)
+    if desc_template and "description" in plan:
+        plan["description"] = plan["description"].rstrip() + "\n\n" + desc_template
+
+    return plan
 
 
 def parse_notes_to_plan(
@@ -592,6 +604,7 @@ def parse_notes_to_plan(
     video_type: str,
     api_key: str,
     existing_plan: dict = None,
+    desc_template: str = "",
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -659,7 +672,13 @@ RULES:
     text = response.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    plan = json.loads(text)
+
+    # Auto-append description template if creating new (not amending — amend preserves existing)
+    if desc_template and not existing_plan and "description" in plan:
+        plan["description"] = plan["description"].rstrip() + "\n\n" + desc_template
+
+    return plan
 
 
 def regenerate_titles(
