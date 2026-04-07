@@ -197,6 +197,7 @@
                 <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
                 <span class="action-divider">or</span>
                 <button type="button" class="btn secondary" id="import-toggle-btn">Import Notes</button>
+                <button type="button" class="btn small" id="clear-plan-btn" style="margin-left:auto;">Clear</button>
             </div>
 
             <div id="import-notes-section" class="import-notes-section" style="display:none">
@@ -623,6 +624,54 @@ form.addEventListener("submit", async (e) => {
     }
     loading.style.display = "none";
     generateBtn.disabled = false;
+});
+
+/* --- Clear Plan --- */
+document.getElementById("clear-plan-btn")?.addEventListener("click", () => {
+    // Custom confirm dialog
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;";
+    const dialog = document.createElement("div");
+    dialog.style.cssText = "background:var(--surface, #1e1e1e);border:1px solid var(--border, #333);border-radius:12px;padding:1.5rem;max-width:340px;text-align:center;color:var(--text, #eee);font-family:inherit;";
+    dialog.innerHTML = `
+        <p style="margin-bottom:1rem;font-size:0.95rem;">Clear the current plan and start fresh?</p>
+        <div style="display:flex;gap:0.75rem;justify-content:center;">
+            <button id="clear-confirm-yes" class="btn primary" style="padding:0.4rem 1.2rem;">Yes, clear</button>
+            <button id="clear-confirm-cancel" class="btn" style="padding:0.4rem 1.2rem;">Cancel</button>
+        </div>`;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    dialog.querySelector("#clear-confirm-cancel").addEventListener("click", () => overlay.remove());
+    dialog.querySelector("#clear-confirm-yes").addEventListener("click", () => {
+        overlay.remove();
+
+        // Reset form
+        document.getElementById("video-topic").value = "";
+        document.getElementById("video-notes").value = "";
+        const typeRadio = document.querySelector('input[name="video-type"][value="tutorial"]');
+        if (typeRadio) typeRadio.checked = true;
+        document.getElementById("links-container").innerHTML = '<div class="multi-input-row"><input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small add-link-btn">+</button></div>';
+        document.getElementById("competitors-container").innerHTML = '<div class="multi-input-row"><input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small add-competitor-btn">+</button></div>';
+
+        // Reset plan state
+        results.style.display = "none";
+        lastPlanData = null;
+        currentPlanId = null;
+        currentPlanPayload = null;
+        scoringCtx = null;
+        aiScores = {};
+        originalTitles = [];
+        planLinks = [];
+
+        // Clear session storage
+        sessionStorage.removeItem("plannerState");
+
+        // Hide import sections
+        document.getElementById("import-notes-section").style.display = "none";
+        document.getElementById("amend-notes-section").style.display = "none";
+    });
 });
 
 /* --- Import Notes --- */
