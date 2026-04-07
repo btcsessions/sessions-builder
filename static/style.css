@@ -875,6 +875,23 @@ tr:hover { background: var(--surface2); }
     font-weight: 700;
     letter-spacing: 0.03em;
 }
+.title-reorder-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex-shrink: 0;
+}
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.55rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+}
+.btn-icon:hover:not(:disabled) { color: var(--accent); }
+.btn-icon:disabled { opacity: 0.2; cursor: default; }
 .title-rescore-btn, .title-revert-btn {
     flex-shrink: 0;
     font-size: 0.65rem;

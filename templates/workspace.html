@@ -967,6 +967,10 @@ function renderTitles(titles, existingAiScores) {
             : breakdown.join("\n");
         const aiLabel = ai ? "AI" : "";
         return `<div class="title-row" data-idx="${i}" data-original="${esc(t)}">
+            <div class="title-reorder-btns">
+                <button class="btn-icon title-move-up" data-idx="${i}" title="Move up" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
+                <button class="btn-icon title-move-down" data-idx="${i}" title="Move down" ${i === titles.length - 1 ? 'disabled' : ''}>&#9660;</button>
+            </div>
             <div class="title-score-badge${ai ? ' ai-scored' : ''}" style="background:${getScoreColor(displayScore)}" title="${esc(tooltipText)}">${displayScore}${aiLabel ? '<span class="ai-badge-label">AI</span>' : ''}</div>
             <input type="text" class="title-editable" value="${esc(t)}" data-idx="${i}">
             <span class="title-score-label" style="color:${getScoreColor(displayScore)}">${getScoreLabel(displayScore)}</span>
@@ -1083,6 +1087,39 @@ function renderTitles(titles, existingAiScores) {
                 btn.textContent = "Copied!";
                 setTimeout(() => { btn.textContent = "Copy"; }, 1500);
             });
+        });
+    });
+
+    // Wire up reorder buttons
+    container.querySelectorAll(".title-move-up, .title-move-down").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const rows = [...container.querySelectorAll(".title-row")];
+            const idx = parseInt(btn.dataset.idx);
+            const isUp = btn.classList.contains("title-move-up");
+            const swapIdx = isUp ? idx - 1 : idx + 1;
+            if (swapIdx < 0 || swapIdx >= rows.length) return;
+
+            // Swap in DOM
+            if (isUp) {
+                container.insertBefore(rows[idx], rows[swapIdx]);
+            } else {
+                container.insertBefore(rows[swapIdx], rows[idx]);
+            }
+
+            // Swap AI scores and tracked titles
+            [aiScores[idx], aiScores[swapIdx]] = [aiScores[swapIdx], aiScores[idx]];
+            [aiScoredTitles[idx], aiScoredTitles[swapIdx]] = [aiScoredTitles[swapIdx], aiScoredTitles[idx]];
+            [originalTitles[idx], originalTitles[swapIdx]] = [originalTitles[swapIdx], originalTitles[idx]];
+
+            // Re-index all rows
+            container.querySelectorAll(".title-row").forEach((row, newIdx) => {
+                row.dataset.idx = newIdx;
+                row.querySelectorAll("[data-idx]").forEach(el => { el.dataset.idx = newIdx; });
+                row.querySelector(".title-move-up").disabled = newIdx === 0;
+                row.querySelector(".title-move-down").disabled = newIdx === rows.length - 1;
+            });
+
+            savePlannerState();
         });
     });
 
@@ -1995,7 +2032,7 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
         const isAi = badge?.classList.contains("ai-scored");
         return { title, score: parseInt(score) || 0, isAi };
     });
-    titlesWithScores.sort((a, b) => b.score - a.score);
+    // Titles exported in the order shown (user can reorder with arrows)
 
     const tags = document.getElementById("plan-yt-tags")?.value || "";
     const sep = "————————————————————";
