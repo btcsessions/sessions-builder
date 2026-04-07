@@ -271,9 +271,9 @@ def classify_market_phase(price: float, ma_200: float | None) -> str:
     if ma_200 is None:
         return "unknown"
     ratio = price / ma_200
-    if ratio >= 1.15:
+    if ratio >= 1.10:
         return "bull"
-    elif ratio <= 0.85:
+    elif ratio <= 0.90:
         return "bear"
     else:
         return "sideways"
@@ -510,12 +510,22 @@ def get_market_summary(prices: dict, video_data: list) -> dict:
     bear_videos = [v for v in video_data if v.get("_market_phase") == "bear"]
     sideways_videos = [v for v in video_data if v.get("_market_phase") == "sideways"]
 
+    def _median(values):
+        if not values:
+            return 0
+        s = sorted(values)
+        n = len(s)
+        if n % 2 == 1:
+            return s[n // 2]
+        return (s[n // 2 - 1] + s[n // 2]) // 2
+
     def phase_stats(vids):
         if not vids:
-            return {"count": 0, "avg_views": 0, "avg_engagement": 0}
+            return {"count": 0, "avg_views": 0, "median_views": 0, "avg_engagement": 0}
         return {
             "count": len(vids),
-            "avg_views": sum(v["view_count"] for v in vids) // len(vids),
+            "avg_views": _median([v["view_count"] for v in vids]),
+            "median_views": _median([v["view_count"] for v in vids]),
             "avg_engagement": round(sum(v["engagement_rate"] for v in vids) / len(vids), 2),
         }
 

@@ -15,6 +15,16 @@ load_dotenv()
 # Allow OAuth over HTTP for local development
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
+
+def _median(values: list) -> int:
+    """Compute median of a list of numbers."""
+    if not values:
+        return 0
+    s = sorted(values)
+    n = len(s)
+    return s[n // 2] if n % 2 == 1 else (s[n // 2 - 1] + s[n // 2]) // 2
+
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "yt-planner-secret-key")
 
@@ -346,8 +356,8 @@ def index():
     # Market-adjusted baselines
     bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
     bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-    bear_avg = sum(v["view_count"] for v in bear_year) // len(bear_year) if bear_year else year_avg_views
-    bull_avg = sum(v["view_count"] for v in bull_year) // len(bull_year) if bull_year else year_avg_views
+    bear_avg = _median([v["view_count"] for v in bear_year]) or year_avg_views
+    bull_avg = _median([v["view_count"] for v in bull_year]) or year_avg_views
 
     market_info = get_current_market_info(_btc_prices)
 
@@ -615,8 +625,8 @@ def trends_page():
     # Market-adjusted baselines
     bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
     bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-    bear_avg = sum(v["view_count"] for v in bear_year) // len(bear_year) if bear_year else year_avg_views
-    bull_avg = sum(v["view_count"] for v in bull_year) // len(bull_year) if bull_year else year_avg_views
+    bear_avg = _median([v["view_count"] for v in bear_year]) or year_avg_views
+    bull_avg = _median([v["view_count"] for v in bull_year]) or year_avg_views
 
     # Sort own videos by publish date (most recent first), add scores
     snapshots = _snapshots
@@ -1769,8 +1779,8 @@ def api_analyze_own_video():
         year_avg = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
         bear_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
         bull_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-        bear_avg = sum(v["view_count"] for v in bear_vids) // len(bear_vids) if bear_vids else year_avg
-        bull_avg = sum(v["view_count"] for v in bull_vids) // len(bull_vids) if bull_vids else year_avg
+        bear_avg = _median([v["view_count"] for v in bear_vids]) or year_avg
+        bull_avg = _median([v["view_count"] for v in bull_vids]) or year_avg
         phase = video.get("_market_phase", "unknown")
         phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg)
         video["_market_score"] = round(video["view_count"] / phase_avg, 1) if phase_avg else 0
