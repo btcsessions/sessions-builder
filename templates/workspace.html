@@ -312,6 +312,7 @@
 
             <div class="plan-save-bar">
                 <button class="btn primary" id="save-plan-btn">Save Plan</button>
+                <button class="btn secondary" id="export-plan-btn">Export</button>
                 <span id="save-plan-status" class="form-hint"></span>
             </div>
         </div>
@@ -1902,6 +1903,89 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
         btn.textContent = "Save Plan";
     }
     btn.disabled = false;
+});
+
+/* --- Export Plan --- */
+document.getElementById("export-plan-btn")?.addEventListener("click", () => {
+    const plan = getCurrentPlanFromDOM();
+    if (!plan) return;
+
+    const topic = document.getElementById("video-topic")?.value || "Video Plan";
+
+    // Collect titles with scores
+    const titlesWithScores = [...document.querySelectorAll(".title-row")].map(row => {
+        const title = row.querySelector(".title-editable").value;
+        const badge = row.querySelector(".title-score-badge");
+        const score = badge ? badge.textContent.replace("AI", "").trim() : "";
+        return { title, score: parseInt(score) || 0 };
+    });
+    titlesWithScores.sort((a, b) => b.score - a.score);
+
+    // PAGE 1: YouTube Upload Info
+    let doc = "";
+    doc += "═══════════════════════════════════════════════\n";
+    doc += `  ${topic.toUpperCase()}\n`;
+    doc += "═══════════════════════════════════════════════\n\n";
+
+    doc += "TITLE OPTIONS (by score)\n";
+    doc += "───────────────────────────────────────────────\n";
+    titlesWithScores.forEach((t, i) => {
+        doc += `  ${i + 1}. [${t.score}] ${t.title}\n`;
+    });
+
+    doc += "\n\nDESCRIPTION\n";
+    doc += "───────────────────────────────────────────────\n";
+    doc += plan.description + "\n";
+
+    const tags = document.getElementById("plan-yt-tags")?.value || "";
+    if (tags) {
+        doc += "\n\nTAGS\n";
+        doc += "───────────────────────────────────────────────\n";
+        doc += tags + "\n";
+    }
+
+    // PAGE 2: Recording Outline
+    doc += "\n\n\n═══════════════════════════════════════════════\n";
+    doc += "  RECORDING OUTLINE\n";
+    doc += "═══════════════════════════════════════════════\n\n";
+
+    if (plan.intro_hook) {
+        doc += "INTRO HOOK\n";
+        doc += "───────────────────────────────────────────────\n";
+        doc += plan.intro_hook + "\n\n";
+    }
+
+    if (plan.outline && plan.outline.length) {
+        plan.outline.forEach((s, i) => {
+            doc += `${i + 1}. ${s.section}`;
+            if (s.duration_hint) doc += `  (${s.duration_hint})`;
+            doc += "\n";
+            if (s.points) {
+                s.points.forEach(p => {
+                    doc += `   • ${p}\n`;
+                });
+            }
+            doc += "\n";
+        });
+    }
+
+    if (plan.thumbnail_ideas && plan.thumbnail_ideas.length) {
+        doc += "\nTHUMBNAIL IDEAS\n";
+        doc += "───────────────────────────────────────────────\n";
+        plan.thumbnail_ideas.forEach((t, i) => {
+            doc += `  ${i + 1}. ${t}\n`;
+        });
+    }
+
+    // Download as .txt
+    const blob = new Blob([doc], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const filename = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "") + "-plan.txt";
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
 });
 
 /* --- Plan History --- */
