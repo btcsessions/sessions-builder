@@ -650,8 +650,9 @@ def trends_page():
 
     dated_videos.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
-    # Market-segmented performance
-    market_summary = get_market_summary(_btc_prices, dated_videos)
+    # Market-segmented performance (last year only, to match the baselines)
+    year_dated = [v for v in dated_videos if v.get("_date") and v["_date"] >= cutoff_1y]
+    market_summary = get_market_summary(_btc_prices, year_dated)
 
     # Competitor videos: sort by date, keep top recent performers (8 per channel)
     scored_competitors = []
