@@ -272,6 +272,12 @@
                 </div>
                 <div id="tutorial-search-results" class="tutorial-search-results" style="display:none"></div>
 
+                <!-- Affiliate links picker -->
+                <div id="affiliate-picker" class="affiliate-picker" style="display:none">
+                    <div class="affiliate-picker-label">Affiliate Links</div>
+                    <div id="affiliate-picker-list"></div>
+                </div>
+
                 <div id="links-loading" class="plan-loading" style="display:none">Finding relevant links...</div>
                 <div id="plan-links-list" class="plan-links-list"></div>
                 <div class="plan-link-add-row">
@@ -1222,14 +1228,56 @@ document.getElementById("tutorial-search-btn")?.addEventListener("click", async 
     }
 });
 
+// Affiliate links picker
+let affiliateLinksCache = [];
+
+async function loadAffiliatePicker() {
+    try {
+        const resp = await fetch("/api/affiliate-links");
+        const data = await resp.json();
+        affiliateLinksCache = data.links || [];
+        const picker = document.getElementById("affiliate-picker");
+        const list = document.getElementById("affiliate-picker-list");
+        if (!affiliateLinksCache.length) { picker.style.display = "none"; return; }
+
+        picker.style.display = "";
+        list.innerHTML = affiliateLinksCache.map((l, i) => {
+            const alreadyAdded = planLinks.some(pl => pl.url === l.url);
+            return `<label class="affiliate-check-row">
+                <input type="checkbox" class="aff-check" data-idx="${i}" ${alreadyAdded ? 'checked disabled' : ''}>
+                <span class="aff-check-title">${esc(l.title)}</span>
+            </label>`;
+        }).join("");
+
+        list.querySelectorAll(".aff-check:not(:disabled)").forEach(cb => {
+            cb.addEventListener("change", () => {
+                const idx = parseInt(cb.dataset.idx);
+                const link = affiliateLinksCache[idx];
+                if (cb.checked) {
+                    if (!planLinks.some(pl => pl.url === link.url)) {
+                        planLinks.push({ label: link.title, url: link.url, source: "affiliate", reason: "" });
+                        renderPlanLinks();
+                        savePlannerState();
+                    }
+                    cb.disabled = true;
+                }
+            });
+        });
+    } catch (err) {
+        console.warn("Failed to load affiliate links:", err);
+    }
+}
+
 function renderPlanLinks() {
+    loadAffiliatePicker(); // refresh affiliate checkboxes
     const list = document.getElementById("plan-links-list");
     if (!planLinks.length) {
-        list.innerHTML = '<p class="form-hint" style="padding:0.25rem 0;">No links added yet. Click "Suggest Links" or add manually.</p>';
+        list.innerHTML = '<p class="form-hint" style="padding:0.25rem 0;">No links added yet. Search tutorials, check affiliate links, or add manually.</p>';
         return;
     }
     list.innerHTML = planLinks.map((link, i) => {
-        const sourceTag = link.source === "channel" ? '<span class="link-source-tag channel">Your Channel</span>'
+        const sourceTag = link.source === "channel" ? '<span class="link-source-tag channel">Channel</span>'
+            : link.source === "affiliate" ? '<span class="link-source-tag affiliate">Affiliate</span>'
             : link.source === "external" ? '<span class="link-source-tag external">External</span>'
             : '<span class="link-source-tag manual">Manual</span>';
         const urlDisplay = link.url === "[LINK]"
@@ -1299,6 +1347,12 @@ document.getElementById("suggest-links-btn")?.addEventListener("click", async ()
             for (const link of (data.channel_links || [])) {
                 if (!planLinks.some(l => l.url === link.url)) {
                     planLinks.push({ label: link.label, url: link.url, source: "channel", reason: link.reason });
+                }
+            }
+            // Add affiliate links
+            for (const link of (data.affiliate_links || [])) {
+                if (!planLinks.some(l => l.url === link.url)) {
+                    planLinks.push({ label: link.label, url: link.url, source: "affiliate", reason: link.reason });
                 }
             }
             // Add external links

@@ -1071,8 +1071,41 @@ tr:hover { background: var(--surface2); }
     font-weight: 600;
 }
 .link-source-tag.channel { background: var(--accent); color: #fff; }
+.link-source-tag.affiliate { background: var(--green, #4caf50); color: #fff; }
 .link-source-tag.external { background: var(--accent-blue, #42a5f5); color: #fff; }
 .link-source-tag.manual { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+
+.affiliate-picker { margin-bottom: 0.5rem; }
+.affiliate-picker-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--green, #4caf50);
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.affiliate-check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.aff-check-title { color: var(--text); }
+.affiliate-check-row input:disabled + .aff-check-title { color: var(--text-muted); }
+
+.aff-link-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+.aff-link-row:last-child { border-bottom: none; }
+.aff-link-title { font-weight: 600; flex-shrink: 0; }
+.aff-link-url { color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-reason {
     flex-shrink: 0;
     width: 1.2rem;

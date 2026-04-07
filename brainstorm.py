@@ -769,8 +769,9 @@ def suggest_plan_links(
     outline: list[dict],
     video_data: list[dict],
     api_key: str,
+    affiliate_links: list[dict] = None,
 ) -> dict:
-    """Suggest relevant links for a video plan — both from the creator's channel and external."""
+    """Suggest relevant links for a video plan — from channel, affiliates, and external."""
     client = anthropic.Anthropic(api_key=api_key)
 
     # Build channel video list for Claude to search
@@ -778,6 +779,14 @@ def suggest_plan_links(
         f'- "{v["title"]}" https://youtube.com/watch?v={v["video_id"]}'
         for v in video_data[:80]
     )
+
+    affiliate_section = ""
+    if affiliate_links:
+        aff_list = "\n".join(f'- "{a["title"]}": {a["url"]}' for a in affiliate_links)
+        affiliate_section = f"""
+
+**Creator's affiliate/referral links (suggest relevant ones):**
+{aff_list}"""
 
     outline_text = "\n".join(
         f"- {s.get('section', '')}: {', '.join(s.get('points', []))}"
@@ -788,6 +797,7 @@ def suggest_plan_links(
 
 **Creator's existing videos (search these for related tutorials):**
 {channel_videos}
+{affiliate_section}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -797,6 +807,13 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
       "label": "Descriptive label for the link",
       "url": "https://youtube.com/watch?v=...",
       "reason": "Why this tutorial is relevant"
+    }}
+  ],
+  "affiliate_links": [
+    {{
+      "label": "Product/service name",
+      "url": "the exact affiliate URL",
+      "reason": "Why this affiliate link is relevant to this video"
     }}
   ],
   "external_links": [
@@ -810,9 +827,9 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 
 RULES:
 - For channel_links: find tutorials from the creator's OWN channel above that viewers would want as companion content. Only suggest videos that actually exist in the list. Use the exact YouTube URL from the list.
-- For external_links: identify product pages, app downloads, official websites, and tools mentioned in the outline that viewers would want. Use [LINK] as the URL since you don't know the exact URLs — the creator will replace these.
+- For affiliate_links: pick affiliate links from the creator's list above that are RELEVANT to this specific video. Only include ones that genuinely relate to the topic — don't force irrelevant affiliates. Use the exact URL from the list.
+- For external_links: identify product pages, app downloads, official websites, and tools mentioned in the outline that aren't covered by affiliate links. Use [LINK] as the URL since you don't know the exact URLs — the creator will replace these.
 - Be selective — only suggest links that are genuinely useful, not filler
-- Aim for 2-5 channel links and 2-5 external links
 - Labels should be concise and descriptive (how they'd appear in a YouTube description)"""
 
     user_msg = f"""Find relevant links for this video:

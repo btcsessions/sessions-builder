@@ -866,6 +866,47 @@ def _build_scoring_context() -> dict:
     }
 
 
+@app.route("/api/affiliate-links", methods=["GET"])
+def api_get_affiliate_links():
+    settings = load_settings()
+    return jsonify({"links": settings.get("affiliate_links", [])})
+
+
+@app.route("/api/affiliate-links/add", methods=["POST"])
+def api_add_affiliate_link():
+    data = request.get_json()
+    title = (data.get("title") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not title or not url:
+        return jsonify({"error": "Title and URL required."}), 400
+    settings = load_settings()
+    links = settings.get("affiliate_links", [])
+    links.append({"title": title, "url": url})
+    settings["affiliate_links"] = links
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    _schedule_sync_push()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/affiliate-links/remove", methods=["POST"])
+def api_remove_affiliate_link():
+    data = request.get_json()
+    idx = data.get("index")
+    settings = load_settings()
+    links = settings.get("affiliate_links", [])
+    if idx is None or idx < 0 or idx >= len(links):
+        return jsonify({"error": "Invalid index."}), 400
+    links.pop(idx)
+    settings["affiliate_links"] = links
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    _schedule_sync_push()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/search-tutorials", methods=["POST"])
 def api_search_tutorials():
     """Search own channel videos by keyword — no AI, just fast text matching."""
@@ -908,11 +949,13 @@ def api_suggest_links():
 
     try:
         from brainstorm import suggest_plan_links
+        affiliate_links = settings.get("affiliate_links", [])
         result = suggest_plan_links(
             topic=topic,
             outline=outline,
             video_data=video_cache,
             api_key=api_key,
+            affiliate_links=affiliate_links,
         )
         return jsonify(result)
     except Exception as e:

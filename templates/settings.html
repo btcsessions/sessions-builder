@@ -179,6 +179,18 @@
         </div>
 
         <div class="setup-form">
+            <h3>Affiliate Links</h3>
+            <p class="form-hint">Your affiliate/referral links. Available to add to any video description.</p>
+            <div id="affiliate-links-list" class="affiliate-links-list"></div>
+            <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem;">
+                <input type="text" id="aff-link-title" class="settings-textarea" placeholder="Title (e.g. Coldcard Mk4)" style="flex:1; padding:0.4rem 0.5rem;">
+                <input type="url" id="aff-link-url" class="settings-textarea" placeholder="https://affiliate-link..." style="flex:1; padding:0.4rem 0.5rem;">
+                <button class="btn small primary" id="add-aff-link-btn">Add</button>
+            </div>
+            <span id="aff-link-status" class="form-hint"></span>
+        </div>
+
+        <div class="setup-form">
             <h3>Data Export / Import</h3>
             <p class="form-hint">Move your entire setup between machines.</p>
             <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
@@ -595,5 +607,57 @@ document.getElementById("save-desc-template-btn")?.addEventListener("click", asy
     }
     btn.disabled = false;
 });
+
+// Affiliate Links
+function escHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+async function loadAffiliateLinks() {
+    const resp = await fetch("/api/affiliate-links");
+    const data = await resp.json();
+    renderAffiliateLinks(data.links || []);
+}
+
+function renderAffiliateLinks(links) {
+    const list = document.getElementById("affiliate-links-list");
+    if (!links.length) {
+        list.innerHTML = '<p class="form-hint">No affiliate links yet.</p>';
+        return;
+    }
+    list.innerHTML = links.map((l, i) =>
+        `<div class="aff-link-row">
+            <span class="aff-link-title">${escHtml(l.title)}</span>
+            <span class="aff-link-url">${escHtml(l.url.length > 40 ? l.url.slice(0, 40) + '...' : l.url)}</span>
+            <button class="btn small aff-remove-btn" data-idx="${i}">&times;</button>
+        </div>`
+    ).join("");
+    list.querySelectorAll(".aff-remove-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            await fetch("/api/affiliate-links/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: parseInt(btn.dataset.idx) }),
+            });
+            loadAffiliateLinks();
+        });
+    });
+}
+
+document.getElementById("add-aff-link-btn")?.addEventListener("click", async () => {
+    const title = document.getElementById("aff-link-title").value.trim();
+    const url = document.getElementById("aff-link-url").value.trim();
+    const status = document.getElementById("aff-link-status");
+    if (!title || !url) { status.textContent = "Both title and URL required."; return; }
+    await fetch("/api/affiliate-links/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, url }),
+    });
+    document.getElementById("aff-link-title").value = "";
+    document.getElementById("aff-link-url").value = "";
+    status.textContent = "";
+    loadAffiliateLinks();
+});
+
+loadAffiliateLinks();
 </script>
 {% endblock %}
