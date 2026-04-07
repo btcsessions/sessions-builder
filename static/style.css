@@ -1398,6 +1398,20 @@ tr:hover { background: var(--surface2); }
     flex-shrink: 0;
     transition: border-color 0.3s;
 }
+.insp-channel-row .own-channel-btn {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    opacity: 0.5;
+    transition: opacity 0.15s, border-color 0.3s;
+    white-space: nowrap;
+}
+.insp-channel-row:hover .own-channel-btn { opacity: 1; }
+.insp-channel-row .own-channel-btn.active {
+    opacity: 1;
+    color: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600;
+}
 .insp-channel-row .remove-comp-btn {
     padding: 0.15rem 0.4rem;
     font-size: 0.7rem;

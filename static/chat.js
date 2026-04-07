@@ -228,7 +228,7 @@ function setLoading(on) {
     if (on && !existing) {
         const div = document.createElement("div");
         div.className = "chat-msg assistant loading-indicator";
-        div.innerHTML = '<div class="msg-content"><span class="chat-typing">Thinking...</span></div>';
+        div.innerHTML = '<div class="msg-content"><span class="chat-typing">Deep thinking...</span></div>';
         chatMessages.appendChild(div);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     } else if (!on && existing) {
@@ -281,11 +281,11 @@ clearBtn.addEventListener("click", async () => {
     await fetch("/api/clear-chat", { method: "POST" });
     chatMessages.innerHTML = `
         <div class="chat-welcome">
-            <p>Ask me anything:</p>
+            <p>Ask me anything — I can pull in links and live trends:</p>
             <ul>
                 <li>"What topics get the most views?"</li>
-                <li>"Suggest 5 video ideas"</li>
-                <li>"Make the titles more clickbaity"</li>
+                <li>"How can I capitalize on this? https://..."</li>
+                <li>"What's trending right now that fits my niche?"</li>
                 <li>"Rewrite the intro hook"</li>
             </ul>
         </div>`;

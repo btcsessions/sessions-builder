@@ -570,7 +570,17 @@ def api_chat():
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
         }
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state)
+
+        # Gather real-time trend intelligence for the chat
+        trend_intel_context = ""
+        try:
+            from trend_intel import gather_trend_intel, intel_to_prompt_context
+            intel = gather_trend_intel()
+            trend_intel_context = intel_to_prompt_context(intel)
+        except Exception as e:
+            print(f"[Chat] Trend intel unavailable: {e}")
+
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context)
 
         # Check if reply contains a plan change JSON block
         plan_change = None
@@ -1559,6 +1569,21 @@ def api_update_competitor_category():
             break
     save_competitors(competitors_cache)
     return jsonify({"ok": True})
+
+
+@app.route("/api/competitors/toggle-own-channel", methods=["POST"])
+def api_toggle_own_channel():
+    global competitors_cache
+    data = request.get_json()
+    channel_id = data.get("channel_id", "")
+    if not channel_id:
+        return jsonify({"error": "channel_id required"}), 400
+    for comp in competitors_cache:
+        if comp["channel_id"] == channel_id:
+            comp["is_own_channel"] = not comp.get("is_own_channel", False)
+            save_competitors(competitors_cache)
+            return jsonify({"ok": True, "is_own_channel": comp["is_own_channel"]})
+    return jsonify({"error": "Channel not found"}), 404
 
 
 @app.route("/api/competitors/refresh", methods=["POST"])

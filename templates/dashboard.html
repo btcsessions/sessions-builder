@@ -75,12 +75,12 @@
         <div id="chat-messages" class="chat-messages">
             {% if not chat_history %}
             <div class="chat-welcome">
-                <p>Ask me anything about your video performance! For example:</p>
+                <p>Ask me anything — paste links, ask about trends:</p>
                 <ul>
                     <li>"What topics get the most views?"</li>
-                    <li>"Suggest 5 video ideas based on my top performers"</li>
-                    <li>"Why do some videos have high engagement but low views?"</li>
-                    <li>"What's the best day/time to publish based on my data?"</li>
+                    <li>"How can I capitalize on this? https://..."</li>
+                    <li>"What's trending right now that fits my niche?"</li>
+                    <li>"What do my breakout hits have in common?"</li>
                 </ul>
             </div>
             {% endif %}
@@ -91,7 +91,7 @@
             {% endfor %}
         </div>
         <form id="chat-form" class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Ask about your videos..." autocomplete="off">
+            <input type="text" id="chat-input" placeholder="Ask anything — paste links too..." autocomplete="off">
             <button type="submit" class="btn primary">Send</button>
         </form>
     </section>

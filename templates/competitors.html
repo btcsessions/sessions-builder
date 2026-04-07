@@ -56,6 +56,7 @@
                     <option value="Freedom Tech" {% if comp.category == 'Freedom Tech' %}selected{% endif %}>Freedom Tech</option>
                     <option value="Mainstream Tech" {% if comp.category == 'Mainstream Tech' %}selected{% endif %}>Mainstream Tech</option>
                 </select>
+                <button class="btn small own-channel-btn{% if comp.is_own_channel %} active{% endif %}" data-channel-id="{{ comp.channel_id }}" title="Mark as your own channel — its videos will be over-weighted as audience signals">{% if comp.is_own_channel %}★ Mine{% else %}☆ Mine{% endif %}</button>
                 <button class="btn small remove-comp-btn" data-channel-id="{{ comp.channel_id }}" title="Remove">&#10005;</button>
             </div>
             {% endfor %}
@@ -154,6 +155,31 @@ document.querySelectorAll(".insp-cat-select").forEach(sel => {
         });
         sel.style.borderColor = "var(--accent)";
         setTimeout(() => sel.style.borderColor = "", 1000);
+    });
+});
+
+// Toggle own channel
+document.querySelectorAll(".own-channel-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const resp = await fetch("/api/competitors/toggle-own-channel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel_id: btn.dataset.channelId }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            if (data.is_own_channel) {
+                btn.textContent = "★ Mine";
+                btn.classList.add("active");
+            } else {
+                btn.textContent = "☆ Mine";
+                btn.classList.remove("active");
+            }
+            btn.style.borderColor = "var(--accent)";
+            setTimeout(() => btn.style.borderColor = "", 1000);
+        }
+        btn.disabled = false;
     });
 });
 

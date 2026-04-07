@@ -1,8 +1,42 @@
 from __future__ import annotations
 
 import json
+import re
 import anthropic
 from trends import analyze_trends, trends_to_prompt_section
+
+
+def _extract_urls(text: str) -> list[str]:
+    """Extract HTTP/HTTPS URLs from user message text."""
+    return re.findall(r'https?://[^\s<>"\')\]]+', text)
+
+
+def _fetch_url_text(url: str, timeout: int = 10) -> str:
+    """Fetch a URL and return a cleaned text summary (max ~3000 chars)."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        })
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            if "html" not in content_type and "text" not in content_type:
+                return f"[Non-text content: {content_type}]"
+            raw = resp.read(200_000).decode("utf-8", errors="replace")
+
+        # Strip HTML tags, scripts, styles
+        raw = re.sub(r'<script[^>]*>[\s\S]*?</script>', ' ', raw, flags=re.IGNORECASE)
+        raw = re.sub(r'<style[^>]*>[\s\S]*?</style>', ' ', raw, flags=re.IGNORECASE)
+        raw = re.sub(r'<[^>]+>', ' ', raw)
+        # Collapse whitespace
+        raw = re.sub(r'\s+', ' ', raw).strip()
+        # Truncate
+        if len(raw) > 3000:
+            raw = raw[:3000] + "..."
+        return raw
+    except Exception as e:
+        return f"[Failed to fetch: {e}]"
 
 
 def generate_trend_report(
@@ -186,9 +220,33 @@ def _build_competitors_section(competitors_data: list = None) -> str:
         return ""
 
     sections = []
-    # Group by category
+
+    # Separate own-channel entries from regular competitors
+    own_channels = [c for c in competitors_data if c.get("is_own_channel")]
+    regular_comps = [c for c in competitors_data if not c.get("is_own_channel")]
+
+    # Own-channel non-tutorial videos get special treatment
+    if own_channels:
+        sections.append("\n**YOUR OWN CHANNEL — NON-TUTORIAL VIDEOS (OVER-WEIGHTED INDICATORS):**")
+        sections.append("*These are the creator's own non-tutorial videos on their main channel. Many have been MASSIVE outliers. The audience is ALREADY clicking on these — treat them as the strongest signal for how to frame, title, and package ALL content (including tutorials). Study what made these work and apply those patterns aggressively.*\n")
+
+        for comp in own_channels:
+            videos = comp.get("videos", [])
+            if not videos:
+                continue
+            avg_views = sum(v["view_count"] for v in videos) // len(videos)
+            # Show more videos for own channel — they're high-signal
+            top_vids = videos[:10]
+            video_lines = "\n".join(
+                f"    - \"{v['title'][:65]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+                for v in top_vids
+            )
+            sections.append(f"  **{comp['name']}** (avg {avg_views:,} views, {len(videos)} recent videos)")
+            sections.append(f"  Top performers:\n{video_lines}\n")
+
+    # Group regular competitors by category
     by_category = {}
-    for comp in competitors_data:
+    for comp in regular_comps:
         cat = comp.get("category", "Other")
         by_category.setdefault(cat, []).append(comp)
 
@@ -334,6 +392,15 @@ Use this data to:
 - For mainstream tech competitors: study their formats, pacing, and engagement tactics to adapt for your niche
 - For bitcoin/crypto competitors: identify topic gaps and areas to go deeper or differentiate
 - Give specific, actionable recommendations backed by the data with actual numbers
+- If the user shares a URL, read the fetched content and use it to form specific, actionable video angle recommendations tied to the creator's niche
+- If real-time trend intelligence is available below, reference specific trending topics, community discussions, and current events where relevant
+
+**IMPORTANT — Own-Channel Non-Tutorial Videos:**
+If you see a section labeled "YOUR OWN CHANNEL — NON-TUTORIAL VIDEOS" in the data above, these are the creator's OWN recent non-tutorial videos from their main channel. Many of these have been massive outliers in views. Since the creator's existing audience is already clicking on these videos at very high rates, treat them as OVER-WEIGHTED indicators of:
+- What framing and angles resonate most with this audience RIGHT NOW
+- What title patterns and styles drive outsized clicks from this specific subscriber base
+- How to package educational/tutorial content using the same emotional hooks, urgency, and topical framing that made these non-tutorial videos pop
+Do NOT treat these as just "competitor data" — they are the strongest signal for audience appetite.
 
 Always reference specific titles, numbers, and patterns when making points. Be direct and opinionated — the creator wants clear guidance, not hedged suggestions."""
 
@@ -347,11 +414,16 @@ def chat_with_claude(
     competitors_data: list = None,
     market_data: dict = None,
     plan_state: dict = None,
+    trend_intel_context: str = "",
 ) -> str:
     """Send a message to Claude with video performance context."""
     client = anthropic.Anthropic(api_key=api_key)
 
     system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
+
+    # Append real-time trend intelligence
+    if trend_intel_context:
+        system_prompt += f"\n\n{trend_intel_context}\n"
 
     # Add plan context if a plan is active
     if plan_state:
@@ -386,14 +458,24 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
 
         system_prompt += plan_section
 
+    # Detect URLs in the user message and fetch their content
+    urls = _extract_urls(user_message)
+    augmented_message = user_message
+    if urls:
+        fetched_parts = []
+        for url in urls[:3]:  # limit to 3 URLs per message
+            content = _fetch_url_text(url)
+            fetched_parts.append(f"**Content from {url}:**\n{content}")
+        augmented_message += "\n\n---\n" + "\n\n".join(fetched_parts)
+
     messages = []
     for msg in chat_history:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "user", "content": augmented_message})
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
+        model="claude-opus-4-20250514",
+        max_tokens=4000,
         system=system_prompt,
         messages=messages,
     )
