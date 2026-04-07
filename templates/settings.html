@@ -167,11 +167,22 @@
 </div>
 
 <div class="setup-form" style="margin-top: 1.5rem;">
-    <h3>Description Template</h3>
-    <p class="form-hint">Boilerplate text auto-inserted into every video description (sponsor blocks, social links, etc.).</p>
-    <textarea id="desc-template-text" rows="6" style="width:100%; margin-top:0.5rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:inherit; font-size:0.85rem; padding:0.6rem; resize:vertical;">{{ desc_template }}</textarea>
-    <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem;">
-        <button class="btn primary" id="save-desc-template-btn">Save Template</button>
+    <h3>Description Defaults</h3>
+
+    <div style="margin-bottom: 1rem;">
+        <label class="form-hint" style="display:block; margin-bottom:0.3rem; font-weight:600; color:var(--text);">Sponsors</label>
+        <p class="form-hint" style="margin-bottom:0.3rem;">Sponsor block auto-inserted into every video description.</p>
+        <textarea id="sponsor-template-text" rows="5" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:inherit; font-size:0.85rem; padding:0.6rem; resize:vertical;">{{ sponsor_template }}</textarea>
+    </div>
+
+    <div style="margin-bottom: 1rem;">
+        <label class="form-hint" style="display:block; margin-bottom:0.3rem; font-weight:600; color:var(--text);">YouTube Tags</label>
+        <p class="form-hint" style="margin-bottom:0.3rem;">Default CSV tags pasted into the YouTube tags field. Plan-specific tags will be appended.</p>
+        <textarea id="default-tags-text" rows="3" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:inherit; font-size:0.85rem; padding:0.6rem; resize:vertical;">{{ default_yt_tags }}</textarea>
+    </div>
+
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <button class="btn primary" id="save-desc-template-btn">Save</button>
         <span id="desc-template-status" class="form-hint" style="margin:0;"></span>
     </div>
 </div>
@@ -548,31 +559,32 @@ if (importInput) {
         importInput.value = "";
     });
 }
-// Description template save
+// Description defaults save
 document.getElementById("save-desc-template-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("save-desc-template-btn");
     const status = document.getElementById("desc-template-status");
-    const text = document.getElementById("desc-template-text").value;
+    const sponsor = document.getElementById("sponsor-template-text").value;
+    const tags = document.getElementById("default-tags-text").value;
     btn.disabled = true;
     btn.textContent = "Saving...";
     try {
         const resp = await fetch("/api/desc-template", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ template: text }),
+            body: JSON.stringify({ sponsor_template: sponsor, default_yt_tags: tags }),
         });
         const data = await resp.json();
         if (data.ok) {
             status.textContent = "Saved!";
-            btn.textContent = "Save Template";
+            btn.textContent = "Save";
             setTimeout(() => { status.textContent = ""; }, 2000);
         } else {
             status.textContent = data.error || "Failed";
-            btn.textContent = "Save Template";
+            btn.textContent = "Save";
         }
     } catch (err) {
         status.textContent = "Failed: " + err.message;
-        btn.textContent = "Save Template";
+        btn.textContent = "Save";
     }
     btn.disabled = false;
 });

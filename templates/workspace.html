@@ -265,6 +265,15 @@
             </section>
 
             <section class="plan-card">
+                <div class="plan-card-header-row">
+                    <h2>YouTube Tags</h2>
+                    <button class="btn small" id="copy-yt-tags-btn" title="Copy to clipboard">Copy</button>
+                </div>
+                <p class="form-hint" style="margin-bottom:0.3rem;">Combined default + video-specific tags. Paste into YouTube.</p>
+                <textarea id="plan-yt-tags" class="plan-editable-text" rows="3" placeholder="CSV tags will appear here..."></textarea>
+            </section>
+
+            <section class="plan-card">
                 <h2>Description</h2>
                 <textarea id="plan-description" class="plan-editable-text" rows="10"></textarea>
             </section>
@@ -1075,6 +1084,9 @@ function renderEditableSections(plan) {
     renderTags(plan.tags);
     wireTagInput();
 
+    // YouTube Tags CSV
+    document.getElementById("plan-yt-tags").value = plan.yt_tags_csv || plan.tags.join(", ");
+
     // Description — textarea
     document.getElementById("plan-description").value = plan.description;
 }
@@ -1114,6 +1126,16 @@ function wireTagInput() {
     });
 }
 
+// Copy YouTube Tags button
+document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
+    const text = document.getElementById("plan-yt-tags").value;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById("copy-yt-tags-btn");
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+    });
+});
+
 // Read current edited plan state from the DOM
 function getCurrentPlanFromDOM() {
     if (!lastPlanData) return null;
@@ -1141,6 +1163,9 @@ function getCurrentPlanFromDOM() {
 
     // Tags
     plan.tags = [...document.querySelectorAll("#plan-tags .tag")].map(el => el.textContent.replace("×", "").trim());
+
+    // YouTube Tags CSV
+    plan.yt_tags_csv = document.getElementById("plan-yt-tags").value;
 
     // Description
     plan.description = document.getElementById("plan-description").value;

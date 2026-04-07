@@ -405,7 +405,8 @@ def settings_page():
         sync_github_token=settings.get("sync_github_token", ""),
         sync_password=settings.get("sync_password", ""),
         sync_configured=is_sync_configured(),
-        desc_template=settings.get("desc_template", ""),
+        sponsor_template=settings.get("sponsor_template", ""),
+        default_yt_tags=settings.get("default_yt_tags", ""),
     )
 
 
@@ -486,16 +487,19 @@ def save_settings_only():
 
 @app.route("/api/desc-template", methods=["GET", "POST"])
 def api_desc_template():
-    """Get or save the description template (sponsor block, etc.)."""
+    """Get or save the description defaults (sponsor block, default YT tags)."""
+    settings = load_settings()
     if request.method == "GET":
-        settings = load_settings()
-        return jsonify({"template": settings.get("desc_template", "")})
+        return jsonify({
+            "sponsor_template": settings.get("sponsor_template", ""),
+            "default_yt_tags": settings.get("default_yt_tags", ""),
+        })
 
     data = request.get_json()
-    template = data.get("template", "")
-    # Save directly to settings without going through save_settings() to avoid overwriting other fields
-    settings = load_settings()
-    settings["desc_template"] = template
+    settings["sponsor_template"] = data.get("sponsor_template", "")
+    settings["default_yt_tags"] = data.get("default_yt_tags", "")
+    # Remove old field if migrating
+    settings.pop("desc_template", None)
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
@@ -767,7 +771,6 @@ def api_generate_plan():
             print(f"[Plan] Trend intel fetch failed: {e}")
 
         settings = load_settings()
-        desc_template = settings.get("desc_template", "")
 
         plan = generate_video_plan(
             video_type=video_type,
@@ -783,7 +786,8 @@ def api_generate_plan():
             trend_context=trend_context,
             trend_intel_context=trend_intel_context,
             title_history=title_history,
-            desc_template=desc_template,
+            sponsor_template=settings.get("sponsor_template", ""),
+            default_yt_tags=settings.get("default_yt_tags", ""),
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
@@ -881,14 +885,14 @@ def api_parse_notes():
 
     try:
         from brainstorm import parse_notes_to_plan
-        desc_template = settings.get("desc_template", "")
         result = parse_notes_to_plan(
             notes=notes,
             topic=topic,
             video_type=video_type,
             api_key=api_key,
             existing_plan=existing_plan,
-            desc_template=desc_template,
+            sponsor_template=settings.get("sponsor_template", ""),
+            default_yt_tags=settings.get("default_yt_tags", ""),
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
@@ -1079,6 +1083,7 @@ def api_save_plan():
         "intro_hook": plan_data.get("intro_hook", ""),
         "outline": plan_data.get("outline", []),
         "tags": plan_data.get("tags", []),
+        "yt_tags_csv": plan_data.get("yt_tags_csv", ""),
         "description": plan_data.get("description", ""),
     }
 

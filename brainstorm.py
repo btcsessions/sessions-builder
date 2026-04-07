@@ -480,6 +480,8 @@ def generate_video_plan(
     trend_intel_context: str = "",
     title_history: list = None,
     desc_template: str = "",
+    sponsor_template: str = "",
+    default_yt_tags: str = "",
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -526,10 +528,11 @@ IMPORTANT RULES:
 - Tags should be relevant for YouTube SEO (8-12 tags)
 - The description structure should be:
   1. A paragraph describing what the video covers
-  2. A list of relevant links to app downloads, product websites, and/or associated tutorials (use [LINK] placeholders)
-  3. The sponsor/boilerplate block (auto-inserted, do not generate this — it will be appended automatically)
-  4. Timestamps section (use [TIMESTAMPS] placeholder)
+  2. A list of relevant links to app downloads, product websites, and/or associated tutorials — use descriptive labels with [LINK] placeholders (e.g. "Download Umbrel: [LINK]")
+  3. [TIMESTAMPS] placeholder at the end
   Do NOT include actual URLs or timestamps — just placeholders for the creator to fill in
+  Do NOT include a sponsor section — that will be auto-inserted
+- For "tags": generate 8-12 topic-specific SEO tags for this video (these get COMBINED with the creator's default tags)
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
 - If competitor videos are provided, consider what works in those videos and differentiate
 - Base recommendations on what has performed well in the channel data
@@ -591,9 +594,30 @@ Use this real-time data to make the plan timely and relevant. Reference specific
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     plan = json.loads(text)
 
-    # Auto-append description template (sponsor block, etc.)
-    if desc_template and "description" in plan:
-        plan["description"] = plan["description"].rstrip() + "\n\n" + desc_template
+    # Auto-append sponsor block to description
+    sponsor = sponsor_template or desc_template  # fallback to old field
+    if sponsor and "description" in plan:
+        # Insert sponsor block before [TIMESTAMPS] if present, otherwise append
+        desc = plan["description"]
+        if "[TIMESTAMPS]" in desc:
+            desc = desc.replace("[TIMESTAMPS]", sponsor.rstrip() + "\n\n[TIMESTAMPS]")
+        else:
+            desc = desc.rstrip() + "\n\n" + sponsor
+        plan["description"] = desc
+
+    # Build combined YouTube tags (default + generated)
+    if default_yt_tags:
+        existing = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
+        generated = plan.get("tags", [])
+        # Deduplicate (case-insensitive) while preserving order
+        seen = {t.lower() for t in existing}
+        for t in generated:
+            if t.lower() not in seen:
+                existing.append(t)
+                seen.add(t.lower())
+        plan["yt_tags_csv"] = ", ".join(existing)
+    else:
+        plan["yt_tags_csv"] = ", ".join(plan.get("tags", []))
 
     return plan
 
@@ -605,6 +629,8 @@ def parse_notes_to_plan(
     api_key: str,
     existing_plan: dict = None,
     desc_template: str = "",
+    sponsor_template: str = "",
+    default_yt_tags: str = "",
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -674,9 +700,28 @@ RULES:
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     plan = json.loads(text)
 
-    # Auto-append description template if creating new (not amending — amend preserves existing)
-    if desc_template and not existing_plan and "description" in plan:
-        plan["description"] = plan["description"].rstrip() + "\n\n" + desc_template
+    # Auto-append sponsor block if creating new (not amending — amend preserves existing)
+    sponsor = sponsor_template or desc_template
+    if sponsor and not existing_plan and "description" in plan:
+        desc = plan["description"]
+        if "[TIMESTAMPS]" in desc:
+            desc = desc.replace("[TIMESTAMPS]", sponsor.rstrip() + "\n\n[TIMESTAMPS]")
+        else:
+            desc = desc.rstrip() + "\n\n" + sponsor
+        plan["description"] = desc
+
+    # Build combined YouTube tags
+    if default_yt_tags:
+        existing = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
+        generated = plan.get("tags", [])
+        seen = {t.lower() for t in existing}
+        for t in generated:
+            if t.lower() not in seen:
+                existing.append(t)
+                seen.add(t.lower())
+        plan["yt_tags_csv"] = ", ".join(existing)
+    else:
+        plan["yt_tags_csv"] = ", ".join(plan.get("tags", []))
 
     return plan
 
