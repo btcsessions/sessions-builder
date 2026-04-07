@@ -1013,9 +1013,35 @@ tr:hover { background: var(--surface2); }
 
 .outline-section .outline-header { display: flex; gap: 0.5rem; align-items: center; }
 .outline-section .outline-header .outline-section-edit { flex: 1; font-weight: 600; }
-.outline-section ul { margin: 0.25rem 0 0.5rem 0.5rem; padding-left: 1rem; }
+.outline-section ul { margin: 0.25rem 0 0.5rem 0.5rem; padding-left: 0.5rem; list-style: none; }
 .outline-section li { margin-bottom: 0.2rem; }
 .outline-section li .plan-editable-input { font-size: 0.85rem; }
+.outline-point-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0;
+}
+.outline-point-row .plan-editable-input { flex: 1; }
+.drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    user-select: none;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+.drag-handle:hover { opacity: 1; }
+.section-drag { font-size: 0.9rem; }
+.point-drag { font-size: 0.75rem; }
+.outline-section.drag-over { border-color: var(--accent); background: rgba(245, 166, 35, 0.05); }
+.outline-point-row.drag-over { background: rgba(245, 166, 35, 0.1); border-radius: 4px; }
+.outline-remove-section { color: var(--text-muted); font-size: 0.85rem; }
+.outline-remove-section:hover { color: var(--red, #e53935); }
+.outline-remove-point { color: var(--text-muted); font-size: 0.7rem; flex-shrink: 0; }
+.outline-remove-point:hover { color: var(--red, #e53935); }
+.outline-add-point { color: var(--text-muted); }
+.outline-add-point:hover { color: var(--accent); }
 
 .plan-editable-tags-input {
     margin-top: 0.5rem;

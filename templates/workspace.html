@@ -1292,6 +1292,175 @@ async function fetchSingleAiScore(idx, title) {
 }
 
 // --- Shared editable section rendering ---
+function renderOutline(outline) {
+    const container = document.getElementById("plan-outline");
+
+    function buildSectionHtml(s, si) {
+        const pts = (s.points || []).map((p, pi) =>
+            `<li class="outline-point-row" draggable="true" data-section="${si}" data-point="${pi}">
+                <span class="drag-handle point-drag" title="Drag to reorder">&#8942;</span>
+                <input type="text" class="plan-editable-input outline-point-edit" value="${esc(p)}" data-section="${si}" data-point="${pi}">
+                <button class="btn-icon outline-remove-point" data-section="${si}" data-point="${pi}" title="Remove">&times;</button>
+            </li>`
+        ).join("");
+
+        return `<div class="outline-section" draggable="true" data-section="${si}">
+            <div class="outline-header">
+                <span class="drag-handle section-drag" title="Drag to reorder">&#9776;</span>
+                <input type="text" class="plan-editable-input outline-section-edit" value="${esc(s.section)}" data-section="${si}">
+                <input type="text" class="plan-editable-input outline-duration-edit" value="${esc(s.duration_hint)}" data-section="${si}" style="width:5rem; text-align:right;">
+                <button class="btn-icon outline-remove-section" data-section="${si}" title="Remove section">&times;</button>
+            </div>
+            <ul class="outline-points-list" data-section="${si}">${pts}</ul>
+            <button class="btn-icon outline-add-point" data-section="${si}" title="Add point" style="margin-left:1.5rem; font-size:0.75rem;">+ Add point</button>
+        </div>`;
+    }
+
+    container.innerHTML = outline.map((s, si) => buildSectionHtml(s, si)).join("")
+        + '<button class="btn small" id="outline-add-section" style="margin-top:0.5rem;">+ Add Section</button>';
+
+    // Wire add section
+    container.querySelector("#outline-add-section")?.addEventListener("click", () => {
+        const current = getOutlineFromDOM();
+        current.push({ section: "New Section", points: [""], duration_hint: "~2 min" });
+        renderOutline(current);
+        savePlannerState();
+    });
+
+    // Wire remove section
+    container.querySelectorAll(".outline-remove-section").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const current = getOutlineFromDOM();
+            current.splice(parseInt(btn.dataset.section), 1);
+            renderOutline(current);
+            savePlannerState();
+        });
+    });
+
+    // Wire add point
+    container.querySelectorAll(".outline-add-point").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const current = getOutlineFromDOM();
+            current[parseInt(btn.dataset.section)].points.push("");
+            renderOutline(current);
+            // Focus the new input
+            const sec = container.querySelectorAll(".outline-section")[parseInt(btn.dataset.section)];
+            const inputs = sec.querySelectorAll(".outline-point-edit");
+            if (inputs.length) inputs[inputs.length - 1].focus();
+            savePlannerState();
+        });
+    });
+
+    // Wire remove point
+    container.querySelectorAll(".outline-remove-point").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const current = getOutlineFromDOM();
+            const si = parseInt(btn.dataset.section);
+            const pi = parseInt(btn.dataset.point);
+            current[si].points.splice(pi, 1);
+            renderOutline(current);
+            savePlannerState();
+        });
+    });
+
+    // Section drag and drop
+    let dragSection = null;
+    container.querySelectorAll(".outline-section[draggable]").forEach(sec => {
+        sec.addEventListener("dragstart", (e) => {
+            if (!e.target.classList.contains("outline-section")) return;
+            // Only allow drag from the section handle
+            const handle = sec.querySelector(".section-drag");
+            const rect = handle.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+                e.preventDefault();
+                return;
+            }
+            dragSection = sec;
+            sec.style.opacity = "0.4";
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", sec.dataset.section);
+        });
+        sec.addEventListener("dragend", () => {
+            sec.style.opacity = "";
+            dragSection = null;
+            container.querySelectorAll(".outline-section").forEach(s => s.classList.remove("drag-over"));
+        });
+        sec.addEventListener("dragover", (e) => {
+            if (!dragSection || dragSection === sec) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            sec.classList.add("drag-over");
+        });
+        sec.addEventListener("dragleave", () => sec.classList.remove("drag-over"));
+        sec.addEventListener("drop", (e) => {
+            e.preventDefault();
+            sec.classList.remove("drag-over");
+            if (!dragSection || dragSection === sec) return;
+            const current = getOutlineFromDOM();
+            const fromIdx = parseInt(dragSection.dataset.section);
+            const toIdx = parseInt(sec.dataset.section);
+            const [moved] = current.splice(fromIdx, 1);
+            current.splice(toIdx, 0, moved);
+            renderOutline(current);
+            savePlannerState();
+        });
+    });
+
+    // Point drag and drop within a section
+    container.querySelectorAll(".outline-points-list").forEach(ul => {
+        let dragPoint = null;
+        ul.querySelectorAll(".outline-point-row").forEach(li => {
+            li.addEventListener("dragstart", (e) => {
+                const handle = li.querySelector(".point-drag");
+                const rect = handle.getBoundingClientRect();
+                if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+                    e.preventDefault();
+                    return;
+                }
+                dragPoint = li;
+                li.style.opacity = "0.4";
+                e.dataTransfer.effectAllowed = "move";
+                e.stopPropagation(); // don't trigger section drag
+            });
+            li.addEventListener("dragend", () => {
+                li.style.opacity = "";
+                dragPoint = null;
+                ul.querySelectorAll(".outline-point-row").forEach(l => l.classList.remove("drag-over"));
+            });
+            li.addEventListener("dragover", (e) => {
+                if (!dragPoint || dragPoint === li) return;
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                li.classList.add("drag-over");
+            });
+            li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+            li.addEventListener("drop", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                li.classList.remove("drag-over");
+                if (!dragPoint || dragPoint === li) return;
+                const si = parseInt(ul.dataset.section);
+                const fromPi = parseInt(dragPoint.dataset.point);
+                const toPi = parseInt(li.dataset.point);
+                const current = getOutlineFromDOM();
+                const [moved] = current[si].points.splice(fromPi, 1);
+                current[si].points.splice(toPi, 0, moved);
+                renderOutline(current);
+                savePlannerState();
+            });
+        });
+    });
+}
+
+function getOutlineFromDOM() {
+    return [...document.querySelectorAll(".outline-section[data-section]")].map(sec => ({
+        section: sec.querySelector(".outline-section-edit")?.value || "",
+        duration_hint: sec.querySelector(".outline-duration-edit")?.value || "",
+        points: [...sec.querySelectorAll(".outline-point-edit")].map(el => el.value),
+    }));
+}
+
 function renderEditableSections(plan) {
     // Thumbnails — editable inputs
     document.getElementById("plan-thumbnails").innerHTML = plan.thumbnail_ideas.map((t, i) =>
@@ -1303,19 +1472,8 @@ function renderEditableSections(plan) {
     // Hook — textarea
     document.getElementById("plan-hook").value = plan.intro_hook;
 
-    // Outline — editable sections
-    document.getElementById("plan-outline").innerHTML = plan.outline.map((s, si) => {
-        const pts = s.points.map((p, pi) =>
-            `<li><input type="text" class="plan-editable-input outline-point-edit" value="${esc(p)}" data-section="${si}" data-point="${pi}"></li>`
-        ).join("");
-        return `<div class="outline-section" data-section="${si}">
-            <div class="outline-header">
-                <input type="text" class="plan-editable-input outline-section-edit" value="${esc(s.section)}" data-section="${si}">
-                <input type="text" class="plan-editable-input outline-duration-edit" value="${esc(s.duration_hint)}" data-section="${si}" style="width:5rem; text-align:right;">
-            </div>
-            <ul>${pts}</ul>
-        </div>`;
-    }).join("");
+    // Outline — editable, draggable sections with add/remove
+    renderOutline(plan.outline);
 
     // Tags — single CSV field
     const tagsEl = document.getElementById("plan-yt-tags");
@@ -1603,15 +1761,7 @@ function getCurrentPlanFromDOM() {
     plan.intro_hook = document.getElementById("plan-hook").value;
 
     // Outline
-    const sections = document.querySelectorAll(".outline-section[data-section]");
-    plan.outline = [...sections].map(sec => {
-        const si = sec.dataset.section;
-        return {
-            section: sec.querySelector(".outline-section-edit")?.value || "",
-            duration_hint: sec.querySelector(".outline-duration-edit")?.value || "",
-            points: [...sec.querySelectorAll(".outline-point-edit")].map(el => el.value),
-        };
-    });
+    plan.outline = getOutlineFromDOM();
 
     // Tags (single CSV field)
     const tagsCsv = document.getElementById("plan-yt-tags").value;
