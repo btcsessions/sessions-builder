@@ -1016,6 +1016,35 @@ tr:hover { background: var(--surface2); }
 .tag-removable:hover { opacity: 0.6; }
 .tag-x { font-size: 0.7rem; margin-left: 0.2rem; }
 
+.plan-link-search-row {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.plan-link-search-row .plan-editable-input { flex: 1; border-color: var(--border); }
+.tutorial-search-results {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+.tutorial-search-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+.tutorial-search-item:last-child { border-bottom: none; }
+.tutorial-search-item:hover { background: var(--surface2); }
+.tutorial-search-info { flex: 1; min-width: 0; }
+.tutorial-search-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tutorial-search-views { font-size: 0.7rem; color: var(--text-muted); }
+
 .plan-links-list { margin: 0.5rem 0; }
 .plan-link-row {
     display: flex;

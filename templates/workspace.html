@@ -261,9 +261,17 @@
             <section class="plan-card">
                 <div class="plan-card-header-row">
                     <h2>Links & References</h2>
-                    <button class="btn small secondary" id="suggest-links-btn">Suggest Links</button>
+                    <button class="btn small secondary" id="suggest-links-btn">AI Suggest</button>
                 </div>
-                <p class="form-hint">Relevant links for the description. Add manually or let AI suggest from your channel and the web.</p>
+                <p class="form-hint">Relevant links for the description.</p>
+
+                <!-- Search own tutorials -->
+                <div class="plan-link-search-row">
+                    <input type="text" id="tutorial-search-input" class="plan-editable-input" placeholder="Search your tutorials...">
+                    <button class="btn small" id="tutorial-search-btn">Search</button>
+                </div>
+                <div id="tutorial-search-results" class="tutorial-search-results" style="display:none"></div>
+
                 <div id="links-loading" class="plan-loading" style="display:none">Finding relevant links...</div>
                 <div id="plan-links-list" class="plan-links-list"></div>
                 <div class="plan-link-add-row">
@@ -1159,6 +1167,63 @@ document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
 
 /* --- Links & References --- */
 let planLinks = []; // [{label, url, source: "channel"|"external"|"manual"}]
+
+// Tutorial search (native, no AI)
+document.getElementById("tutorial-search-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("tutorial-search-btn").click();
+});
+
+document.getElementById("tutorial-search-btn")?.addEventListener("click", async () => {
+    const input = document.getElementById("tutorial-search-input");
+    const resultsEl = document.getElementById("tutorial-search-results");
+    const query = input.value.trim();
+    if (!query) return;
+
+    try {
+        const resp = await fetch("/api/search-tutorials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+        });
+        const data = await resp.json();
+        const results = data.results || [];
+
+        if (!results.length) {
+            resultsEl.innerHTML = '<p class="form-hint" style="padding:0.3rem 0;">No matching tutorials found.</p>';
+            resultsEl.style.display = "block";
+            return;
+        }
+
+        resultsEl.innerHTML = results.map(r =>
+            `<div class="tutorial-search-item">
+                <div class="tutorial-search-info">
+                    <span class="tutorial-search-title">${esc(r.title)}</span>
+                    <span class="tutorial-search-views">${r.view_count.toLocaleString()} views</span>
+                </div>
+                <button class="btn small tutorial-add-btn" data-title="${esc(r.title)}" data-url="${esc(r.url)}">+ Add</button>
+            </div>`
+        ).join("");
+        resultsEl.style.display = "block";
+
+        // Wire add buttons
+        resultsEl.querySelectorAll(".tutorial-add-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const title = btn.dataset.title;
+                const url = btn.dataset.url;
+                if (!planLinks.some(l => l.url === url)) {
+                    planLinks.push({ label: title, url, source: "channel", reason: "" });
+                    renderPlanLinks();
+                    savePlannerState();
+                }
+                btn.textContent = "Added";
+                btn.disabled = true;
+            });
+        });
+    } catch (err) {
+        resultsEl.innerHTML = '<p class="form-hint">Search failed.</p>';
+        resultsEl.style.display = "block";
+    }
+});
 
 function renderPlanLinks() {
     const list = document.getElementById("plan-links-list");

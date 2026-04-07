@@ -866,6 +866,34 @@ def _build_scoring_context() -> dict:
     }
 
 
+@app.route("/api/search-tutorials", methods=["POST"])
+def api_search_tutorials():
+    """Search own channel videos by keyword — no AI, just fast text matching."""
+    data = request.get_json()
+    query = (data.get("query") or "").strip().lower()
+    if not query:
+        return jsonify({"results": []})
+
+    keywords = query.split()
+    results = []
+    for v in video_cache:
+        title_lower = v["title"].lower()
+        # Score by how many keywords match
+        matches = sum(1 for kw in keywords if kw in title_lower)
+        if matches > 0:
+            results.append({
+                "video_id": v["video_id"],
+                "title": v["title"],
+                "url": f"https://youtube.com/watch?v={v['video_id']}",
+                "view_count": v["view_count"],
+                "matches": matches,
+            })
+
+    # Sort by match count then views
+    results.sort(key=lambda r: (r["matches"], r["view_count"]), reverse=True)
+    return jsonify({"results": results[:10]})
+
+
 @app.route("/api/suggest-links", methods=["POST"])
 def api_suggest_links():
     """Suggest relevant links for a plan from channel videos and the web."""
