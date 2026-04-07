@@ -324,6 +324,10 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 - Net subscribers gained: {ch.get('net_subscribers', 0):,} ({ch.get('subscribers_gained', 0):,} gained, {ch.get('subscribers_lost', 0):,} lost)
 - Shares: {ch.get('shares', 0):,}
 """
+            # Add impressions + CTR if available
+            if ch.get("impressions"):
+                analytics_section += f"- Total impressions: {ch['impressions']:,}\n"
+                analytics_section += f"- Channel-wide CTR: {ch.get('impressions_ctr', 0)}%\n"
 
         traffic = analytics_data.get("traffic_sources", [])
         if traffic:
@@ -345,10 +349,60 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
                         break
                 avg_pct = tv.get("avg_view_percentage", 0)
                 avg_dur = round(tv.get("avg_view_duration_seconds", 0) / 60, 1)
+                ctr = tv.get("impressions_ctr", 0)
+                impressions = tv.get("impressions", 0)
+                ctr_str = f", {ctr}% CTR ({impressions:,} imp)" if impressions else ""
                 top_lines.append(
-                    f"  - {title}: {avg_dur}min avg watch, {avg_pct}% retention, +{tv.get('subscribers_gained', 0)} subs"
+                    f"  - {title}: {avg_dur}min avg watch, {avg_pct}% retention, +{tv.get('subscribers_gained', 0)} subs{ctr_str}"
                 )
-            analytics_section += f"\n**Top Videos by Watch Time (with retention & subs gained):**\n" + "\n".join(top_lines) + "\n"
+            analytics_section += f"\n**Top Videos by Watch Time (with retention, CTR & subs gained):**\n" + "\n".join(top_lines) + "\n"
+
+        # Retention curves — summarize key drop-off points for videos that have curve data
+        retention_curves = analytics_data.get("retention_curves", {})
+        if retention_curves:
+            curve_lines = []
+            for vid_id, points in retention_curves.items():
+                if not points:
+                    continue
+                # Find video title
+                title = vid_id
+                for v in video_data:
+                    if v["video_id"] == vid_id:
+                        title = v["title"][:45]
+                        break
+                # Extract key retention milestones
+                r_30s = r_mid = r_75 = None
+                for p in points:
+                    if r_30s is None and p["elapsed_pct"] >= 5:  # ~first 30s of a 10min video
+                        r_30s = p["audience_pct"]
+                    if r_mid is None and p["elapsed_pct"] >= 50:
+                        r_mid = p["audience_pct"]
+                    if r_75 is None and p["elapsed_pct"] >= 75:
+                        r_75 = p["audience_pct"]
+                # Relative retention (vs similar YT videos): >1 = better than avg
+                avg_relative = 0
+                rel_points = [p["relative_retention"] for p in points if p.get("relative_retention")]
+                if rel_points:
+                    avg_relative = round(sum(rel_points) / len(rel_points), 2)
+
+                parts = []
+                if r_30s is not None:
+                    parts.append(f"5%: {r_30s}%")
+                if r_mid is not None:
+                    parts.append(f"50%: {r_mid}%")
+                if r_75 is not None:
+                    parts.append(f"75%: {r_75}%")
+                if avg_relative:
+                    rel_label = "above avg" if avg_relative > 1 else "below avg"
+                    parts.append(f"vs YouTube: {avg_relative}x ({rel_label})")
+                if parts:
+                    curve_lines.append(f"  - {title}: {', '.join(parts)}")
+
+            if curve_lines:
+                analytics_section += f"\n**Retention Curves (audience still watching at each point):**\n"
+                analytics_section += "  (Format: elapsed % of video → % of viewers still watching)\n"
+                analytics_section += "\n".join(curve_lines[:20]) + "\n"
+                analytics_section += "\n  KEY INSIGHT: Compare retention between tutorials vs non-tutorials. If non-tutorials hold viewers past 50% at much higher rates, the tutorial packaging (hook, pacing, visual variety) likely needs work — not the content itself.\n"
 
         monthly = analytics_data.get("monthly_trend", [])
         if monthly:
@@ -1219,7 +1273,24 @@ def analyze_own_video(
                 avg_pct = tv.get("avg_view_percentage", 0)
                 avg_dur = round(tv.get("avg_view_duration_seconds", 0) / 60, 1)
                 subs = tv.get("subscribers_gained", 0)
+                ctr = tv.get("impressions_ctr", 0)
+                impressions = tv.get("impressions", 0)
                 analytics_note = f"\n**Analytics Data:** {avg_dur}min avg watch time, {avg_pct}% retention, +{subs} subscribers gained"
+                if impressions:
+                    analytics_note += f"\n**Impressions & CTR:** {impressions:,} impressions, {ctr}% CTR"
+                # Add retention curve if available
+                curves = analytics_data.get("retention_curves", {})
+                curve = curves.get(video["video_id"], [])
+                if curve:
+                    milestones = []
+                    for p in curve:
+                        if p["elapsed_pct"] in (5, 10, 25, 50, 75, 100):
+                            milestones.append(f"{p['elapsed_pct']}%→{p['audience_pct']}%")
+                    rel_points = [p["relative_retention"] for p in curve if p.get("relative_retention")]
+                    avg_rel = round(sum(rel_points) / len(rel_points), 2) if rel_points else 0
+                    analytics_note += f"\n**Retention Curve:** {', '.join(milestones)}"
+                    if avg_rel:
+                        analytics_note += f" (vs similar YT videos: {avg_rel}x {'above' if avg_rel > 1 else 'below'} avg)"
                 break
 
     market_section = _build_market_section(market_data)

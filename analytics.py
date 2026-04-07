@@ -110,6 +110,23 @@ def fetch_channel_analytics(video_ids: list[str] = None) -> dict:
             "shares": row[7],
         }
 
+    # Channel-level impressions + CTR
+    try:
+        ctr_resp = yt_analytics.reports().query(
+            ids="channel==MINE",
+            startDate=start_date,
+            endDate=end_date,
+            metrics="views,impressions,impressionsCtr",
+        ).execute()
+        if ctr_resp.get("rows"):
+            ctr_row = ctr_resp["rows"][0]
+            if "channel" not in result:
+                result["channel"] = {}
+            result["channel"]["impressions"] = ctr_row[1]
+            result["channel"]["impressions_ctr"] = round(ctr_row[2], 2)
+    except Exception as e:
+        print(f"[Analytics] CTR fetch failed (non-fatal): {e}")
+
     # Traffic sources
     traffic_resp = yt_analytics.reports().query(
         ids="channel==MINE",
@@ -151,6 +168,35 @@ def fetch_channel_analytics(video_ids: list[str] = None) -> dict:
             "subscribers_gained": row[5],
         })
 
+    # Per-video impressions + CTR (separate query since these metrics
+    # can't always be combined with watch time metrics in the same call)
+    try:
+        vid_ctr_resp = yt_analytics.reports().query(
+            ids="channel==MINE",
+            startDate=start_date,
+            endDate=end_date,
+            metrics="views,impressions,impressionsCtr",
+            dimensions="video",
+            sort="-impressions",
+            maxResults=50,
+        ).execute()
+
+        # Build lookup by video_id
+        ctr_by_vid = {}
+        for row in vid_ctr_resp.get("rows", []):
+            ctr_by_vid[row[0]] = {
+                "impressions": row[1],
+                "impressions_ctr": round(row[2], 2),
+            }
+
+        # Merge into top_videos
+        for tv in result["top_videos"]:
+            ctr_data = ctr_by_vid.get(tv["video_id"], {})
+            tv["impressions"] = ctr_data.get("impressions", 0)
+            tv["impressions_ctr"] = ctr_data.get("impressions_ctr", 0)
+    except Exception as e:
+        print(f"[Analytics] Per-video CTR fetch failed (non-fatal): {e}")
+
     # Monthly trend (views + watch time by month)
     monthly_resp = yt_analytics.reports().query(
         ids="channel==MINE",
@@ -171,3 +217,52 @@ def fetch_channel_analytics(video_ids: list[str] = None) -> dict:
         })
 
     return result
+
+
+def fetch_retention_curves(video_ids: list[str], days: int = 365) -> dict:
+    """Fetch audience retention curves for specific videos.
+
+    Returns dict keyed by video_id, each containing a list of
+    {elapsed_pct, audience_pct, relative_retention} data points.
+    The curve shows what fraction of viewers are still watching at
+    each point in the video (sampled at ~100 points from 0% to 100%).
+    """
+    creds = load_credentials()
+    if not creds:
+        raise ValueError("Not authenticated. Connect YouTube Analytics in Settings.")
+
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+        save_credentials(creds)
+
+    yt_analytics = build("youtubeAnalytics", "v2", credentials=creds)
+
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    curves = {}
+    for vid in video_ids:
+        try:
+            resp = yt_analytics.reports().query(
+                ids="channel==MINE",
+                startDate=start_date,
+                endDate=end_date,
+                metrics="audienceWatchRatio,relativeRetentionPerformance",
+                dimensions="elapsedVideoTimeRatio",
+                filters=f"video=={vid}",
+            ).execute()
+
+            points = []
+            for row in resp.get("rows", []):
+                points.append({
+                    "elapsed_pct": round(row[0] * 100, 1),
+                    "audience_pct": round(row[1] * 100, 1),
+                    "relative_retention": round(row[2], 2),
+                })
+            curves[vid] = points
+        except Exception as e:
+            print(f"[Analytics] Retention curve for {vid} failed: {e}")
+            curves[vid] = []
+
+    return curves

@@ -8,7 +8,7 @@ from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_
                     record_snapshot, compute_velocity, compute_longevity_from_snapshots,
                     get_current_market_info, get_market_summary)
 from trends import analyze_trends
-from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics
+from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics, fetch_retention_curves
 
 load_dotenv()
 
@@ -1735,8 +1735,42 @@ def api_fetch_analytics():
     global analytics_cache
     try:
         analytics_cache = fetch_channel_analytics()
+
+        # Auto-fetch retention curves for top 15 videos
+        top_vid_ids = [tv["video_id"] for tv in analytics_cache.get("top_videos", [])[:15]]
+        if top_vid_ids:
+            try:
+                curves = fetch_retention_curves(top_vid_ids)
+                analytics_cache["retention_curves"] = curves
+            except Exception as e:
+                print(f"[Analytics] Auto retention fetch failed: {e}")
+
         save_analytics(analytics_cache)
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/fetch-retention", methods=["POST"])
+def api_fetch_retention():
+    """Manually fetch retention curves for selected videos."""
+    global analytics_cache
+    data = request.get_json()
+    video_ids = data.get("video_ids", [])
+    if not video_ids:
+        return jsonify({"error": "No video IDs provided"}), 400
+
+    try:
+        curves = fetch_retention_curves(video_ids)
+        # Merge into existing retention data
+        existing = analytics_cache.get("retention_curves", {})
+        existing.update(curves)
+        analytics_cache["retention_curves"] = existing
+        save_analytics(analytics_cache)
+
+        # Count how many had data
+        fetched = sum(1 for v in curves.values() if v)
+        return jsonify({"ok": True, "fetched": fetched, "total": len(video_ids)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
