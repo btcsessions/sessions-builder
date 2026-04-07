@@ -921,6 +921,7 @@ function renderTitles(titles, existingAiScores) {
             <span class="title-score-label" style="color:${getScoreColor(displayScore)}">${getScoreLabel(displayScore)}</span>
             <button class="btn small title-rescore-btn" data-idx="${i}" title="Get AI score for this title" style="display:none">Re-score</button>
             <button class="btn small title-revert-btn" data-idx="${i}" title="Revert to original" style="display:none">Revert</button>
+            <button class="btn small title-swap-btn" data-idx="${i}" title="Generate a replacement title">Swap</button>
             <button class="btn small title-copy-btn" data-idx="${i}" title="Copy title">Copy</button>
             <button class="btn small title-save-btn" data-idx="${i}" title="Save this title to your preferences">Save</button>
         </div>`;
@@ -1025,6 +1026,61 @@ function renderTitles(titles, existingAiScores) {
         });
     });
 
+    // Wire up swap buttons (regenerate single title)
+    container.querySelectorAll(".title-swap-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const idx = parseInt(btn.dataset.idx);
+            const row = btn.closest(".title-row");
+            const input = row.querySelector(".title-editable");
+
+            // Collect all current titles so AI avoids duplicates
+            const currentTitles = [...document.querySelectorAll(".title-editable")].map(el => el.value);
+            const topic = document.getElementById("video-topic")?.value || "";
+            const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+
+            btn.disabled = true;
+            btn.textContent = "...";
+            try {
+                const resp = await fetch("/api/swap-title", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ current_titles: currentTitles, topic, video_type: videoType }),
+                });
+                const data = await resp.json();
+                if (data.title) {
+                    input.value = data.title;
+                    row.dataset.original = data.title;
+                    originalTitles[idx] = data.title;
+                    delete aiScores[idx];
+                    // Update local score
+                    const { score, breakdown } = scoreTitle(data.title);
+                    const badge = row.querySelector(".title-score-badge");
+                    const label = row.querySelector(".title-score-label");
+                    badge.innerHTML = score;
+                    badge.classList.remove("ai-scored");
+                    badge.style.background = getScoreColor(score);
+                    badge.title = breakdown.join("\n");
+                    label.textContent = getScoreLabel(score);
+                    label.style.color = getScoreColor(score);
+                    // Hide revert/rescore since this is now the new original
+                    row.querySelector(".title-revert-btn").style.display = "none";
+                    row.querySelector(".title-rescore-btn").style.display = "none";
+                    // Fire off AI score for the new title
+                    fetchSingleAiScore(idx, data.title);
+                    savePlannerState();
+                } else {
+                    btn.textContent = "Failed";
+                    setTimeout(() => { btn.textContent = "Swap"; }, 1500);
+                }
+            } catch (err) {
+                btn.textContent = "Failed";
+                setTimeout(() => { btn.textContent = "Swap"; }, 1500);
+            }
+            btn.disabled = false;
+            btn.textContent = "Swap";
+        });
+    });
+
     // Wire up save buttons
     container.querySelectorAll(".title-save-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
@@ -1099,6 +1155,37 @@ async function fetchAiScores(titles) {
         savePlannerState();
     } catch (err) {
         console.log("AI scoring failed, keeping local scores:", err);
+    }
+}
+
+async function fetchSingleAiScore(idx, title) {
+    const topic = document.getElementById("video-topic")?.value || "";
+    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    try {
+        const resp = await fetch("/api/score-titles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ titles: [title], topic, video_type: videoType }),
+        });
+        const data = await resp.json();
+        if (data.scores && data.scores.length) {
+            const ai = data.scores[0];
+            aiScores[idx] = ai;
+            const row = document.querySelectorAll(".title-row")[idx];
+            if (row) {
+                const badge = row.querySelector(".title-score-badge");
+                const label = row.querySelector(".title-score-label");
+                badge.innerHTML = ai.score + '<span class="ai-badge-label">AI</span>';
+                badge.classList.add("ai-scored");
+                badge.style.background = getScoreColor(ai.score);
+                badge.title = ai.rationale + (ai.suggestion ? "\n\nSuggestion: " + ai.suggestion : "");
+                label.textContent = getScoreLabel(ai.score);
+                label.style.color = getScoreColor(ai.score);
+            }
+            savePlannerState();
+        }
+    } catch (err) {
+        console.log("Single AI score failed:", err);
     }
 }
 

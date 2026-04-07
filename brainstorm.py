@@ -852,6 +852,51 @@ RULES:
     return json.loads(text)
 
 
+def swap_single_title(
+    current_titles: list[str],
+    topic: str,
+    video_type: str,
+    video_data: list[dict],
+    api_key: str,
+    market_data: dict = None,
+    title_history: list = None,
+) -> str:
+    """Generate one replacement title that's different from the existing options."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    top_titles = ""
+    if video_data:
+        top_titles = "\n".join(
+            f"- \"{v['title']}\" ({v['view_count']:,} views)"
+            for v in sorted(video_data, key=lambda x: x["view_count"], reverse=True)[:10]
+        )
+
+    market_section = _build_market_section(market_data)
+    history_section = _build_title_history_section(title_history)
+    existing_str = "\n".join(f"- \"{t}\"" for t in current_titles)
+
+    system = f"""You are a YouTube title specialist for a bitcoin/freedom tech channel.
+
+**Creator's top performing titles:**
+{top_titles}
+{market_section}
+{history_section}
+
+**Current title options (DO NOT repeat any of these):**
+{existing_str}
+
+Generate exactly ONE new title that is distinctly different from all the options above — different angle, different format, different hook. Respond with ONLY the title text, nothing else."""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=100,
+        system=system,
+        messages=[{"role": "user", "content": f"Generate one fresh title for a {video_type} video about: {topic}"}],
+    )
+
+    return response.content[0].text.strip().strip('"')
+
+
 def regenerate_titles(
     video_type: str,
     topic: str,

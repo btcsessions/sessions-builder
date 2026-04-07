@@ -866,6 +866,39 @@ def _build_scoring_context() -> dict:
     }
 
 
+@app.route("/api/swap-title", methods=["POST"])
+def api_swap_title():
+    """Generate a single replacement title, avoiding duplicates of existing ones."""
+    data = request.get_json()
+    current_titles = data.get("current_titles", [])
+    topic = data.get("topic", "")
+    video_type = data.get("video_type", "tutorial")
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import swap_single_title
+        market_data = {
+            "info": get_current_market_info(_btc_prices),
+            "summary": get_market_summary(_btc_prices, video_cache),
+        }
+        title = swap_single_title(
+            current_titles=current_titles,
+            topic=topic,
+            video_type=video_type,
+            video_data=video_cache,
+            api_key=api_key,
+            market_data=market_data,
+            title_history=title_history,
+        )
+        return jsonify({"title": title})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/affiliate-links", methods=["GET"])
 def api_get_affiliate_links():
     settings = load_settings()
