@@ -2056,7 +2056,7 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     }
 
     html += `
-<script>
+<` + `script>
 function copyText(id) {
   const el = document.getElementById(id);
   const text = el.innerText || el.textContent;
@@ -2067,7 +2067,7 @@ function copyText(id) {
     setTimeout(() => { btn.textContent = orig; }, 1500);
   });
 }
-</script>
+</` + `script>
 </body></html>`;
 
     const blob = new Blob([html], { type: "text/html" });
