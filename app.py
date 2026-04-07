@@ -1082,6 +1082,12 @@ def api_regenerate_titles():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/scoring-context", methods=["GET"])
+def api_scoring_context():
+    """Return the current title scoring context."""
+    return jsonify({"scoring_ctx": _build_scoring_context()})
+
+
 @app.route("/api/score-titles", methods=["POST"])
 def api_score_titles():
     """Have Claude score and critique title options."""

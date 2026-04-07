@@ -1774,7 +1774,7 @@ document.getElementById("saved-titles-toggle")?.addEventListener("click", () => 
 refreshSavedTitles();
 
 /* --- Load Saved Plan --- */
-function loadSavedPlan(plan) {
+async function loadSavedPlan(plan) {
     const fp = plan.full_plan;
     if (!fp) return;
 
@@ -1830,9 +1830,19 @@ function loadSavedPlan(plan) {
     // Restore links
     planLinks = fp.links || [];
 
+    // Fetch fresh scoring context so titles don't all show 50
+    try {
+        const ctxResp = await fetch("/api/scoring-context");
+        const ctxData = await ctxResp.json();
+        if (ctxData.scoring_ctx) scoringCtx = ctxData.scoring_ctx;
+    } catch (e) {}
+
     // Render the plan
     renderPlanFromCache(fp, {}, []);
     results.style.display = "block";
+
+    // Fire off AI scoring for titles
+    fetchAiScores(fp.titles);
 
     // Hide analysis view if showing
     document.getElementById("analysis-loading").style.display = "none";
