@@ -297,7 +297,10 @@
             </section>
 
             <section class="plan-card">
-                <h2>Description</h2>
+                <div class="plan-card-header-row">
+                    <h2>Description</h2>
+                    <button class="btn small" id="copy-desc-btn" title="Copy to clipboard">Copy</button>
+                </div>
                 <textarea id="plan-description" class="plan-editable-text" rows="10"></textarea>
             </section>
 
@@ -912,6 +915,7 @@ function renderTitles(titles, existingAiScores) {
             <span class="title-score-label" style="color:${getScoreColor(displayScore)}">${getScoreLabel(displayScore)}</span>
             <button class="btn small title-rescore-btn" data-idx="${i}" title="Get AI score for this title" style="display:none">Re-score</button>
             <button class="btn small title-revert-btn" data-idx="${i}" title="Revert to original" style="display:none">Revert</button>
+            <button class="btn small title-copy-btn" data-idx="${i}" title="Copy title">Copy</button>
             <button class="btn small title-save-btn" data-idx="${i}" title="Save this title to your preferences">Save</button>
         </div>`;
     }).join("");
@@ -1000,6 +1004,18 @@ function renderTitles(titles, existingAiScores) {
             }
             btn.disabled = false;
             btn.textContent = "Re-score";
+        });
+    });
+
+    // Wire up copy buttons
+    container.querySelectorAll(".title-copy-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const row = btn.closest(".title-row");
+            const input = row.querySelector(".title-editable");
+            navigator.clipboard.writeText(input.value).then(() => {
+                btn.textContent = "Copied!";
+                setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+            });
         });
     });
 
@@ -1131,6 +1147,16 @@ document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
     const text = document.getElementById("plan-yt-tags").value;
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById("copy-yt-tags-btn");
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+    });
+});
+
+// Copy Description button
+document.getElementById("copy-desc-btn")?.addEventListener("click", () => {
+    const text = document.getElementById("plan-description").value;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById("copy-desc-btn");
         btn.textContent = "Copied!";
         setTimeout(() => { btn.textContent = "Copy"; }, 1500);
     });
