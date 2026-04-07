@@ -554,6 +554,27 @@
         </section>
         {% endif %}
 
+        <!-- Market Performance Analysis -->
+        <section class="trend-card">
+            <h2>Market Performance Analysis</h2>
+            <p class="trend-subtitle">Deep analysis of what content works in each market phase, including thumbnail patterns</p>
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.5rem;">
+                <select id="analysis-phase" class="insp-add-select" style="padding:0.35rem 0.5rem;">
+                    <option value="bear">Bear Market</option>
+                    <option value="bull">Bull Market</option>
+                    <option value="sideways">Sideways</option>
+                </select>
+                <label style="font-size:0.8rem; color:var(--text-muted);">From</label>
+                <input type="date" id="analysis-date-from" class="plan-editable-input" style="width:auto;">
+                <label style="font-size:0.8rem; color:var(--text-muted);">To</label>
+                <input type="date" id="analysis-date-to" class="plan-editable-input" style="width:auto;">
+                <button class="btn primary" id="generate-market-analysis-btn">Generate Analysis</button>
+            </div>
+            <div id="market-analysis-loading" class="plan-loading" style="display:none">Analyzing videos and thumbnails... this may take a moment.</div>
+            <div id="market-analysis-error" class="form-hint" style="display:none"></div>
+            <div id="market-analysis-results" style="display:none"></div>
+        </section>
+
         <!-- Archived Plans -->
         <section class="trend-card" id="archived-plans-section" style="display:none">
             <div class="trend-card-header-row" id="archived-plans-toggle" style="cursor:pointer;">
@@ -573,6 +594,138 @@ function esc(text) {
     const d = document.createElement("div");
     d.textContent = text;
     return d.innerHTML;
+}
+
+/* --- Market Performance Analysis --- */
+document.getElementById("generate-market-analysis-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("generate-market-analysis-btn");
+    const loading = document.getElementById("market-analysis-loading");
+    const errorEl = document.getElementById("market-analysis-error");
+    const resultsEl = document.getElementById("market-analysis-results");
+
+    const phase = document.getElementById("analysis-phase").value;
+    const dateFrom = document.getElementById("analysis-date-from").value;
+    const dateTo = document.getElementById("analysis-date-to").value;
+
+    btn.disabled = true;
+    loading.style.display = "block";
+    errorEl.style.display = "none";
+    resultsEl.style.display = "none";
+
+    try {
+        const resp = await fetch("/api/market-analysis", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phase, date_from: dateFrom, date_to: dateTo }),
+        });
+        const data = await resp.json();
+        loading.style.display = "none";
+
+        if (data.error) {
+            errorEl.textContent = data.error;
+            errorEl.style.display = "block";
+        } else {
+            renderMarketAnalysis(data, phase);
+            resultsEl.style.display = "block";
+        }
+    } catch (err) {
+        loading.style.display = "none";
+        errorEl.textContent = "Failed: " + err.message;
+        errorEl.style.display = "block";
+    }
+    btn.disabled = false;
+});
+
+function renderMarketAnalysis(data, phase) {
+    const el = document.getElementById("market-analysis-results");
+    const s = data.stats || {};
+    const phaseLabel = phase.charAt(0).toUpperCase() + phase.slice(1);
+
+    let html = `
+    <div class="analysis-report">
+        <div class="analysis-stats-bar">
+            <span><strong>${s.total_videos}</strong> videos</span>
+            <span>Avg: <strong>${(s.avg_views || 0).toLocaleString()}</strong> views</span>
+            <span>Top ${s.top_count}: <strong>${(s.top_avg || 0).toLocaleString()}</strong> avg</span>
+            <span>Bottom ${s.bottom_count}: <strong>${(s.bottom_avg || 0).toLocaleString()}</strong> avg</span>
+        </div>
+
+        <p class="analysis-summary">${esc(data.summary || '')}</p>
+
+        <div class="analysis-section">
+            <h3>Title Patterns</h3>
+            <div class="analysis-compare">
+                <div class="analysis-col winner">
+                    <div class="analysis-col-label">Winners</div>
+                    <p>${esc(data.title_patterns?.winners || '')}</p>
+                </div>
+                <div class="analysis-col loser">
+                    <div class="analysis-col-label">Losers</div>
+                    <p>${esc(data.title_patterns?.losers || '')}</p>
+                </div>
+            </div>
+            <p class="analysis-rec">${esc(data.title_patterns?.recommendation || '')}</p>
+        </div>
+
+        <div class="analysis-section">
+            <h3>Topics</h3>
+            <div class="analysis-compare">
+                <div class="analysis-col winner">
+                    <div class="analysis-col-label">Best Topics</div>
+                    <ul>${(data.topic_analysis?.best_topics || []).map(t => '<li>' + esc(t) + '</li>').join('')}</ul>
+                </div>
+                <div class="analysis-col loser">
+                    <div class="analysis-col-label">Worst Topics</div>
+                    <ul>${(data.topic_analysis?.worst_topics || []).map(t => '<li>' + esc(t) + '</li>').join('')}</ul>
+                </div>
+            </div>
+            <p class="analysis-rec">${esc(data.topic_analysis?.recommendation || '')}</p>
+        </div>
+
+        <div class="analysis-section">
+            <h3>Format</h3>
+            <p>${esc(data.format_analysis?.best_formats || '')}</p>
+            <p class="analysis-rec">${esc(data.format_analysis?.recommendation || '')}</p>
+        </div>
+
+        <div class="analysis-section">
+            <h3>Thumbnail Analysis</h3>
+            <div class="analysis-compare">
+                <div class="analysis-col winner">
+                    <div class="analysis-col-label">Winning Patterns</div>
+                    <p>${esc(data.thumbnail_analysis?.winning_patterns || '')}</p>
+                    ${(data.top_videos || []).map(v => v.thumbnail_url ?
+                        '<div class="analysis-thumb"><img src="' + esc(v.thumbnail_url) + '" loading="lazy"><span>' + esc(v.title.slice(0, 45)) + ' — ' + v.views.toLocaleString() + '</span></div>' : ''
+                    ).join('')}
+                </div>
+                <div class="analysis-col loser">
+                    <div class="analysis-col-label">Losing Patterns</div>
+                    <p>${esc(data.thumbnail_analysis?.losing_patterns || '')}</p>
+                    ${(data.bottom_videos || []).map(v => v.thumbnail_url ?
+                        '<div class="analysis-thumb"><img src="' + esc(v.thumbnail_url) + '" loading="lazy"><span>' + esc(v.title.slice(0, 45)) + ' — ' + v.views.toLocaleString() + '</span></div>' : ''
+                    ).join('')}
+                </div>
+            </div>
+            ${(data.thumbnail_analysis?.specific_observations || []).map(o =>
+                '<p class="analysis-observation">' + esc(o) + '</p>'
+            ).join('')}
+            <p class="analysis-rec">${esc(data.thumbnail_analysis?.recommendation || '')}</p>
+        </div>
+
+        <div class="analysis-section">
+            <h3>Engagement Insights</h3>
+            <p>${esc(data.engagement_insights || '')}</p>
+        </div>
+
+        <div class="analysis-section">
+            <h3>Actionable Takeaways</h3>
+            <ul class="analysis-takeaways">
+                ${(data.actionable_takeaways || []).map(t => '<li>' + esc(t) + '</li>').join('')}
+            </ul>
+        </div>
+    </div>`;
+
+    el.innerHTML = html;
 }
 
 /* --- Outlier tabs --- */

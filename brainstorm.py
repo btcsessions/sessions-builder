@@ -1525,3 +1525,154 @@ RULES:
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
+
+
+def analyze_market_performance(
+    videos: list[dict],
+    phase: str,
+    api_key: str,
+    video_categories: dict = None,
+) -> dict:
+    """Analyze content performance in a specific market phase with thumbnail vision."""
+    import base64
+    import urllib.request
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    if not videos:
+        return {"error": "No videos found for this phase and date range."}
+
+    # Sort by views, split into top and bottom performers
+    sorted_vids = sorted(videos, key=lambda v: v["view_count"], reverse=True)
+    median_views = sorted_vids[len(sorted_vids) // 2]["view_count"]
+    top_performers = [v for v in sorted_vids if v["view_count"] >= median_views][:10]
+    bottom_performers = [v for v in sorted_vids if v["view_count"] < median_views][-10:]
+
+    # Fetch thumbnails for top and bottom performers
+    def fetch_thumb_b64(url):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read()
+                return base64.standard_b64encode(data).decode("utf-8")
+        except Exception:
+            return None
+
+    # Build image content blocks for Claude Vision
+    thumb_content = []
+    thumb_content.append({"type": "text", "text": "TOP PERFORMERS — thumbnails:"})
+    for v in top_performers[:6]:
+        thumb_url = v.get("thumbnail_url", "")
+        if thumb_url:
+            b64 = fetch_thumb_b64(thumb_url)
+            if b64:
+                media_type = "image/jpeg"
+                if thumb_url.endswith(".png"):
+                    media_type = "image/png"
+                thumb_content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": b64},
+                })
+                thumb_content.append({
+                    "type": "text",
+                    "text": f'"{v["title"]}" — {v["view_count"]:,} views',
+                })
+
+    thumb_content.append({"type": "text", "text": "\nBOTTOM PERFORMERS — thumbnails:"})
+    for v in bottom_performers[:6]:
+        thumb_url = v.get("thumbnail_url", "")
+        if thumb_url:
+            b64 = fetch_thumb_b64(thumb_url)
+            if b64:
+                media_type = "image/jpeg"
+                if thumb_url.endswith(".png"):
+                    media_type = "image/png"
+                thumb_content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": b64},
+                })
+                thumb_content.append({
+                    "type": "text",
+                    "text": f'"{v["title"]}" — {v["view_count"]:,} views',
+                })
+
+    # Build text summary of all videos
+    categories = video_categories or {}
+    all_video_text = "\n".join(
+        f'- "{v["title"]}" | {v["view_count"]:,} views | {v.get("engagement_rate", 0)}% eng | category: {categories.get(v.get("video_id", ""), "uncategorized")}'
+        for v in sorted_vids
+    )
+
+    avg_views = sum(v["view_count"] for v in videos) // len(videos)
+    top_avg = sum(v["view_count"] for v in top_performers) // len(top_performers) if top_performers else 0
+    bottom_avg = sum(v["view_count"] for v in bottom_performers) // len(bottom_performers) if bottom_performers else 0
+
+    system = f"""You are a YouTube analytics expert analyzing how a bitcoin/freedom tech channel performs during {phase} markets.
+
+**{phase.upper()} MARKET VIDEOS ({len(videos)} total):**
+Average views: {avg_views:,}
+Top performers avg: {top_avg:,}
+Bottom performers avg: {bottom_avg:,}
+
+{all_video_text}
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "summary": "3-4 sentence overview of how this channel performs in {phase} markets",
+  "title_patterns": {{
+    "winners": "What title patterns/words/formats the top performers share",
+    "losers": "What title patterns the bottom performers share",
+    "recommendation": "Specific title advice for {phase} markets"
+  }},
+  "topic_analysis": {{
+    "best_topics": ["Topic/category that performs best with brief explanation"],
+    "worst_topics": ["Topic/category that underperforms with brief explanation"],
+    "recommendation": "What topics to prioritize in {phase} markets"
+  }},
+  "format_analysis": {{
+    "best_formats": "Which video types (tutorial, comparison, list, etc.) do best",
+    "recommendation": "Format advice for {phase} markets"
+  }},
+  "thumbnail_analysis": {{
+    "winning_patterns": "What the top-performing thumbnails have in common (describe what you see)",
+    "losing_patterns": "What the bottom-performing thumbnails have in common",
+    "specific_observations": ["Individual observation about specific thumbnails"],
+    "recommendation": "Thumbnail strategy for {phase} markets"
+  }},
+  "engagement_insights": "Any patterns in engagement rate vs views",
+  "actionable_takeaways": ["Concrete takeaway 1", "Concrete takeaway 2", "Concrete takeaway 3"]
+}}
+
+Be specific and reference actual video titles. The thumbnail analysis should describe what you literally see in the images — colors, text overlays, facial expressions, products shown, composition, etc."""
+
+    # Build the user message with thumbnail images
+    user_content = list(thumb_content)
+    user_content.append({
+        "type": "text",
+        "text": f"Analyze my channel's {phase} market performance. Compare what works vs what doesn't — especially look at the thumbnails and tell me what patterns you see between winners and losers."
+    })
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2500,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    result = json.loads(text)
+    result["stats"] = {
+        "total_videos": len(videos),
+        "avg_views": avg_views,
+        "top_count": len(top_performers),
+        "top_avg": top_avg,
+        "bottom_count": len(bottom_performers),
+        "bottom_avg": bottom_avg,
+    }
+    result["top_videos"] = [{"title": v["title"], "views": v["view_count"], "thumbnail_url": v.get("thumbnail_url", "")} for v in top_performers[:6]]
+    result["bottom_videos"] = [{"title": v["title"], "views": v["view_count"], "thumbnail_url": v.get("thumbnail_url", "")} for v in bottom_performers[:6]]
+    return result

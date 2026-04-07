@@ -1716,6 +1716,58 @@ def api_fetch_analytics():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/market-analysis", methods=["POST"])
+def api_market_analysis():
+    """Generate deep market phase analysis with thumbnail vision."""
+    data = request.get_json()
+    phase = data.get("phase", "bear")
+    date_from = data.get("date_from", "")
+    date_to = data.get("date_to", "")
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    if not video_cache:
+        return jsonify({"error": "No videos loaded."}), 400
+
+    from datetime import datetime, timezone
+
+    # Tag all videos with market phase and filter by phase + date range
+    phase_videos = []
+    for v in video_cache:
+        vc = dict(v)
+        tag_video_market_phase(vc, _btc_prices)
+        if vc.get("_market_phase") != phase:
+            continue
+        # Date range filter
+        try:
+            pub = v["published_at"][:10]
+            if date_from and pub < date_from:
+                continue
+            if date_to and pub > date_to:
+                continue
+        except (KeyError, TypeError):
+            continue
+        phase_videos.append(vc)
+
+    if not phase_videos:
+        return jsonify({"error": f"No {phase} market videos found in that date range."}), 400
+
+    try:
+        from brainstorm import analyze_market_performance
+        result = analyze_market_performance(
+            videos=phase_videos,
+            phase=phase,
+            api_key=api_key,
+            video_categories=video_categories,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/generate-trend-report", methods=["POST"])
 def api_generate_trend_report():
     settings = load_settings()

@@ -1201,6 +1201,55 @@ tr:hover { background: var(--surface2); }
 .pm-section { margin-top: 0.3rem; color: var(--text-muted); font-size: 0.72rem; }
 .pm-section strong { color: var(--text); }
 
+/* Market Analysis Report */
+.analysis-report { margin-top: 1rem; }
+.analysis-stats-bar {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface2);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+.analysis-summary { font-size: 0.9rem; line-height: 1.55; margin-bottom: 1rem; color: var(--text); }
+.analysis-section { margin-bottom: 1.25rem; }
+.analysis-section h3 { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.4rem; }
+.analysis-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.analysis-col {
+    padding: 0.6rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.analysis-col.winner { background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); }
+.analysis-col.loser { background: rgba(229, 57, 53, 0.08); border: 1px solid rgba(229, 57, 53, 0.2); }
+.analysis-col-label { font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+.analysis-col.winner .analysis-col-label { color: var(--green, #4caf50); }
+.analysis-col.loser .analysis-col-label { color: var(--red, #e53935); }
+.analysis-col ul { margin: 0; padding-left: 1rem; }
+.analysis-col li { margin-bottom: 0.2rem; }
+.analysis-rec { font-size: 0.82rem; color: var(--accent); font-style: italic; margin-top: 0.3rem; }
+.analysis-thumb {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+.analysis-thumb img { width: 80px; border-radius: 4px; flex-shrink: 0; }
+.analysis-observation { font-size: 0.78rem; color: var(--text-muted); margin: 0.25rem 0; padding-left: 0.5rem; border-left: 2px solid var(--border); }
+.analysis-takeaways { padding-left: 1.2rem; }
+.analysis-takeaways li { margin-bottom: 0.35rem; font-size: 0.85rem; line-height: 1.45; }
+
 /* Inspiration page */
 .inspiration-layout {
     max-width: 1200px;
