@@ -625,6 +625,8 @@ document.getElementById("generate-market-analysis-btn")?.addEventListener("click
             errorEl.textContent = data.error;
             errorEl.style.display = "block";
         } else {
+            lastAnalysisData = data;
+            lastAnalysisPhase = phase;
             renderMarketAnalysis(data, phase);
             resultsEl.style.display = "block";
         }
@@ -723,9 +725,163 @@ function renderMarketAnalysis(data, phase) {
                 ${(data.actionable_takeaways || []).map(t => '<li>' + esc(t) + '</li>').join('')}
             </ul>
         </div>
+        <div style="margin-top:1rem; text-align:right;">
+            <button class="btn secondary" onclick="exportMarketAnalysis()">Export Analysis</button>
+        </div>
     </div>`;
 
     el.innerHTML = html;
+}
+
+let lastAnalysisData = null;
+let lastAnalysisPhase = "";
+
+function exportMarketAnalysis() {
+    const data = lastAnalysisData;
+    const phase = lastAnalysisPhase;
+    if (!data) return;
+
+    const s = data.stats || {};
+    const phaseLabel = phase.charAt(0).toUpperCase() + phase.slice(1);
+    const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    const topThumbs = (data.top_videos || []).map(v =>
+        v.thumbnail_url ? `<div style="display:flex;align-items:center;gap:0.5rem;margin:0.4rem 0;">
+            <img src="${esc(v.thumbnail_url)}" style="width:120px;border-radius:6px;">
+            <div><strong>${esc(v.title)}</strong><br><span style="color:#888;">${v.views.toLocaleString()} views</span></div>
+        </div>` : ''
+    ).join('');
+
+    const bottomThumbs = (data.bottom_videos || []).map(v =>
+        v.thumbnail_url ? `<div style="display:flex;align-items:center;gap:0.5rem;margin:0.4rem 0;">
+            <img src="${esc(v.thumbnail_url)}" style="width:120px;border-radius:6px;">
+            <div><strong>${esc(v.title)}</strong><br><span style="color:#888;">${v.views.toLocaleString()} views</span></div>
+        </div>` : ''
+    ).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${phaseLabel} Market Analysis</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; color: #1a1a1a; max-width: 850px; margin: 0 auto; padding: 2rem; line-height: 1.6; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .stats { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; background: #f5f5f5; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.85rem; }
+  .summary { font-size: 1rem; line-height: 1.7; margin-bottom: 2rem; padding: 1rem; background: #fafafa; border-left: 4px solid #f5a623; border-radius: 0 8px 8px 0; }
+  .section { margin-bottom: 2rem; page-break-inside: avoid; }
+  .section-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-bottom: 0.6rem; padding-bottom: 0.3rem; }
+  .section-title.orange { color: #f5a623; border-bottom: 2px solid #f5a623; }
+  .section-title.blue { color: #42a5f5; border-bottom: 2px solid #42a5f5; }
+  .section-title.green { color: #4caf50; border-bottom: 2px solid #4caf50; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem; }
+  .col { padding: 0.75rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.55; }
+  .col.win { background: rgba(76,175,80,0.06); border: 1px solid rgba(76,175,80,0.2); }
+  .col.lose { background: rgba(229,57,53,0.06); border: 1px solid rgba(229,57,53,0.2); }
+  .col-label { font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+  .col.win .col-label { color: #4caf50; }
+  .col.lose .col-label { color: #e53935; }
+  .col ul { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+  .col li { margin-bottom: 0.2rem; }
+  .rec { font-size: 0.88rem; color: #f5a623; font-weight: 600; margin-top: 0.4rem; padding: 0.5rem 0.75rem; background: #fff8e1; border-radius: 6px; }
+  .observation { font-size: 0.82rem; color: #666; margin: 0.3rem 0; padding-left: 0.6rem; border-left: 2px solid #ddd; }
+  .takeaways { padding-left: 1.2rem; }
+  .takeaways li { margin-bottom: 0.5rem; font-size: 0.95rem; line-height: 1.5; }
+  .page-break { page-break-before: always; border-top: 3px solid #f5a623; margin: 2rem 0; padding-top: 1.5rem; }
+  @media print { body { padding: 1rem; } }
+</style></head><body>
+
+<h1>${phaseLabel} Market Analysis</h1>
+<p class="subtitle">${date} &middot; ${s.total_videos} videos analyzed</p>
+
+<div class="stats">
+    <span>Average views: <strong>${(s.avg_views||0).toLocaleString()}</strong></span>
+    <span>Top performers: <strong>${(s.top_avg||0).toLocaleString()}</strong> avg (${s.top_count} videos)</span>
+    <span>Bottom performers: <strong>${(s.bottom_avg||0).toLocaleString()}</strong> avg (${s.bottom_count} videos)</span>
+</div>
+
+<div class="summary">${esc(data.summary || '')}</div>
+
+<div class="section">
+    <div class="section-title orange">Title Strategy</div>
+    <div class="compare">
+        <div class="col win">
+            <div class="col-label">What winners do</div>
+            <p>${esc(data.title_patterns?.winners || '')}</p>
+        </div>
+        <div class="col lose">
+            <div class="col-label">What losers do</div>
+            <p>${esc(data.title_patterns?.losers || '')}</p>
+        </div>
+    </div>
+    <div class="rec">${esc(data.title_patterns?.recommendation || '')}</div>
+</div>
+
+<div class="section">
+    <div class="section-title orange">Topic Strategy</div>
+    <div class="compare">
+        <div class="col win">
+            <div class="col-label">Best topics</div>
+            <ul>${(data.topic_analysis?.best_topics || []).map(t => '<li>' + esc(t) + '</li>').join('')}</ul>
+        </div>
+        <div class="col lose">
+            <div class="col-label">Worst topics</div>
+            <ul>${(data.topic_analysis?.worst_topics || []).map(t => '<li>' + esc(t) + '</li>').join('')}</ul>
+        </div>
+    </div>
+    <div class="rec">${esc(data.topic_analysis?.recommendation || '')}</div>
+</div>
+
+<div class="section">
+    <div class="section-title orange">Format Strategy</div>
+    <p style="font-size:0.9rem;">${esc(data.format_analysis?.best_formats || '')}</p>
+    <div class="rec">${esc(data.format_analysis?.recommendation || '')}</div>
+</div>
+
+<div class="page-break">
+    <div class="section-title blue">Thumbnail Analysis</div>
+</div>
+
+<div class="section">
+    <div class="compare">
+        <div class="col win">
+            <div class="col-label">Winning thumbnail patterns</div>
+            <p>${esc(data.thumbnail_analysis?.winning_patterns || '')}</p>
+            <div style="margin-top:0.75rem;">${topThumbs}</div>
+        </div>
+        <div class="col lose">
+            <div class="col-label">Losing thumbnail patterns</div>
+            <p>${esc(data.thumbnail_analysis?.losing_patterns || '')}</p>
+            <div style="margin-top:0.75rem;">${bottomThumbs}</div>
+        </div>
+    </div>
+    ${(data.thumbnail_analysis?.specific_observations || []).map(o =>
+        '<p class="observation">' + esc(o) + '</p>'
+    ).join('')}
+    <div class="rec">${esc(data.thumbnail_analysis?.recommendation || '')}</div>
+</div>
+
+<div class="section">
+    <div class="section-title blue">Engagement Insights</div>
+    <p style="font-size:0.9rem;">${esc(data.engagement_insights || '')}</p>
+</div>
+
+<div class="section">
+    <div class="section-title green">Actionable Takeaways</div>
+    <ol class="takeaways">
+        ${(data.actionable_takeaways || []).map(t => '<li>' + esc(t) + '</li>').join('')}
+    </ol>
+</div>
+
+</body></html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${phase}-market-analysis.html`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 /* --- Outlier tabs --- */
