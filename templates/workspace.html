@@ -1911,77 +1911,131 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     if (!plan) return;
 
     const topic = document.getElementById("video-topic")?.value || "Video Plan";
+    const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
     // Collect titles with scores
     const titlesWithScores = [...document.querySelectorAll(".title-row")].map(row => {
         const title = row.querySelector(".title-editable").value;
         const badge = row.querySelector(".title-score-badge");
         const score = badge ? badge.textContent.replace("AI", "").trim() : "";
-        return { title, score: parseInt(score) || 0 };
+        const isAi = badge?.classList.contains("ai-scored");
+        return { title, score: parseInt(score) || 0, isAi };
     });
     titlesWithScores.sort((a, b) => b.score - a.score);
 
-    // PAGE 1: YouTube Upload Info
-    let doc = "";
-    doc += "═══════════════════════════════════════════════\n";
-    doc += `  ${topic.toUpperCase()}\n`;
-    doc += "═══════════════════════════════════════════════\n\n";
-
-    doc += "TITLE OPTIONS (by score)\n";
-    doc += "───────────────────────────────────────────────\n";
-    titlesWithScores.forEach((t, i) => {
-        doc += `  ${i + 1}. [${t.score}] ${t.title}\n`;
-    });
-
-    doc += "\n\nDESCRIPTION\n";
-    doc += "───────────────────────────────────────────────\n";
-    doc += plan.description + "\n";
-
     const tags = document.getElementById("plan-yt-tags")?.value || "";
-    if (tags) {
-        doc += "\n\nTAGS\n";
-        doc += "───────────────────────────────────────────────\n";
-        doc += tags + "\n";
+    const descText = (plan.description || "").replace(/\n/g, "<br>");
+
+    function scoreColor(s) {
+        if (s >= 75) return "#4caf50";
+        if (s >= 55) return "#f5a623";
+        if (s >= 40) return "#999";
+        return "#e53935";
     }
 
-    // PAGE 2: Recording Outline
-    doc += "\n\n\n═══════════════════════════════════════════════\n";
-    doc += "  RECORDING OUTLINE\n";
-    doc += "═══════════════════════════════════════════════\n\n";
+    let html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${esc(topic)} - Video Plan</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 2rem; line-height: 1.6; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .date { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  .section { margin-bottom: 2rem; page-break-inside: avoid; }
+  .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #f5a623; font-weight: 700; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid #f5a623; }
+  .section-title.blue { color: #42a5f5; border-color: #42a5f5; }
+  .title-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+  .title-row:last-child { border-bottom: none; }
+  .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; color: #fff; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+  .title-text { font-size: 0.95rem; }
+  .desc-box { background: #f9f9f9; border: 1px solid #e5e5e5; border-radius: 8px; padding: 1rem; font-size: 0.9rem; line-height: 1.7; white-space: pre-wrap; }
+  .tags-box { background: #f0f7ff; border: 1px solid #d0e3f5; border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; color: #333; }
+  .page-break { page-break-before: always; border-top: 3px solid #f5a623; margin: 2.5rem 0; padding-top: 1.5rem; }
+  .hook-box { background: #fff8e1; border-left: 4px solid #f5a623; padding: 0.75rem 1rem; font-size: 0.95rem; font-style: italic; border-radius: 0 8px 8px 0; margin-bottom: 1.5rem; }
+  .outline-section { margin-bottom: 1.25rem; }
+  .outline-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3rem; }
+  .outline-name { font-weight: 700; font-size: 1rem; }
+  .outline-duration { color: #888; font-size: 0.8rem; }
+  .outline-points { margin: 0; padding-left: 1.5rem; }
+  .outline-points li { margin-bottom: 0.25rem; font-size: 0.9rem; }
+  .thumb-list { list-style: none; padding: 0; }
+  .thumb-list li { padding: 0.35rem 0; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+  .thumb-list li:last-child { border-bottom: none; }
+  .thumb-num { display: inline-block; width: 1.4rem; height: 1.4rem; line-height: 1.4rem; text-align: center; background: #f5a623; color: #fff; border-radius: 50%; font-size: 0.7rem; font-weight: 700; margin-right: 0.5rem; }
+  @media print { body { padding: 1rem; } .page-break { border-top: none; } }
+</style></head><body>
+
+<h1>${esc(topic)}</h1>
+<p class="date">${date}</p>
+
+<div class="section">
+  <div class="section-title">Title Options</div>
+  ${titlesWithScores.map(t => `<div class="title-row">
+    <span class="score-badge" style="background:${scoreColor(t.score)}">${t.score}</span>
+    <span class="title-text">${esc(t.title)}</span>
+  </div>`).join("")}
+</div>
+
+<div class="section">
+  <div class="section-title">Description</div>
+  <div class="desc-box">${descText}</div>
+</div>`;
+
+    if (tags) {
+        html += `
+<div class="section">
+  <div class="section-title">YouTube Tags</div>
+  <div class="tags-box">${esc(tags)}</div>
+</div>`;
+    }
+
+    // Page 2: Recording Outline
+    html += `<div class="page-break">
+  <div class="section-title blue">Recording Outline</div>
+</div>`;
 
     if (plan.intro_hook) {
-        doc += "INTRO HOOK\n";
-        doc += "───────────────────────────────────────────────\n";
-        doc += plan.intro_hook + "\n\n";
+        html += `
+<div class="section">
+  <div class="section-title blue">Intro Hook</div>
+  <div class="hook-box">${esc(plan.intro_hook)}</div>
+</div>`;
     }
 
     if (plan.outline && plan.outline.length) {
+        html += `<div class="section">`;
         plan.outline.forEach((s, i) => {
-            doc += `${i + 1}. ${s.section}`;
-            if (s.duration_hint) doc += `  (${s.duration_hint})`;
-            doc += "\n";
-            if (s.points) {
-                s.points.forEach(p => {
-                    doc += `   • ${p}\n`;
-                });
+            html += `<div class="outline-section">
+    <div class="outline-header">
+      <span class="outline-name">${i + 1}. ${esc(s.section)}</span>
+      ${s.duration_hint ? '<span class="outline-duration">' + esc(s.duration_hint) + '</span>' : ''}
+    </div>`;
+            if (s.points && s.points.length) {
+                html += `<ul class="outline-points">`;
+                s.points.forEach(p => { html += `<li>${esc(p)}</li>`; });
+                html += `</ul>`;
             }
-            doc += "\n";
+            html += `</div>`;
         });
+        html += `</div>`;
     }
 
     if (plan.thumbnail_ideas && plan.thumbnail_ideas.length) {
-        doc += "\nTHUMBNAIL IDEAS\n";
-        doc += "───────────────────────────────────────────────\n";
-        plan.thumbnail_ideas.forEach((t, i) => {
-            doc += `  ${i + 1}. ${t}\n`;
-        });
+        html += `
+<div class="section">
+  <div class="section-title blue">Thumbnail Ideas</div>
+  <ul class="thumb-list">
+    ${plan.thumbnail_ideas.map((t, i) => `<li><span class="thumb-num">${i + 1}</span>${esc(t)}</li>`).join("")}
+  </ul>
+</div>`;
     }
 
-    // Download as .txt
-    const blob = new Blob([doc], { type: "text/plain" });
+    html += `</body></html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const filename = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "") + "-plan.txt";
+    const filename = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "") + "-plan.html";
     a.href = url;
     a.download = filename;
     a.click();
