@@ -1934,7 +1934,35 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     titlesWithScores.sort((a, b) => b.score - a.score);
 
     const tags = document.getElementById("plan-yt-tags")?.value || "";
-    const descText = (plan.description || "").replace(/\n/g, "<br>");
+
+    // Build description from parts: intro paragraph, links, sponsors/timestamps
+    const rawDesc = plan.description || "";
+    // Split description into intro (before links/sponsors) and the rest
+    // Remove any [LINK ...] placeholders since we'll use real links from planLinks
+    const descCleaned = rawDesc.replace(/\[LINK[^\]]*\]\s*/g, "").trim();
+    // Split at sponsors or PASTE TIMESTAMPS — everything before is intro
+    const sponsorMatch = descCleaned.match(/\n\n(?=SHOW SPONSORS|PASTE TIMESTAMPS|---|\n{3})/i);
+    const introParagraph = sponsorMatch
+        ? descCleaned.substring(0, sponsorMatch.index).trim()
+        : descCleaned.split("\n\n")[0].trim();
+    const afterIntro = sponsorMatch
+        ? descCleaned.substring(sponsorMatch.index).trim()
+        : descCleaned.substring(introParagraph.length).trim();
+
+    // Build links section from actual planLinks data
+    const realLinks = (planLinks || []).filter(l => l.url && l.url !== "[LINK]");
+    const placeholderLinks = (planLinks || []).filter(l => !l.url || l.url === "[LINK]");
+
+    // Build the full description for copy: intro + links + sponsors/timestamps
+    let fullDescParts = [introParagraph];
+    if (realLinks.length || placeholderLinks.length) {
+        const linksText = [...realLinks, ...placeholderLinks]
+            .map(l => `${l.label}: ${l.url}`)
+            .join("\n");
+        fullDescParts.push(linksText);
+    }
+    if (afterIntro) fullDescParts.push(afterIntro);
+    const fullDescForCopy = fullDescParts.join("\n\n");
 
     function scoreColor(s) {
         if (s >= 75) return "#4caf50";
@@ -2000,8 +2028,29 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     <span class="section-title">Description</span>
     <button class="copy-btn" onclick="copyText('desc-content')">Copy</button>
   </div>
-  <div class="desc-box" id="desc-content">${descText}</div>
-</div>`;
+  <div class="desc-box" id="desc-content">${esc(introParagraph)}${(realLinks.length || placeholderLinks.length) ? '<br><br>' + [...realLinks, ...placeholderLinks].map(l => esc(l.label) + ': ' + esc(l.url)).join('<br>') : ''}${afterIntro ? '<br><br>' + afterIntro.split('\n').map(l => esc(l)).join('<br>') : ''}</div>
+</div>
+
+${realLinks.length ? `<div class="section">
+  <div class="section-header">
+    <span class="section-title">Links</span>
+  </div>
+  <div style="font-size:0.9rem;">
+  ${realLinks.map(l => `<div style="padding:0.3rem 0; border-bottom:1px solid #eee;">
+    <strong>${esc(l.label)}</strong><br>
+    <a href="${esc(l.url)}" style="color:#42a5f5; word-break:break-all;">${esc(l.url)}</a>
+  </div>`).join('')}
+  </div>
+</div>` : ''}
+
+${placeholderLinks.length ? `<div class="section">
+  <div class="section-header">
+    <span class="section-title" style="color:#e53935; border-color:#e53935;">Links Needed</span>
+  </div>
+  <div style="font-size:0.9rem;">
+  ${placeholderLinks.map(l => `<div style="padding:0.3rem 0; color:#999;">${esc(l.label)}: <em>URL needed</em></div>`).join('')}
+  </div>
+</div>` : ''}`;
 
     if (tags) {
         html += `
