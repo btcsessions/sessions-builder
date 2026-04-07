@@ -15,175 +15,182 @@
 <div class="alert success">{{ success }}</div>
 {% endif %}
 
-<form action="{{ url_for('fetch') }}" method="post" class="setup-form">
-    <div class="form-group">
-        <label for="playlist_url">YouTube Playlist URL or ID</label>
-        <input type="text" id="playlist_url" name="playlist_url"
-               value="{{ playlist_url }}"
-               placeholder="https://www.youtube.com/playlist?list=PLxxxxxxx"
-               required>
-        <small>Paste a full playlist URL or just the playlist ID (starts with PL)</small>
-    </div>
+<div class="settings-grid">
+    <!-- LEFT COLUMN: API Keys, Analytics, Cloud Sync -->
+    <div class="settings-col">
+        <form action="{{ url_for('fetch') }}" method="post" class="setup-form">
+            <h3>API Keys & Playlist</h3>
+            <div class="form-group">
+                <label for="playlist_url">YouTube Playlist URL or ID</label>
+                <input type="text" id="playlist_url" name="playlist_url"
+                       value="{{ playlist_url }}"
+                       placeholder="https://www.youtube.com/playlist?list=PLxxxxxxx"
+                       required>
+                <small>Paste a full playlist URL or just the playlist ID (starts with PL)</small>
+            </div>
 
-    <div class="form-group">
-        <label for="google_key">Google API Key</label>
-        <input type="password" id="google_key" name="google_key"
-               value="{{ google_key }}"
-               placeholder="Your Google/YouTube Data API key"
-               required>
-        <small>Needs YouTube Data API v3 enabled. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Get one here</a></small>
-    </div>
+            <div class="form-group">
+                <label for="google_key">Google API Key</label>
+                <input type="password" id="google_key" name="google_key"
+                       value="{{ google_key }}"
+                       placeholder="Your Google/YouTube Data API key"
+                       required>
+                <small>Needs YouTube Data API v3 enabled. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Get one here</a></small>
+            </div>
 
-    <div class="form-group">
-        <label for="anthropic_key">Anthropic API Key</label>
-        <input type="password" id="anthropic_key" name="anthropic_key"
-               value="{{ anthropic_key }}"
-               placeholder="sk-ant-...">
-        <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
-    </div>
+            <div class="form-group">
+                <label for="anthropic_key">Anthropic API Key</label>
+                <input type="password" id="anthropic_key" name="anthropic_key"
+                       value="{{ anthropic_key }}"
+                       placeholder="sk-ant-...">
+                <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
+            </div>
 
-    <hr class="settings-divider">
+            <hr class="settings-divider">
 
-    <h3>YouTube Analytics <span class="badge {{ 'connected' if oauth_connected else 'disconnected' }}">{{ 'Connected' if oauth_connected else 'Not Connected' }}</span></h3>
-    <p class="form-hint">Optional. Adds watch time, retention, traffic sources, and subscriber data to AI analysis.</p>
+            <h3>YouTube Analytics <span class="badge {{ 'connected' if oauth_connected else 'disconnected' }}">{{ 'Connected' if oauth_connected else 'Not Connected' }}</span></h3>
+            <p class="form-hint">Optional. Adds watch time, retention, traffic sources, and subscriber data.</p>
 
-    <div class="form-group">
-        <label for="oauth_client_id">OAuth Client ID</label>
-        <input type="text" id="oauth_client_id" name="oauth_client_id"
-               value="{{ oauth_client_id }}"
-               placeholder="xxxx.apps.googleusercontent.com">
-        <small>From Google Cloud Console > Credentials > OAuth 2.0 Client ID (Web application)</small>
-    </div>
+            <div class="form-group">
+                <label for="oauth_client_id">OAuth Client ID</label>
+                <input type="text" id="oauth_client_id" name="oauth_client_id"
+                       value="{{ oauth_client_id }}"
+                       placeholder="xxxx.apps.googleusercontent.com">
+            </div>
 
-    <div class="form-group">
-        <label for="oauth_client_secret">OAuth Client Secret</label>
-        <input type="password" id="oauth_client_secret" name="oauth_client_secret"
-               value="{{ oauth_client_secret }}"
-               placeholder="GOCSPX-...">
-    </div>
+            <div class="form-group">
+                <label for="oauth_client_secret">OAuth Client Secret</label>
+                <input type="password" id="oauth_client_secret" name="oauth_client_secret"
+                       value="{{ oauth_client_secret }}"
+                       placeholder="GOCSPX-...">
+            </div>
 
-    <input type="hidden" name="sync_gist_id" value="{{ sync_gist_id }}">
-    <input type="hidden" name="sync_github_token" value="{{ sync_github_token }}">
-    <input type="hidden" name="sync_password" value="{{ sync_password }}">
+            <input type="hidden" name="sync_gist_id" value="{{ sync_gist_id }}">
+            <input type="hidden" name="sync_github_token" value="{{ sync_github_token }}">
+            <input type="hidden" name="sync_password" value="{{ sync_password }}">
 
-    <div class="form-actions" style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-        <button type="submit" class="btn primary" name="action" value="save" formaction="{{ url_for('save_settings_only') }}">Save Settings</button>
-        <button type="submit" class="btn secondary" name="action" value="reload" formaction="{{ url_for('fetch') }}">Save &amp; Reload Playlist</button>
-    </div>
-</form>
+            <div class="form-actions" style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                <button type="submit" class="btn primary" name="action" value="save" formaction="{{ url_for('save_settings_only') }}">Save Settings</button>
+                <button type="submit" class="btn secondary" name="action" value="reload" formaction="{{ url_for('fetch') }}">Save &amp; Reload Playlist</button>
+            </div>
+        </form>
 
-{% if oauth_client_id and oauth_client_secret %}
-<div class="setup-form" style="margin-top: 1rem;">
-    {% if not oauth_connected %}
-    <a href="{{ url_for('oauth_connect') }}" class="btn primary">Connect YouTube Analytics</a>
-    <small class="form-hint">You'll be redirected to Google to authorize access to your channel analytics.</small>
-    {% else %}
-    <div class="analytics-status">
-        <span class="badge connected">YouTube Analytics Connected</span>
-        <button id="fetch-analytics-btn" class="btn small">{{ 'Refresh Analytics' if has_analytics else 'Fetch Analytics' }}</button>
-        <span id="analytics-status-msg" class="form-hint"></span>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
-<div class="setup-form" style="margin-top: 1.5rem;">
-    <h3>Cloud Sync <span class="badge {{ 'connected' if sync_configured else 'disconnected' }}">{{ 'Active' if sync_configured else 'Not Configured' }}</span></h3>
-    <p class="form-hint">Auto-sync your data between machines using a private GitHub Gist. Changes push automatically; data pulls on each app launch.</p>
-
-    {% if not sync_configured %}
-    <div style="margin-top:0.75rem;">
-        <div class="form-group">
-            <label for="sync_token_input">GitHub Personal Access Token</label>
-            <input type="password" id="sync_token_input" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
-            <small>Create one at <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">github.com/settings/tokens</a> with <strong>gist</strong> scope only.</small>
+        {% if oauth_client_id and oauth_client_secret %}
+        <div class="setup-form">
+            {% if not oauth_connected %}
+            <a href="{{ url_for('oauth_connect') }}" class="btn primary">Connect YouTube Analytics</a>
+            <small class="form-hint">You'll be redirected to Google to authorize access to your channel analytics.</small>
+            {% else %}
+            <div class="analytics-status">
+                <span class="badge connected">YouTube Analytics Connected</span>
+                <button id="fetch-analytics-btn" class="btn small">{{ 'Refresh Analytics' if has_analytics else 'Fetch Analytics' }}</button>
+                <span id="analytics-status-msg" class="form-hint"></span>
+            </div>
+            {% endif %}
         </div>
-        <div class="form-group">
-            <label for="sync_password_input">Sync Password</label>
-            <input type="password" id="sync_password_input" class="sidebar-search" placeholder="encryption password (same on all machines)" style="max-width:400px;">
-            <small>Encrypts your API keys before pushing to the Gist so GitHub can't scan and revoke them. Use the same password on every machine.</small>
-        </div>
-        <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-            <button class="btn primary" id="create-gist-btn">Create Sync Gist &amp; Enable</button>
-            <span class="form-hint" style="margin:0;">or connect to an existing Gist:</span>
-        </div>
-        <div class="form-group" style="margin-top:0.5rem;">
-            <label for="sync_gist_id_input">Existing Gist ID <span style="font-weight:normal; color:var(--text-muted);">(optional)</span></label>
-            <input type="text" id="sync_gist_id_input" class="sidebar-search" placeholder="paste Gist ID to connect to existing sync" style="max-width:400px;">
-        </div>
-        <button class="btn secondary" id="connect-gist-btn">Connect Existing Gist</button>
-        <span id="sync-setup-status" class="form-hint" style="margin-left:0.5rem;"></span>
-    </div>
-    {% else %}
-    <div style="margin-top:0.75rem;">
-        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-            <span class="form-hint" style="margin:0;">Gist ID: <code>{{ sync_gist_id[:12] }}...</code></span>
-            <button class="btn small" id="sync-push-btn">Push Now</button>
-            <button class="btn small" id="sync-pull-btn">Pull Now</button>
-            <span id="sync-status" class="form-hint" style="margin:0;"></span>
-        </div>
-        <div style="margin-top:0.75rem;">
-            <details>
-                <summary style="cursor:pointer; color:var(--text-muted); font-size:0.85rem;">Update Token, Gist ID, or Disconnect</summary>
-                <div style="margin-top:0.5rem;">
-                    <div class="form-group">
-                        <label for="sync_token_update">GitHub Token</label>
-                        <input type="password" id="sync_token_update" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)" style="max-width:400px;">
-                        <small>If your token expired, <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">create a new one</a> and paste it here.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="sync_gist_id_update">Gist ID</label>
-                        <input type="text" id="sync_gist_id_update" class="sidebar-search" placeholder="{{ sync_gist_id }}" style="max-width:400px;">
-                        <small>Only change this if you need to connect to a different Gist.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="sync_password_update">Sync Password {{ '(set)' if sync_password else '(not set)' }}</label>
-                        <input type="password" id="sync_password_update" class="sidebar-search" placeholder="{{ '••••••••' if sync_password else 'set a password to encrypt API keys' }}" style="max-width:400px;">
-                        <small>Encrypts settings (including API keys) before pushing to the Gist. Must be the same on all machines.</small>
-                    </div>
-                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                        <button class="btn primary small" id="sync-update-token-btn">Save Changes</button>
-                        <button class="btn small" id="sync-disconnect-btn" style="border-color:#aa5555; color:#aa5555;">Disconnect Sync</button>
-                        <span id="sync-manage-status" class="form-hint" style="margin:0;"></span>
-                    </div>
+        {% endif %}
+
+        <div class="setup-form">
+            <h3>Cloud Sync <span class="badge {{ 'connected' if sync_configured else 'disconnected' }}">{{ 'Active' if sync_configured else 'Not Configured' }}</span></h3>
+            <p class="form-hint">Auto-sync data between machines using a private GitHub Gist.</p>
+
+            {% if not sync_configured %}
+            <div style="margin-top:0.75rem;">
+                <div class="form-group">
+                    <label for="sync_token_input">GitHub Personal Access Token</label>
+                    <input type="password" id="sync_token_input" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)">
+                    <small>Create one at <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">github.com/settings/tokens</a> with <strong>gist</strong> scope only.</small>
                 </div>
-            </details>
+                <div class="form-group">
+                    <label for="sync_password_input">Sync Password</label>
+                    <input type="password" id="sync_password_input" class="sidebar-search" placeholder="encryption password (same on all machines)">
+                    <small>Encrypts API keys before pushing to the Gist.</small>
+                </div>
+                <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                    <button class="btn primary" id="create-gist-btn">Create Sync Gist &amp; Enable</button>
+                    <span class="form-hint" style="margin:0;">or connect to an existing Gist:</span>
+                </div>
+                <div class="form-group" style="margin-top:0.5rem;">
+                    <label for="sync_gist_id_input">Existing Gist ID <span style="font-weight:normal; color:var(--text-muted);">(optional)</span></label>
+                    <input type="text" id="sync_gist_id_input" class="sidebar-search" placeholder="paste Gist ID to connect to existing sync">
+                </div>
+                <button class="btn secondary" id="connect-gist-btn">Connect Existing Gist</button>
+                <span id="sync-setup-status" class="form-hint" style="margin-left:0.5rem;"></span>
+            </div>
+            {% else %}
+            <div style="margin-top:0.75rem;">
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <span class="form-hint" style="margin:0;">Gist ID: <code>{{ sync_gist_id[:12] }}...</code></span>
+                    <button class="btn small" id="sync-push-btn">Push Now</button>
+                    <button class="btn small" id="sync-pull-btn">Pull Now</button>
+                    <span id="sync-status" class="form-hint" style="margin:0;"></span>
+                </div>
+                <div style="margin-top:0.75rem;">
+                    <details>
+                        <summary style="cursor:pointer; color:var(--text-muted); font-size:0.85rem;">Update Token, Gist ID, or Disconnect</summary>
+                        <div style="margin-top:0.5rem;">
+                            <div class="form-group">
+                                <label for="sync_token_update">GitHub Token</label>
+                                <input type="password" id="sync_token_update" class="sidebar-search" placeholder="ghp_... (needs 'gist' scope)">
+                                <small>If your token expired, <a href="https://github.com/settings/tokens/new?scopes=gist&description=BTC+Sessions+Planner+Sync" target="_blank">create a new one</a>.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="sync_gist_id_update">Gist ID</label>
+                                <input type="text" id="sync_gist_id_update" class="sidebar-search" placeholder="{{ sync_gist_id }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="sync_password_update">Sync Password {{ '(set)' if sync_password else '(not set)' }}</label>
+                                <input type="password" id="sync_password_update" class="sidebar-search" placeholder="{{ '••••••••' if sync_password else 'set a password to encrypt API keys' }}">
+                            </div>
+                            <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                                <button class="btn primary small" id="sync-update-token-btn">Save Changes</button>
+                                <button class="btn small" id="sync-disconnect-btn" style="border-color:#aa5555; color:#aa5555;">Disconnect Sync</button>
+                                <span id="sync-manage-status" class="form-hint" style="margin:0;"></span>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
-    {% endif %}
-</div>
 
-<div class="setup-form" style="margin-top: 1.5rem;">
-    <h3>Data Export / Import</h3>
-    <p class="form-hint">Move your entire setup (API keys, videos, channels, categories, analytics) to another machine.</p>
-    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
-        <a href="/api/export-data" class="btn primary">Export Data (.zip)</a>
-        <span class="form-hint" style="margin:0;">or</span>
-        <label class="btn secondary" style="cursor:pointer; margin:0;">
-            Import Data
-            <input type="file" id="import-file" accept=".zip" style="display:none;">
-        </label>
-        <span id="import-status" class="form-hint" style="margin:0;"></span>
-    </div>
-</div>
+    <!-- RIGHT COLUMN: Description Defaults, Data Export/Import -->
+    <div class="settings-col">
+        <div class="setup-form">
+            <h3>Description Defaults</h3>
 
-<div class="setup-form" style="margin-top: 1.5rem;">
-    <h3>Description Defaults</h3>
+            <div class="form-group">
+                <label for="sponsor-template-text">Sponsors</label>
+                <p class="form-hint" style="margin-bottom:0.3rem;">Auto-inserted into every video description.</p>
+                <textarea id="sponsor-template-text" rows="6" class="settings-textarea">{{ sponsor_template }}</textarea>
+            </div>
 
-    <div style="margin-bottom: 1rem;">
-        <label class="form-hint" style="display:block; margin-bottom:0.3rem; font-weight:600; color:var(--text);">Sponsors</label>
-        <p class="form-hint" style="margin-bottom:0.3rem;">Sponsor block auto-inserted into every video description.</p>
-        <textarea id="sponsor-template-text" rows="5" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:inherit; font-size:0.85rem; padding:0.6rem; resize:vertical;">{{ sponsor_template }}</textarea>
-    </div>
+            <div class="form-group">
+                <label for="default-tags-text">YouTube Tags</label>
+                <p class="form-hint" style="margin-bottom:0.3rem;">Default CSV tags. Plan-specific tags are appended.</p>
+                <textarea id="default-tags-text" rows="3" class="settings-textarea">{{ default_yt_tags }}</textarea>
+            </div>
 
-    <div style="margin-bottom: 1rem;">
-        <label class="form-hint" style="display:block; margin-bottom:0.3rem; font-weight:600; color:var(--text);">YouTube Tags</label>
-        <p class="form-hint" style="margin-bottom:0.3rem;">Default CSV tags pasted into the YouTube tags field. Plan-specific tags will be appended.</p>
-        <textarea id="default-tags-text" rows="3" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:inherit; font-size:0.85rem; padding:0.6rem; resize:vertical;">{{ default_yt_tags }}</textarea>
-    </div>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <button class="btn primary" id="save-desc-template-btn">Save</button>
+                <span id="desc-template-status" class="form-hint" style="margin:0;"></span>
+            </div>
+        </div>
 
-    <div style="display:flex; gap:0.5rem; align-items:center;">
-        <button class="btn primary" id="save-desc-template-btn">Save</button>
-        <span id="desc-template-status" class="form-hint" style="margin:0;"></span>
+        <div class="setup-form">
+            <h3>Data Export / Import</h3>
+            <p class="form-hint">Move your entire setup between machines.</p>
+            <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
+                <a href="/api/export-data" class="btn primary">Export Data (.zip)</a>
+                <span class="form-hint" style="margin:0;">or</span>
+                <label class="btn secondary" style="cursor:pointer; margin:0;">
+                    Import Data
+                    <input type="file" id="import-file" accept=".zip" style="display:none;">
+                </label>
+                <span id="import-status" class="form-hint" style="margin:0;"></span>
+            </div>
+        </div>
     </div>
 </div>
 
