@@ -726,6 +726,77 @@ RULES:
     return plan
 
 
+def suggest_plan_links(
+    topic: str,
+    outline: list[dict],
+    video_data: list[dict],
+    api_key: str,
+) -> dict:
+    """Suggest relevant links for a video plan — both from the creator's channel and external."""
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Build channel video list for Claude to search
+    channel_videos = "\n".join(
+        f'- "{v["title"]}" https://youtube.com/watch?v={v["video_id"]}'
+        for v in video_data[:80]
+    )
+
+    outline_text = "\n".join(
+        f"- {s.get('section', '')}: {', '.join(s.get('points', []))}"
+        for s in outline
+    )
+
+    system = f"""You are helping a YouTube creator find relevant links for their video description.
+
+**Creator's existing videos (search these for related tutorials):**
+{channel_videos}
+
+You must respond with ONLY valid JSON (no markdown, no code fences):
+
+{{
+  "channel_links": [
+    {{
+      "label": "Descriptive label for the link",
+      "url": "https://youtube.com/watch?v=...",
+      "reason": "Why this tutorial is relevant"
+    }}
+  ],
+  "external_links": [
+    {{
+      "label": "Product/app/website name",
+      "url": "[LINK]",
+      "reason": "Why this link should be in the description"
+    }}
+  ]
+}}
+
+RULES:
+- For channel_links: find tutorials from the creator's OWN channel above that viewers would want as companion content. Only suggest videos that actually exist in the list. Use the exact YouTube URL from the list.
+- For external_links: identify product pages, app downloads, official websites, and tools mentioned in the outline that viewers would want. Use [LINK] as the URL since you don't know the exact URLs — the creator will replace these.
+- Be selective — only suggest links that are genuinely useful, not filler
+- Aim for 2-5 channel links and 2-5 external links
+- Labels should be concise and descriptive (how they'd appear in a YouTube description)"""
+
+    user_msg = f"""Find relevant links for this video:
+
+**Topic:** {topic}
+
+**Outline:**
+{outline_text}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1000,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(text)
+
+
 def regenerate_titles(
     video_type: str,
     topic: str,

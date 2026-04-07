@@ -1016,6 +1016,48 @@ tr:hover { background: var(--surface2); }
 .tag-removable:hover { opacity: 0.6; }
 .tag-x { font-size: 0.7rem; margin-left: 0.2rem; }
 
+.plan-links-list { margin: 0.5rem 0; }
+.plan-link-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.plan-link-row:last-child { border-bottom: none; }
+.plan-link-add-row {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.plan-link-add-row .plan-editable-input { flex: 1; }
+.link-source-tag {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-weight: 600;
+}
+.link-source-tag.channel { background: var(--accent); color: #fff; }
+.link-source-tag.external { background: var(--accent-blue, #42a5f5); color: #fff; }
+.link-source-tag.manual { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+.link-reason {
+    flex-shrink: 0;
+    width: 1.2rem;
+    height: 1.2rem;
+    line-height: 1.2rem;
+    text-align: center;
+    border-radius: 50%;
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    cursor: help;
+}
+.link-remove-btn { font-size: 0.8rem; padding: 0.1rem 0.3rem; flex-shrink: 0; }
+
 .plan-form-actions {
     display: flex;
     align-items: center;

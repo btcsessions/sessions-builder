@@ -259,6 +259,24 @@
             </section>
 
             <section class="plan-card">
+                <div class="plan-card-header-row">
+                    <h2>Links & References</h2>
+                    <button class="btn small secondary" id="suggest-links-btn">Suggest Links</button>
+                </div>
+                <p class="form-hint">Relevant links for the description. Add manually or let AI suggest from your channel and the web.</p>
+                <div id="links-loading" class="plan-loading" style="display:none">Finding relevant links...</div>
+                <div id="plan-links-list" class="plan-links-list"></div>
+                <div class="plan-link-add-row">
+                    <input type="text" id="plan-link-label" class="plan-editable-input" placeholder="Label (e.g. Download Umbrel)">
+                    <input type="url" id="plan-link-url" class="plan-editable-input" placeholder="https://...">
+                    <button class="btn small" id="add-link-manual-btn">Add</button>
+                </div>
+                <div style="margin-top:0.5rem;">
+                    <button class="btn small" id="insert-links-btn">Insert into Description</button>
+                </div>
+            </section>
+
+            <section class="plan-card">
                 <h2>Tags</h2>
                 <div id="plan-tags" class="plan-tags"></div>
                 <input type="text" id="plan-tags-input" class="plan-editable-tags-input" placeholder="Add tag and press Enter">
@@ -428,6 +446,7 @@ function savePlannerState() {
         originalTitles: originalTitles,
         currentPlanPayload: currentPlanPayload,
         currentPlanId: currentPlanId,
+        planLinks: planLinks,
         // Current title edits
         titleEdits: [...document.querySelectorAll(".title-editable")].map(el => el.value),
     };
@@ -482,6 +501,7 @@ function restorePlannerState() {
             if (state.scoringCtx) scoringCtx = state.scoringCtx;
             if (state.currentPlanPayload) currentPlanPayload = state.currentPlanPayload;
             if (state.currentPlanId) currentPlanId = state.currentPlanId;
+            if (state.planLinks) { planLinks = state.planLinks; }
 
             // Render plan without re-fetching AI scores
             renderPlanFromCache(state.planData, state.aiScores || {}, state.titleEdits || []);
@@ -512,6 +532,7 @@ function renderPlanFromCache(plan, cachedAiScores, titleEdits) {
     }
 
     renderEditableSections(plan);
+    renderPlanLinks();
 }
 
 // Auto-save on any interaction
@@ -1136,6 +1157,132 @@ document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
     });
 });
 
+/* --- Links & References --- */
+let planLinks = []; // [{label, url, source: "channel"|"external"|"manual"}]
+
+function renderPlanLinks() {
+    const list = document.getElementById("plan-links-list");
+    if (!planLinks.length) {
+        list.innerHTML = '<p class="form-hint" style="padding:0.25rem 0;">No links added yet. Click "Suggest Links" or add manually.</p>';
+        return;
+    }
+    list.innerHTML = planLinks.map((link, i) => {
+        const sourceTag = link.source === "channel" ? '<span class="link-source-tag channel">Your Channel</span>'
+            : link.source === "external" ? '<span class="link-source-tag external">External</span>'
+            : '<span class="link-source-tag manual">Manual</span>';
+        const urlDisplay = link.url === "[LINK]"
+            ? `<input type="url" class="plan-editable-input link-url-edit" data-idx="${i}" placeholder="Paste URL here..." style="flex:1;">`
+            : `<input type="url" class="plan-editable-input link-url-edit" data-idx="${i}" value="${esc(link.url)}" style="flex:1;">`;
+        return `<div class="plan-link-row" data-idx="${i}">
+            ${sourceTag}
+            <input type="text" class="plan-editable-input link-label-edit" data-idx="${i}" value="${esc(link.label)}" style="flex:1;">
+            ${urlDisplay}
+            ${link.reason ? '<span class="link-reason" title="' + esc(link.reason) + '">?</span>' : ''}
+            <button class="btn small link-remove-btn" data-idx="${i}" title="Remove">&times;</button>
+        </div>`;
+    }).join("");
+
+    // Wire remove buttons
+    list.querySelectorAll(".link-remove-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            planLinks.splice(parseInt(btn.dataset.idx), 1);
+            renderPlanLinks();
+            savePlannerState();
+        });
+    });
+
+    // Wire edits back to planLinks
+    list.querySelectorAll(".link-label-edit").forEach(input => {
+        input.addEventListener("input", () => { planLinks[parseInt(input.dataset.idx)].label = input.value; });
+    });
+    list.querySelectorAll(".link-url-edit").forEach(input => {
+        input.addEventListener("input", () => { planLinks[parseInt(input.dataset.idx)].url = input.value; });
+    });
+}
+
+// Manual add
+document.getElementById("add-link-manual-btn")?.addEventListener("click", () => {
+    const label = document.getElementById("plan-link-label").value.trim();
+    const url = document.getElementById("plan-link-url").value.trim();
+    if (!label && !url) return;
+    planLinks.push({ label: label || "Link", url: url || "[LINK]", source: "manual", reason: "" });
+    document.getElementById("plan-link-label").value = "";
+    document.getElementById("plan-link-url").value = "";
+    renderPlanLinks();
+    savePlannerState();
+});
+
+// Suggest Links (AI)
+document.getElementById("suggest-links-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("suggest-links-btn");
+    const loading = document.getElementById("links-loading");
+    const topic = document.getElementById("video-topic")?.value || "";
+    const outline = getCurrentPlanFromDOM()?.outline || [];
+
+    btn.disabled = true;
+    loading.style.display = "block";
+
+    try {
+        const resp = await fetch("/api/suggest-links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic, outline }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            loading.textContent = data.error;
+            setTimeout(() => { loading.style.display = "none"; loading.textContent = "Finding relevant links..."; }, 2000);
+        } else {
+            // Add channel links
+            for (const link of (data.channel_links || [])) {
+                if (!planLinks.some(l => l.url === link.url)) {
+                    planLinks.push({ label: link.label, url: link.url, source: "channel", reason: link.reason });
+                }
+            }
+            // Add external links
+            for (const link of (data.external_links || [])) {
+                if (!planLinks.some(l => l.label === link.label)) {
+                    planLinks.push({ label: link.label, url: link.url, source: "external", reason: link.reason });
+                }
+            }
+            renderPlanLinks();
+            loading.style.display = "none";
+            savePlannerState();
+        }
+    } catch (err) {
+        loading.textContent = "Failed: " + err.message;
+        setTimeout(() => { loading.style.display = "none"; loading.textContent = "Finding relevant links..."; }, 2000);
+    }
+    btn.disabled = false;
+});
+
+// Insert links into description
+document.getElementById("insert-links-btn")?.addEventListener("click", () => {
+    if (!planLinks.length) return;
+    const descEl = document.getElementById("plan-description");
+    const linksText = planLinks.map(l => `${l.label}: ${l.url}`).join("\n");
+
+    const desc = descEl.value;
+    // Try to insert after the first paragraph, before sponsor/timestamps
+    const lines = desc.split("\n");
+    let insertIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === "" && i > 0) { insertIdx = i; break; }
+    }
+
+    if (insertIdx >= 0) {
+        lines.splice(insertIdx + 1, 0, "", linksText);
+        descEl.value = lines.join("\n");
+    } else {
+        descEl.value = desc.trimEnd() + "\n\n" + linksText;
+    }
+    savePlannerState();
+
+    const btn = document.getElementById("insert-links-btn");
+    btn.textContent = "Inserted!";
+    setTimeout(() => { btn.textContent = "Insert into Description"; }, 1500);
+});
+
 // Read current edited plan state from the DOM
 function getCurrentPlanFromDOM() {
     if (!lastPlanData) return null;
@@ -1167,6 +1314,9 @@ function getCurrentPlanFromDOM() {
     // YouTube Tags CSV
     plan.yt_tags_csv = document.getElementById("plan-yt-tags").value;
 
+    // Links
+    plan.links = planLinks;
+
     // Description
     plan.description = document.getElementById("plan-description").value;
 
@@ -1178,9 +1328,13 @@ function renderPlan(plan) {
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
     lastPlanData = plan;
 
+    // Reset links for fresh plan (unless loading a saved plan with existing links)
+    if (!plan._keepLinks) planLinks = [];
+
     renderTitles(plan.titles);
     fetchAiScores(plan.titles);
     renderEditableSections(plan);
+    renderPlanLinks();
     savePlannerState();
 }
 
@@ -1469,6 +1623,9 @@ function loadSavedPlan(plan) {
         links: fs.links || [],
         competitors: fs.competitors || [],
     };
+
+    // Restore links
+    planLinks = fp.links || [];
 
     // Render the plan
     renderPlanFromCache(fp, {}, []);

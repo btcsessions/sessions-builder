@@ -866,6 +866,31 @@ def _build_scoring_context() -> dict:
     }
 
 
+@app.route("/api/suggest-links", methods=["POST"])
+def api_suggest_links():
+    """Suggest relevant links for a plan from channel videos and the web."""
+    data = request.get_json()
+    topic = (data.get("topic") or "").strip()
+    outline = data.get("outline", [])
+
+    settings = load_settings()
+    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Anthropic API key not configured."}), 400
+
+    try:
+        from brainstorm import suggest_plan_links
+        result = suggest_plan_links(
+            topic=topic,
+            outline=outline,
+            video_data=video_cache,
+            api_key=api_key,
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/parse-notes", methods=["POST"])
 def api_parse_notes():
     """Parse freeform notes into a structured plan."""
@@ -1084,6 +1109,7 @@ def api_save_plan():
         "outline": plan_data.get("outline", []),
         "tags": plan_data.get("tags", []),
         "yt_tags_csv": plan_data.get("yt_tags_csv", ""),
+        "links": plan_data.get("links", []),
         "description": plan_data.get("description", ""),
     }
 
