@@ -1868,6 +1868,8 @@ async function refreshPlanHistory() {
                     ${p.full_plan ? '<button class="btn small load-plan-btn" data-id="' + esc(p.id) + '">Load</button>' : ''}
                     ${!linked ? '<button class="btn small auto-match-plan-btn" data-id="' + esc(p.id) + '">Auto-Match Video</button>' : ''}
                     ${linked && !p.postmortem ? '<button class="btn small run-postmortem-btn" data-id="' + esc(p.id) + '">Run Post-Mortem</button>' : ''}
+                    <button class="btn small archive-plan-btn" data-id="${esc(p.id)}" title="Archive">Archive</button>
+                    <button class="btn small delete-plan-btn" data-id="${esc(p.id)}" title="Delete" style="color:var(--red, #e53935);">Delete</button>
                 </div>
             </div>`;
         }).reverse().join("");
@@ -1925,6 +1927,32 @@ async function refreshPlanHistory() {
                 } catch (err) {
                     btn.textContent = "Failed";
                 }
+            });
+        });
+        // Wire archive buttons
+        list.querySelectorAll(".archive-plan-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                btn.disabled = true;
+                await fetch("/api/plans/archive", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan_id: btn.dataset.id }),
+                });
+                refreshPlanHistory();
+            });
+        });
+
+        // Wire delete buttons
+        list.querySelectorAll(".delete-plan-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                if (!confirm("Delete this plan permanently?")) return;
+                btn.disabled = true;
+                await fetch("/api/plans/delete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan_id: btn.dataset.id }),
+                });
+                refreshPlanHistory();
             });
         });
     } catch (err) {

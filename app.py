@@ -1235,7 +1235,50 @@ def api_save_plan():
 
 @app.route("/api/plans", methods=["GET"])
 def api_get_plans():
-    return jsonify({"plans": plans_cache})
+    active = [p for p in plans_cache if not p.get("archived")]
+    return jsonify({"plans": active})
+
+
+@app.route("/api/plans/archived", methods=["GET"])
+def api_get_archived_plans():
+    archived = [p for p in plans_cache if p.get("archived")]
+    return jsonify({"plans": archived})
+
+
+@app.route("/api/plans/archive", methods=["POST"])
+def api_archive_plan():
+    global plans_cache
+    data = request.get_json()
+    plan_id = data.get("plan_id")
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+    plan["archived"] = True
+    save_plans(plans_cache)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/plans/unarchive", methods=["POST"])
+def api_unarchive_plan():
+    global plans_cache
+    data = request.get_json()
+    plan_id = data.get("plan_id")
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+    plan.pop("archived", None)
+    save_plans(plans_cache)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/plans/delete", methods=["POST"])
+def api_delete_plan():
+    global plans_cache
+    data = request.get_json()
+    plan_id = data.get("plan_id")
+    plans_cache = [p for p in plans_cache if p["id"] != plan_id]
+    save_plans(plans_cache)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/plans/<plan_id>", methods=["GET"])
