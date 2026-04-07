@@ -285,18 +285,15 @@
             </section>
 
             <section class="plan-card">
-                <h2>Tags</h2>
-                <div id="plan-tags" class="plan-tags"></div>
-                <input type="text" id="plan-tags-input" class="plan-editable-tags-input" placeholder="Add tag and press Enter">
-            </section>
-
-            <section class="plan-card">
                 <div class="plan-card-header-row">
-                    <h2>YouTube Tags</h2>
-                    <button class="btn small" id="copy-yt-tags-btn" title="Copy to clipboard">Copy</button>
+                    <h2>Tags</h2>
+                    <div style="display:flex; gap:0.4rem; align-items:center;">
+                        <span id="tags-char-count" class="form-hint" style="margin:0;"></span>
+                        <button class="btn small" id="copy-yt-tags-btn" title="Copy to clipboard">Copy</button>
+                    </div>
                 </div>
-                <p class="form-hint" style="margin-bottom:0.3rem;">Combined default + video-specific tags. Paste into YouTube.</p>
-                <textarea id="plan-yt-tags" class="plan-editable-text" rows="3" placeholder="CSV tags will appear here..."></textarea>
+                <p class="form-hint" style="margin-bottom:0.3rem;">CSV format, 500 character limit. Copy and paste into YouTube.</p>
+                <textarea id="plan-yt-tags" class="plan-editable-text" rows="3" placeholder="Tags will appear here..."></textarea>
             </section>
 
             <section class="plan-card">
@@ -1109,51 +1106,25 @@ function renderEditableSections(plan) {
         </div>`;
     }).join("");
 
-    // Tags — clickable to remove, input to add
-    renderTags(plan.tags);
-    wireTagInput();
-
-    // YouTube Tags CSV
-    document.getElementById("plan-yt-tags").value = plan.yt_tags_csv || plan.tags.join(", ");
+    // Tags — single CSV field
+    const tagsEl = document.getElementById("plan-yt-tags");
+    tagsEl.value = plan.yt_tags_csv || plan.tags.join(", ");
+    updateTagCharCount();
 
     // Description — textarea
     document.getElementById("plan-description").value = plan.description;
 }
 
-function renderTags(tags) {
-    document.getElementById("plan-tags").innerHTML = tags.map((t, i) =>
-        `<span class="tag tag-removable" data-idx="${i}" title="Click to remove">${esc(t)} <span class="tag-x">&times;</span></span>`
-    ).join("");
-    // Wire remove
-    document.querySelectorAll(".tag-removable").forEach(tag => {
-        tag.addEventListener("click", () => {
-            tag.remove();
-            savePlannerState();
-        });
-    });
+function updateTagCharCount() {
+    const text = document.getElementById("plan-yt-tags").value;
+    const count = text.length;
+    const el = document.getElementById("tags-char-count");
+    el.textContent = `${count}/500`;
+    el.style.color = count > 500 ? "var(--red, #e53935)" : (count > 450 ? "var(--accent)" : "var(--text-muted)");
 }
 
-function wireTagInput() {
-    const input = document.getElementById("plan-tags-input");
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            const val = input.value.trim();
-            if (!val) return;
-            const container = document.getElementById("plan-tags");
-            const idx = container.querySelectorAll(".tag").length;
-            const tag = document.createElement("span");
-            tag.className = "tag tag-removable";
-            tag.dataset.idx = idx;
-            tag.title = "Click to remove";
-            tag.innerHTML = `${esc(val)} <span class="tag-x">&times;</span>`;
-            tag.addEventListener("click", () => { tag.remove(); savePlannerState(); });
-            container.appendChild(tag);
-            input.value = "";
-            savePlannerState();
-        }
-    });
-}
+// Live character count on tags textarea
+document.getElementById("plan-yt-tags")?.addEventListener("input", updateTagCharCount);
 
 // Copy YouTube Tags button
 document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
@@ -1373,11 +1344,10 @@ function getCurrentPlanFromDOM() {
         };
     });
 
-    // Tags
-    plan.tags = [...document.querySelectorAll("#plan-tags .tag")].map(el => el.textContent.replace("×", "").trim());
-
-    // YouTube Tags CSV
-    plan.yt_tags_csv = document.getElementById("plan-yt-tags").value;
+    // Tags (single CSV field)
+    const tagsCsv = document.getElementById("plan-yt-tags").value;
+    plan.yt_tags_csv = tagsCsv;
+    plan.tags = tagsCsv.split(",").map(t => t.trim()).filter(Boolean);
 
     // Links
     plan.links = planLinks;

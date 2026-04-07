@@ -606,19 +606,25 @@ Use this real-time data to make the plan timely and relevant. Reference specific
         desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
-    # Build combined YouTube tags (default + generated)
+    # Build combined YouTube tags (default + generated), enforce 500 char limit
     if default_yt_tags:
-        existing = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
+        all_tags = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
         generated = plan.get("tags", [])
-        # Deduplicate (case-insensitive) while preserving order
-        seen = {t.lower() for t in existing}
+        seen = {t.lower() for t in all_tags}
         for t in generated:
             if t.lower() not in seen:
-                existing.append(t)
+                all_tags.append(t)
                 seen.add(t.lower())
-        plan["yt_tags_csv"] = ", ".join(existing)
     else:
-        plan["yt_tags_csv"] = ", ".join(plan.get("tags", []))
+        all_tags = plan.get("tags", [])
+    # Truncate to 500 chars
+    csv = ""
+    for t in all_tags:
+        candidate = (csv + ", " + t) if csv else t
+        if len(candidate) > 500:
+            break
+        csv = candidate
+    plan["yt_tags_csv"] = csv
 
     return plan
 
@@ -736,18 +742,24 @@ RULES:
         desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
-    # Build combined YouTube tags
+    # Build combined YouTube tags, enforce 500 char limit
     if default_yt_tags:
-        existing = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
+        all_tags = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
         generated = plan.get("tags", [])
-        seen = {t.lower() for t in existing}
+        seen = {t.lower() for t in all_tags}
         for t in generated:
             if t.lower() not in seen:
-                existing.append(t)
+                all_tags.append(t)
                 seen.add(t.lower())
-        plan["yt_tags_csv"] = ", ".join(existing)
     else:
-        plan["yt_tags_csv"] = ", ".join(plan.get("tags", []))
+        all_tags = plan.get("tags", [])
+    csv = ""
+    for t in all_tags:
+        candidate = (csv + ", " + t) if csv else t
+        if len(candidate) > 500:
+            break
+        csv = candidate
+    plan["yt_tags_csv"] = csv
 
     return plan
 
