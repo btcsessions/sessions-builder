@@ -106,16 +106,20 @@
                     <input type="password" id="sync_password_input" class="sidebar-search" placeholder="encryption password (same on all machines)">
                     <small>Encrypts API keys before pushing to the Gist.</small>
                 </div>
+                <div class="form-group">
+                    <label for="sync_gist_id_input">Gist ID</label>
+                    <input type="text" id="sync_gist_id_input" class="sidebar-search" placeholder="paste your existing Gist ID">
+                    <small>Find this in the Gist URL or in Settings on your other machine.</small>
+                </div>
                 <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                    <button class="btn primary" id="create-gist-btn">Create Sync Gist &amp; Enable</button>
-                    <span class="form-hint" style="margin:0;">or connect to an existing Gist:</span>
+                    <button class="btn primary" id="connect-gist-btn">Connect &amp; Pull</button>
+                    <span id="sync-setup-status" class="form-hint" style="margin:0;"></span>
                 </div>
-                <div class="form-group" style="margin-top:0.5rem;">
-                    <label for="sync_gist_id_input">Existing Gist ID <span style="font-weight:normal; color:var(--text-muted);">(optional)</span></label>
-                    <input type="text" id="sync_gist_id_input" class="sidebar-search" placeholder="paste Gist ID to connect to existing sync">
-                </div>
-                <button class="btn secondary" id="connect-gist-btn">Connect Existing Gist</button>
-                <span id="sync-setup-status" class="form-hint" style="margin-left:0.5rem;"></span>
+                <details style="margin-top:1rem;">
+                    <summary style="cursor:pointer; color:var(--text-muted); font-size:0.82rem;">First time? Create a new sync Gist instead</summary>
+                    <p class="form-hint" style="margin:0.5rem 0 0.4rem;">Only use this if you don't have an existing Gist from another machine.</p>
+                    <button class="btn small secondary" id="create-gist-btn">Create New Gist</button>
+                </details>
             </div>
             {% else %}
             <div style="margin-top:0.75rem;">
@@ -426,12 +430,11 @@ if (connectGistBtn) {
         const token = document.getElementById("sync_token_input").value.trim();
         const gistId = document.getElementById("sync_gist_id_input").value.trim();
         const password = document.getElementById("sync_password_input").value.trim();
-        if (!token || !gistId) { syncSetupStatus.textContent = "Enter both token and Gist ID."; return; }
-        if (!password) { syncSetupStatus.textContent = "Enter a sync password to encrypt your API keys."; return; }
+        if (!token || !gistId) { syncSetupStatus.textContent = "Enter token, Gist ID, and password."; return; }
+        if (!password) { syncSetupStatus.textContent = "Enter a sync password to decrypt your data."; return; }
         connectGistBtn.disabled = true;
         syncSetupStatus.textContent = "Connecting...";
         try {
-            // Save sync settings
             const resp = await fetch("/api/sync/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -439,8 +442,20 @@ if (connectGistBtn) {
             });
             const data = await resp.json();
             if (data.ok) {
-                syncSetupStatus.textContent = "Connected! Reloading...";
-                setTimeout(() => location.reload(), 1000);
+                // Auto-pull after connecting
+                syncSetupStatus.textContent = "Connected! Pulling data...";
+                try {
+                    const pullResp = await fetch("/api/sync/pull", { method: "POST" });
+                    const pullData = await pullResp.json();
+                    if (pullData.ok) {
+                        syncSetupStatus.textContent = "Synced! Reloading...";
+                    } else {
+                        syncSetupStatus.textContent = "Connected but pull failed: " + (pullData.error || "unknown error") + ". Reloading...";
+                    }
+                } catch (pullErr) {
+                    syncSetupStatus.textContent = "Connected but pull failed. Reloading...";
+                }
+                setTimeout(() => location.reload(), 1500);
             } else {
                 syncSetupStatus.textContent = "Error: " + data.error;
             }
