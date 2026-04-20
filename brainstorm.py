@@ -6,6 +6,26 @@ import anthropic
 from trends import analyze_trends, trends_to_prompt_section
 
 
+DEFAULT_CHANNEL_NICHE = (
+    "A YouTube creator running a freedom tech channel. The scope includes bitcoin "
+    "and extends to related freedom technologies: self-hosted AI, online privacy, "
+    "sovereign computing (hosting your own data on local servers), private "
+    "communications, and other DIY sovereignty tools. Content is primarily "
+    "tutorials, explainers, and hands-on walkthroughs. The audience values "
+    "self-sovereignty, practical education, and doing things themselves."
+)
+
+
+def _effective_niche(niche: str | None) -> str:
+    """Return the caller-supplied niche or the default if blank."""
+    return (niche or "").strip() or DEFAULT_CHANNEL_NICHE
+
+
+def _creator_context_block(niche: str | None) -> str:
+    """Formatted block describing the creator's channel for prompt preambles."""
+    return f"**About the creator's channel:**\n{_effective_niche(niche)}"
+
+
 def _extract_urls(text: str) -> list[str]:
     """Extract HTTP/HTTPS URLs from user message text."""
     return re.findall(r'https?://[^\s<>"\')\]]+', text)
@@ -46,6 +66,7 @@ def generate_trend_report(
     api_key: str,
     analytics_data: dict = None,
     market_data: dict = None,
+    creator_niche: str = "",
 ) -> dict:
     """Generate an AI-powered trend report with actionable advice."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -106,9 +127,11 @@ def generate_trend_report(
         gem_lines.append(f"  - \"{g['title'][:55]}\" — {g['views']:,} views, {g['engagement']}% eng")
     gem_section = "\n".join(gem_lines) if gem_lines else "  None"
 
-    system = """You are a YouTube content strategist specializing in current platform trends.
+    system = f"""You are a YouTube content strategist specializing in current platform trends.
 You are analyzing data from a creator's channel AND their competitors to generate a comprehensive,
 actionable trend report focused on what's working RIGHT NOW.
+
+{_creator_context_block(creator_niche)}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -186,7 +209,7 @@ Generate a comprehensive trend report with actionable advice for my next videos.
     return json.loads(text)
 
 
-def _build_market_section(market_data: dict = None) -> str:
+def _build_market_section(market_data: dict = None, creator_niche: str = "") -> str:
     if not market_data:
         return ""
     info = market_data.get("info", {})
@@ -207,7 +230,8 @@ def _build_market_section(market_data: dict = None) -> str:
         lines.append(f"- Bear market videos: {bear['count']} videos, {bear['avg_views']:,} avg views, {bear['avg_engagement']}% eng")
 
     lines.append("")
-    lines.append("IMPORTANT: This creator is in the bitcoin/freedom tech niche. Market sentiment significantly affects viewership.")
+    lines.append(f"IMPORTANT — creator context: {_effective_niche(creator_niche)}")
+    lines.append("Bitcoin market sentiment can affect viewership for bitcoin-adjacent content — weight its relevance based on the niche above.")
     lines.append("- In bear markets: focus on evergreen educational content, self-custody, privacy, and practical tools")
     lines.append("- In bull markets: capitalize on heightened interest with beginner content, trending topics, and timely coverage")
     lines.append("- Score video performance relative to the market phase they were published in, not just overall averages")
@@ -215,7 +239,7 @@ def _build_market_section(market_data: dict = None) -> str:
     return "\n".join(lines)
 
 
-def _build_competitors_section(competitors_data: list = None) -> str:
+def _build_competitors_section(competitors_data: list = None, creator_niche: str = "") -> str:
     if not competitors_data:
         return ""
 
@@ -251,7 +275,7 @@ def _build_competitors_section(competitors_data: list = None) -> str:
         by_category.setdefault(cat, []).append(comp)
 
     category_instructions = {
-        "Mainstream Tech": "Study their formats, production style, pacing, and engagement tactics. Consider how to adapt their successful approaches for the bitcoin/freedom tech niche.",
+        "Mainstream Tech": f"Study their formats, production style, pacing, and engagement tactics. Consider how to adapt their successful approaches for the creator's niche: {_effective_niche(creator_niche)}",
         "Bitcoin/Crypto": "Look for topic gaps, content they cover that you don't, and areas where you can go deeper or offer a unique perspective.",
         "Freedom Tech": "Identify underserved topics in privacy, self-sovereignty, and open-source tech that you could cover better or differently.",
     }
@@ -277,7 +301,7 @@ def _build_competitors_section(competitors_data: list = None) -> str:
     return "\n".join(sections)
 
 
-def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, competitors_data: list = None, market_data: dict = None) -> str:
+def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, competitors_data: list = None, market_data: dict = None, creator_niche: str = "") -> str:
     if not video_data:
         return (
             "You are a YouTube content strategist. The user hasn't loaded any video data yet. "
@@ -418,6 +442,8 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 
     return f"""You are a YouTube content strategist helping a creator plan their next videos. You have access to their channel's video performance data, trend analysis, and analytics.
 
+{_creator_context_block(creator_niche)}
+
 **Channel Stats Summary:**
 - Total videos analyzed: {total}
 - Average views: {avg_views:,}
@@ -425,13 +451,13 @@ def _build_system_prompt(video_data: list[dict], analytics_data: dict = None, co
 - Top 3 by views: {top3}
 - Bottom 3 by views: {bottom3}
 {analytics_section}{trends_section}
-{_build_market_section(market_data)}
+{_build_market_section(market_data, creator_niche)}
 **Video Performance Data:**
 {truncation_note}
 | Title | Views | Likes | Comments | Engagement | Published |
 |-------|-------|-------|----------|------------|-----------|
 {table}
-{_build_competitors_section(competitors_data)}
+{_build_competitors_section(competitors_data, creator_niche)}
 Use this data to:
 - Identify what topics, formats, or styles perform best
 - Recommend title formats that drive higher CTR based on the title pattern analysis (e.g. if "How to" titles outperform, lean into that)
@@ -444,7 +470,7 @@ Use this data to:
 - Consider traffic sources when recommending SEO and promotion strategies
 - Compare against competitor channels to find gaps and opportunities
 - For mainstream tech competitors: study their formats, pacing, and engagement tactics to adapt for your niche
-- For bitcoin/crypto competitors: identify topic gaps and areas to go deeper or differentiate
+- For topic-adjacent competitors (channels covering topics that overlap with the creator's niche above): identify topic gaps and areas to go deeper or differentiate
 - Give specific, actionable recommendations backed by the data with actual numbers
 - If the user shares a URL, read the fetched content and use it to form specific, actionable video angle recommendations tied to the creator's niche
 - If real-time trend intelligence is available below, reference specific trending topics, community discussions, and current events where relevant
@@ -469,11 +495,12 @@ def chat_with_claude(
     market_data: dict = None,
     plan_state: dict = None,
     trend_intel_context: str = "",
+    creator_niche: str = "",
 ) -> str:
     """Send a message to Claude with video performance context."""
     client = anthropic.Anthropic(api_key=api_key)
 
-    system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
+    system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data, creator_niche)
 
     # Append real-time trend intelligence
     if trend_intel_context:
@@ -618,6 +645,7 @@ def generate_video_plan(
     desc_template: str = "",
     sponsor_template: str = "",
     default_yt_tags: str = "",
+    creator_niche: str = "",
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -630,7 +658,7 @@ def generate_video_plan(
             entries.append(f"- \"{v['title']}\" ({v['view_count']:,} views) https://youtube.com/watch?v={v['video_id']}")
         past_titles = "\n".join(entries)
 
-    channel_context = _build_system_prompt(video_data, analytics_data, competitors_data, market_data)
+    channel_context = _build_system_prompt(video_data, analytics_data, competitors_data, market_data, creator_niche)
 
     # Build the user's input context
     links_text = "\n".join(f"- {l}" for l in links) if links else "None provided"
@@ -777,6 +805,7 @@ def parse_notes_to_plan(
     video_data: list[dict] = None,
     market_data: dict = None,
     competitors_data: list = None,
+    creator_niche: str = "",
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -803,9 +832,9 @@ Preserve what's already good, integrate the new information, and improve where t
     # Build channel + market context (same data the full planner uses)
     channel_context = ""
     if video_data:
-        channel_context = _build_system_prompt(video_data, None, competitors_data, market_data)
+        channel_context = _build_system_prompt(video_data, None, competitors_data, market_data, creator_niche)
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
     # Trend analysis for what's currently working
     trend_section = ""
@@ -996,6 +1025,7 @@ def swap_single_title(
     api_key: str,
     market_data: dict = None,
     title_history: list = None,
+    creator_niche: str = "",
 ) -> str:
     """Generate one replacement title that's different from the existing options."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1007,11 +1037,13 @@ def swap_single_title(
             for v in sorted(video_data, key=lambda x: x["view_count"], reverse=True)[:10]
         )
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
     history_section = _build_title_history_section(title_history)
     existing_str = "\n".join(f"- \"{t}\"" for t in current_titles)
 
-    system = f"""You are a YouTube title specialist for a bitcoin/freedom tech channel.
+    system = f"""You are a YouTube title specialist.
+
+{_creator_context_block(creator_niche)}
 
 **Creator's top performing titles:**
 {top_titles}
@@ -1042,6 +1074,7 @@ def regenerate_titles(
     market_data: dict = None,
     trend_context: dict = None,
     title_history: list = None,
+    creator_niche: str = "",
 ) -> list[str]:
     """Generate fresh title suggestions without regenerating the full plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1054,15 +1087,17 @@ def regenerate_titles(
             for v in sorted(video_data, key=lambda x: x["view_count"], reverse=True)[:15]
         )
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
     history_section = _build_title_history_section(title_history)
 
     trend_section = ""
     if trend_context:
         trend_section = f"\nInspired by: \"{trend_context.get('title', '')}\" from {trend_context.get('source', '')} ({trend_context.get('category', '')})"
 
-    system = f"""You are a YouTube title specialist for a bitcoin/freedom tech channel (BTC Sessions).
+    system = f"""You are a YouTube title specialist.
 Generate 5 new title options optimized for click-through rate.
+
+{_creator_context_block(creator_niche)}
 
 **Creator's top performing titles for reference:**
 {top_titles}
@@ -1076,7 +1111,7 @@ RULES:
 - Use power words that drive clicks: best, ultimate, complete, easy, stop, never, must
 - Include numbers where natural
 - Consider brackets like [2026] or (Step by Step) for CTR boost
-- Every title must be relevant to bitcoin, freedom tech, privacy, or self-custody
+- Every title must be relevant to the creator's niche described above
 - Make each title distinctly different in structure and angle
 - Do NOT suggest generic or clickbait titles — they must be substantive
 
@@ -1108,6 +1143,7 @@ def score_titles_ai(
     video_data: list[dict],
     api_key: str,
     market_data: dict = None,
+    creator_niche: str = "",
 ) -> list[dict]:
     """Have Claude score and critique title options with rationale."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1123,11 +1159,13 @@ def score_titles_ai(
     if video_data:
         avg_views = sum(v.get("view_count", 0) for v in video_data) / len(video_data)
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
     titles_text = "\n".join(f'{i+1}. "{t}"' for i, t in enumerate(titles))
 
-    system = f"""You are a YouTube title scoring expert for a bitcoin/freedom tech channel.
+    system = f"""You are a YouTube title scoring expert.
+
+{_creator_context_block(creator_niche)}
 
 **Channel's top-performing titles:**
 {top_titles}
@@ -1233,6 +1271,7 @@ def analyze_own_video(
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
+    creator_niche: str = "",
 ) -> dict:
     """Analyze one of the creator's own videos with performance insights."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1293,7 +1332,7 @@ def analyze_own_video(
                         analytics_note += f" (vs similar YT videos: {avg_rel}x {'above' if avg_rel > 1 else 'below'} avg)"
                 break
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
     # Market phase info for this specific video
     video_phase = video.get("_market_phase", "unknown")
@@ -1314,7 +1353,9 @@ def analyze_own_video(
         else:
             market_perf_note = f"AVERAGE for a {video_phase} market video ({video_market_score}x the {video_phase} avg of {phase_avg:,} views)"
 
-    system = f"""You are a YouTube content strategist specializing in the bitcoin/freedom tech niche. A creator is analyzing one of their own videos to understand its performance and learn from it.
+    system = f"""You are a YouTube content strategist. A creator is analyzing one of their own videos to understand its performance and learn from it.
+
+{_creator_context_block(creator_niche)}
 
 **Channel Overview:**
 - Average views: {avg_views:,}
@@ -1341,7 +1382,7 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 RULES:
 - Be specific and reference actual numbers
 - The market_context field MUST analyze how BTC market conditions at publish time affected this video. Compare performance to the phase-specific average, not just overall.
-- For BREAKOUT/STRONG videos: identify what drove the success. Suggest how to double down on this type of content — apply the same winning formula to OTHER bitcoin concepts, devices, apps, or tools. Give specific examples.
+- For BREAKOUT/STRONG videos: identify what drove the success. Suggest how to double down on this type of content — apply the same winning formula to other concepts, devices, apps, or tools within the creator's niche described above. Give specific examples.
 - For UNDERPERFORMING videos: be honest about what likely went wrong. Suggest how the title, angle, or timing could have been improved. Would a different framing have worked better?
 - video_ideas should be concrete and specific — name actual products, tools, or concepts
 - Be direct and actionable"""
@@ -1384,6 +1425,7 @@ def analyze_competitor_video(
     api_key: str,
     analytics_data: dict = None,
     market_data: dict = None,
+    creator_niche: str = "",
 ) -> dict:
     """Analyze a competitor's video and suggest takeaways for the creator."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1416,9 +1458,11 @@ def analyze_competitor_video(
         for v in video_data[:10]
     )
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
     system = f"""You are a YouTube content strategist. A creator is studying a competitor's video to learn from it.
+
+{_creator_context_block(creator_niche)}
 
 **The Creator's Channel:**
 - Average views: {creator_avg:,}
@@ -1477,6 +1521,7 @@ def suggest_channels(
     market_data: dict = None,
     exclude_handles: list[str] = None,
     creator_channel: str = "",
+    creator_niche: str = "",
 ) -> dict:
     """Suggest YouTube channels to follow for inspiration."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -1505,9 +1550,11 @@ def suggest_channels(
     if exclude_handles:
         exclude_section = f"\n**Do NOT suggest any of these previously suggested handles:** {', '.join(exclude_handles)}"
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
-    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech tutorial creator wants to discover new channels to learn from — the PRIMARY focus is tech channels covering privacy, AI, self-hosting, and DIY setups, with a smaller set of crypto/bitcoin channels on the side.
+    system = f"""You are a YouTube growth strategist helping a creator discover new channels to learn from. The PRIMARY focus is tech channels covering privacy, AI, self-hosting, and DIY setups, with a smaller set of crypto/bitcoin channels on the side.
+
+{_creator_context_block(creator_niche)}
 
 **The Creator's Recent Content:**
 {topic_sample}
@@ -1584,8 +1631,9 @@ def remix_video(
     focus_topic: str = "",
     market_data: dict = None,
     trend_intel_context: str = "",
+    creator_niche: str = "",
 ) -> dict:
-    """Generate remix ideas: adapt a video's format/style for the creator's bitcoin channel."""
+    """Generate remix ideas: adapt a video's format/style for the creator's channel."""
     client = anthropic.Anthropic(api_key=api_key)
 
     creator_top = "\n".join(
@@ -1593,21 +1641,21 @@ def remix_video(
         for v in video_data[:12]
     )
 
-    market_section = _build_market_section(market_data)
+    market_section = _build_market_section(market_data, creator_niche)
 
     is_crypto = source_category in ("Bitcoin/Crypto", "Freedom Tech")
 
     if is_crypto:
         remix_angle = """This is a crypto/bitcoin video. The creator wants to DOUBLE DOWN on this format:
-- Suggest ways to apply the same format, style, or angle to different bitcoin topics, devices, apps, or concepts
+- Suggest ways to apply the same format, style, or angle to different topics within the creator's niche
 - Think about what made this video work and how to replicate that success with fresh subject matter
-- Consider: different hardware wallets, different apps, different privacy tools, different network concepts, different use cases"""
+- Consider: different hardware, different apps, different privacy/sovereignty tools, different network concepts, different use cases"""
     else:
-        remix_angle = """This is a general tech video (not crypto). The creator wants to ADAPT this style for bitcoin:
+        remix_angle = """This is a general tech video. The creator wants to ADAPT this style for their niche:
 - Identify what makes this video's format, structure, or presentation compelling
-- Suggest how to apply that exact style/trend to bitcoin, freedom tech, privacy, or self-custody topics
+- Suggest how to apply that exact style/trend to topics inside the creator's niche described above
 - Think about: the pacing, the hook, the thumbnail approach, the narrative structure, the editing style
-- Make the bitcoin version feel native to that format, not forced"""
+- Make the adapted version feel native to that format, not forced"""
 
     focus_section = ""
     if focus_topic:
@@ -1615,9 +1663,11 @@ def remix_video(
 **FOCUS TOPIC:** The creator specifically wants to apply this to: {focus_topic}
 Make sure at least 2-3 suggestions directly involve "{focus_topic}" as the subject matter."""
 
-    system = f"""You are a YouTube content strategist for a bitcoin/freedom tech creator (BTC Sessions).
+    system = f"""You are a YouTube content strategist helping a creator remix videos for their channel.
 
-This channel's core mission is helping people UNDERSTAND and USE bitcoin. Every video should be rooted in education and practical instruction. The audience ranges from total beginners to intermediate users who want to level up.
+{_creator_context_block(creator_niche)}
+
+Every remix suggestion must be rooted in education and practical instruction, aligned with the niche above. The audience ranges from beginners to intermediate users who want to level up.
 
 **Creator's Top Videos:**
 {creator_top}
@@ -1630,19 +1680,19 @@ This channel's core mission is helping people UNDERSTAND and USE bitcoin. Every 
 {remix_angle}
 {focus_section}
 
-**CONTENT FRAMING — all suggestions must be educational/instructional in nature. Think:**
-- "The Best Tools For..." (best wallets for privacy, best apps for Lightning, best hardware for running a node)
-- "How To Use..." (how to use Sparrow Wallet, how to use CoinJoin, how to use a signing device)
-- "Best Tech Stack For..." (best privacy stack, best self-custody stack, best Lightning stack)
-- "Using [Device] With [App]..." (using Coldcard with Sparrow, using SeedSigner with Specter)
-- "First Impressions of..." (first impressions of a new wallet, new hardware, new privacy tool)
-- "Privacy/Security Setup With..." (full privacy setup with Whirlpool, securing your bitcoin with multisig)
-- "Complete Guide To..." (complete guide to self-custody, running your own node, Lightning channels)
-- "X vs Y" comparisons (Coldcard vs Trezor, Sparrow vs BlueWallet, Lightning vs on-chain for daily use)
-- "What Happens When..." explainers (what happens when you send bitcoin, what happens in a coinjoin)
-- General tech video styles adapted to bitcoin (unboxings, tier lists, "I tried X for 30 days", day-in-the-life with bitcoin-only)
+**CONTENT FRAMING — all suggestions must be educational/instructional in nature, tailored to the creator's niche. Common formats to consider:**
+- "The Best Tools For..." (best tools/apps/hardware for a specific use case inside the niche)
+- "How To Use..." (specific tool or workflow walkthrough)
+- "Best Tech Stack For..." (recommended stack for a sovereignty/privacy/self-hosting goal)
+- "Using [A] With [B]..." (integration walkthroughs)
+- "First Impressions of..." (new hardware, software, or service reviews)
+- "Privacy/Security Setup With..." (end-to-end setup guides)
+- "Complete Guide To..." (thorough tutorials)
+- "X vs Y" comparisons
+- "What Happens When..." explainers
+- General tech formats adapted to the niche (unboxings, tier lists, "I tried X for 30 days", day-in-the-life)
 
-Be creative beyond these examples, but always anchor in practical bitcoin education. The goal is to bring new users in while still providing value to existing bitcoiners. Avoid hype, price speculation, or shilling — focus on sovereignty, understanding, and practical use.
+Be creative beyond these examples, but always anchor in practical education tied to the creator's niche. Avoid hype, price speculation, or shilling — focus on sovereignty, understanding, and practical use.
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -1662,18 +1712,18 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 RULES:
 - Generate 4-5 remix ideas, each with a concrete title concept
 - Generate 3-4 style takeaways
-- Every suggestion must be educational, instructional, or explainer content about bitcoin/freedom tech
+- Every suggestion must be educational, instructional, or explainer content aligned with the creator's niche
 - Title concepts should be real titles the creator could use, not placeholders
 - If a focus topic is given, prioritize it heavily
 - Consider current market conditions and trending topics when suggesting — lean into what's timely
-- Balance content for new users (onboarding, first steps) with content for existing bitcoiners (advanced setups, optimizations)
+- Balance content for new users (onboarding, first steps) with content for existing audience members (advanced setups, optimizations)
 - Never suggest price prediction, trading, or speculation content"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=system,
-        messages=[{"role": "user", "content": f"Remix this video for my bitcoin channel: \"{video_title}\""}],
+        messages=[{"role": "user", "content": f"Remix this video for my channel: \"{video_title}\""}],
     )
 
     text = response.content[0].text.strip()
@@ -1687,6 +1737,7 @@ def analyze_market_performance(
     phase: str,
     api_key: str,
     video_categories: dict = None,
+    creator_niche: str = "",
 ) -> dict:
     """Analyze content performance in a specific market phase with thumbnail vision."""
     import base64
@@ -1762,7 +1813,9 @@ def analyze_market_performance(
     top_avg = sum(v["view_count"] for v in top_performers) // len(top_performers) if top_performers else 0
     bottom_avg = sum(v["view_count"] for v in bottom_performers) // len(bottom_performers) if bottom_performers else 0
 
-    system = f"""You are a YouTube analytics expert analyzing how a bitcoin/freedom tech channel performs during {phase} markets.
+    system = f"""You are a YouTube analytics expert analyzing how this channel performs during {phase} (BTC) markets.
+
+{_creator_context_block(creator_niche)}
 
 **{phase.upper()} MARKET VIDEOS ({len(videos)} total):**
 Average views: {avg_views:,}

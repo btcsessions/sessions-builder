@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels, remix_video
+from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels, remix_video, DEFAULT_CHANNEL_NICHE
 from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_score,
                     record_snapshot, compute_velocity, compute_longevity_from_snapshots,
                     get_current_market_info, get_market_summary)
@@ -78,10 +78,17 @@ def _do_sync_push():
 
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
-                   sync_gist_id="", sync_github_token="", sync_password=""):
+                   sync_gist_id="", sync_github_token="", sync_password="",
+                   channel_niche=None):
     _ensure_data_dir()
     # Preserve existing fields not being explicitly set
     existing = load_settings()
+    # channel_niche: None means "not set by caller, preserve existing"; "" means
+    # "user explicitly cleared it" (fall through to default on read).
+    if channel_niche is None:
+        niche_value = existing.get("channel_niche", "")
+    else:
+        niche_value = channel_niche
     settings = {
         "playlist_id": playlist_id or existing.get("playlist_id", ""),
         "playlist_url": playlist_url or existing.get("playlist_url", ""),
@@ -92,10 +99,16 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
         "sync_gist_id": sync_gist_id or existing.get("sync_gist_id", ""),
         "sync_github_token": sync_github_token or existing.get("sync_github_token", ""),
         "sync_password": sync_password or existing.get("sync_password", ""),
+        "channel_niche": niche_value,
     }
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     _schedule_sync_push()
+
+
+def get_channel_niche() -> str:
+    """Return the configured channel niche, or empty string to let brainstorm.py default apply."""
+    return (load_settings().get("channel_niche") or "").strip()
 
 
 def load_settings() -> dict:
@@ -348,6 +361,8 @@ def settings_page():
         sync_configured=is_sync_configured(),
         sponsor_template=settings.get("sponsor_template", ""),
         default_yt_tags=settings.get("default_yt_tags", ""),
+        channel_niche=settings.get("channel_niche", ""),
+        default_channel_niche=DEFAULT_CHANNEL_NICHE,
     )
 
 
@@ -363,6 +378,7 @@ def fetch():
     sync_gist_id = request.form.get("sync_gist_id", "").strip()
     sync_github_token = request.form.get("sync_github_token", "").strip()
     sync_password = request.form.get("sync_password", "").strip()
+    channel_niche = request.form.get("channel_niche", "").strip()
 
     if not playlist_url or not google_key:
         return render_template(
@@ -384,7 +400,8 @@ def fetch():
         # Persist everything
         save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                       oauth_client_id, oauth_client_secret,
-                      sync_gist_id, sync_github_token, sync_password)
+                      sync_gist_id, sync_github_token, sync_password,
+                      channel_niche=channel_niche)
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -410,6 +427,7 @@ def save_settings_only():
     sync_gist_id = request.form.get("sync_gist_id", "").strip()
     sync_github_token = request.form.get("sync_github_token", "").strip()
     sync_password = request.form.get("sync_password", "").strip()
+    channel_niche = request.form.get("channel_niche", "").strip()
 
     existing = load_settings()
     playlist_id = existing.get("playlist_id", "")
@@ -421,7 +439,8 @@ def save_settings_only():
 
     save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                   oauth_client_id, oauth_client_secret,
-                  sync_gist_id, sync_github_token, sync_password)
+                  sync_gist_id, sync_github_token, sync_password,
+                  channel_niche=channel_niche)
 
     return redirect(url_for("settings_page", success="Settings saved."))
 
@@ -511,7 +530,7 @@ def api_chat():
         except Exception as e:
             print(f"[Chat] Trend intel unavailable: {e}")
 
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context)
+        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context, creator_niche=get_channel_niche())
 
         # Check if reply contains a plan change JSON block
         plan_change = None
@@ -740,6 +759,7 @@ def api_generate_plan():
             title_history=title_history,
             sponsor_template=settings.get("sponsor_template", ""),
             default_yt_tags=settings.get("default_yt_tags", ""),
+            creator_niche=settings.get("channel_niche", ""),
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
@@ -845,6 +865,7 @@ def api_swap_title():
             api_key=api_key,
             market_data=market_data,
             title_history=title_history,
+            creator_niche=get_channel_niche(),
         )
         return jsonify({"title": title})
     except Exception as e:
@@ -981,6 +1002,7 @@ def api_parse_notes():
             video_data=video_cache,
             market_data=market_data,
             competitors_data=competitors_cache,
+            creator_niche=settings.get("channel_niche", ""),
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
@@ -1017,6 +1039,7 @@ def api_regenerate_titles():
             market_data=market_data,
             trend_context=trend_context,
             title_history=title_history,
+            creator_niche=get_channel_niche(),
         )
         return jsonify({"titles": titles, "_scoring_ctx": _build_scoring_context()})
     except Exception as e:
@@ -1058,6 +1081,7 @@ def api_score_titles():
             video_data=video_cache,
             api_key=api_key,
             market_data=market_data,
+            creator_niche=get_channel_niche(),
         )
         return jsonify({"scores": scores})
     except Exception as e:
@@ -1577,6 +1601,7 @@ def api_suggest_channels():
             market_data=market_data,
             exclude_handles=exclude_handles,
             creator_channel=creator_channel,
+            creator_niche=settings.get("channel_niche", ""),
         )
 
         # Enrich suggestions with avatars from YouTube API
@@ -1752,6 +1777,7 @@ def api_market_analysis():
             phase=phase,
             api_key=api_key,
             video_categories=video_categories,
+            creator_niche=get_channel_niche(),
         )
         return jsonify(result)
     except Exception as e:
@@ -1780,6 +1806,7 @@ def api_generate_trend_report():
             api_key=api_key,
             analytics_data=analytics_cache,
             market_data=market_data,
+            creator_niche=get_channel_niche(),
         )
         return jsonify(report)
     except Exception as e:
@@ -1847,6 +1874,7 @@ def api_analyze_own_video():
             analytics_data=analytics_cache,
             competitors_data=competitors_cache,
             market_data=market_data,
+            creator_niche=get_channel_niche(),
         )
         return jsonify(analysis)
     except Exception as e:
@@ -1894,6 +1922,7 @@ def api_analyze_competitor_video():
             api_key=api_key,
             analytics_data=analytics_cache,
             market_data=market_data,
+            creator_niche=get_channel_niche(),
         )
         return jsonify(analysis)
     except Exception as e:
@@ -1935,6 +1964,7 @@ def api_remix_video():
             focus_topic=focus_topic,
             market_data=market_data,
             trend_intel_context=intel_context,
+            creator_niche=get_channel_niche(),
         )
         return jsonify(result)
     except Exception as e:

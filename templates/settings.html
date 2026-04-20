@@ -46,6 +46,13 @@
                 <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
             </div>
 
+            <div class="form-group">
+                <label for="channel_niche">Channel Niche</label>
+                <textarea id="channel_niche" name="channel_niche" rows="5"
+                          placeholder="{{ default_channel_niche }}">{{ channel_niche }}</textarea>
+                <small>Short description of the channel — topics, audience, mission. Injected into every AI prompt (Brainstorm, Discover, title generation, video analysis). Leave blank to use the default.</small>
+            </div>
+
             <hr class="settings-divider">
 
             <h3>YouTube Analytics <span class="badge {{ 'connected' if oauth_connected else 'disconnected' }}">{{ 'Connected' if oauth_connected else 'Not Connected' }}</span></h3>
