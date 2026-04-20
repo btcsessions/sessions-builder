@@ -1507,7 +1507,7 @@ def suggest_channels(
 
     market_section = _build_market_section(market_data)
 
-    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech tutorial creator wants to discover new channels to learn from — both crypto-native channels and mainstream tech channels that are currently doing well.
+    system = f"""You are a YouTube growth strategist. A bitcoin/freedom tech tutorial creator wants to discover new channels to learn from — the PRIMARY focus is tech channels covering privacy, AI, self-hosting, and DIY setups, with a smaller set of crypto/bitcoin channels on the side.
 
 **The Creator's Recent Content:**
 {topic_sample}
@@ -1520,7 +1520,7 @@ def suggest_channels(
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
 {{
-  "crypto_channels": [
+  "tech_channels": [
     {{
       "name": "Channel Name",
       "handle": "@handle",
@@ -1528,7 +1528,7 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
       "learn": "What specific tactic or approach to study"
     }}
   ],
-  "tech_channels": [
+  "crypto_channels": [
     {{
       "name": "Channel Name",
       "handle": "@handle",
@@ -1539,23 +1539,25 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
 }}
 
 RULES:
-- Suggest 5-6 crypto/bitcoin channels and 4-5 mainstream tech channels
+- Suggest 7-8 tech channels (PRIMARY focus) and only 2-3 crypto/bitcoin channels (secondary)
 - NEVER suggest the creator's own channel{f' ({creator_channel})' if creator_channel else ''}
 - Do NOT suggest channels already tracked: {existing_str}
 - {"CRITICAL: Do NOT suggest any of these handles that were already suggested: " + ", ".join(exclude_handles) + ". You MUST suggest completely different channels." if exclude_handles else ""}
 - Focus on channels that are CURRENTLY doing well — growing, getting high engagement, producing consistently
 - IMPORTANT: Only suggest channels pulling in views AT LEAST comparable to the creator's own average ({f'~{int(avg_views):,} views/video' if avg_views else 'unknown — aim high'}), preferably substantially more. The goal is to study channels that are outperforming, not smaller channels.
-- For crypto channels: include a MIX of:
-  * Bitcoin-focused tutorial/education channels
-  * Privacy/freedom tech channels
-  * Bitcoin/crypto PODCAST channels that cover geopolitics, sovereignty, and government overreach — these won't be tutorial-related but their coverage of current sentiment around freedom, self-sovereignty, and macro trends can inform how episodes are packaged and framed to resonate with what the audience cares about RIGHT NOW
-- For tech channels: include channels whose format, editing, storytelling, or thumbnail strategy could be studied — even if their topic is completely different (hardware reviews, app reviews, explainers, etc.)
+- For tech channels (the PRIMARY category): suggest the top YouTube channels covering:
+  * Privacy tech — VPNs, encrypted messaging, de-Googling, threat modeling, opsec, digital sovereignty
+  * AI — local/self-hosted LLMs, open-source AI tooling, AI workflows, agent frameworks, practical AI tutorials
+  * Self-hosting — Homelab, Docker/Kubernetes, Proxmox, NAS builds, self-hosted replacements for SaaS, reverse proxies, networking
+  * DIY setups — custom PC/server builds, network gear, 3D printing, hardware projects, maker/tinkerer content
+  Include a healthy mix across all four of these buckets. These channels are the bulk of the suggestions.
+- For crypto channels (the SMALLER secondary category): just 2-3 high-signal channels — either standout Bitcoin tutorial/education, privacy-focused Bitcoin tooling, or a sharp podcast covering sovereignty/geopolitics. Keep this list short.
 - The handle should be their actual YouTube @handle if you know it, otherwise best guess
 - Be specific about what to learn from each — not generic praise
 - Prioritize channels with strong recent momentum over legacy channels coasting on old subscribers
 - Suggest DIFFERENT channels each time — variety matters for discovery"""
 
-    user_msg = "Suggest channels I should be watching right now for inspiration. Focus on who is currently doing well and what I can learn from them. Mix in some bitcoin podcast/commentary channels covering sovereignty, geopolitics, and government overreach — their framing of current events can help us package our tutorial content to match the audience's current mindset."
+    user_msg = "Suggest channels I should be watching right now for inspiration. The PRIMARY focus is top tech channels covering privacy, AI, self-hosting, and DIY setups — that's the bulk of what I want. Add just 2-3 crypto/bitcoin channels on the side. Tell me who's currently doing well and what I can learn from them."
     if exclude_handles:
         user_msg += f"\n\nIMPORTANT: I've already seen suggestions for these handles: {', '.join(exclude_handles)}. Give me COMPLETELY DIFFERENT channels this time — do not repeat any of those."
 
