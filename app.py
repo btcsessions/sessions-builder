@@ -314,81 +314,12 @@ def index():
     if not video_cache:
         return redirect(url_for("settings_page"))
 
-    from datetime import datetime, timedelta, timezone
-
-    # Build a unified outlier feed from all inspiration channels
-    outliers = []
-    for comp in competitors_cache:
-        vids = comp.get("videos", [])
-        if not vids:
-            continue
-        avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
-        for v in vids:
-            ratio = v["view_count"] / avg if avg > 0 else 0
-            if ratio >= 1.2:
-                vc = dict(v)
-                vc["_channel"] = comp["name"]
-                vc["_channel_id"] = comp["channel_id"]
-                vc["_channel_category"] = comp.get("category", "")
-                vc["_ratio"] = round(ratio, 1)
-                try:
-                    vc["_date"] = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-                except (ValueError, KeyError):
-                    vc["_date"] = datetime.min.replace(tzinfo=timezone.utc)
-                outliers.append(vc)
-
-    outliers.sort(key=lambda v: v["_date"], reverse=True)
-    outliers = outliers[:20]
-
-    # Recent own videos with market-adjusted scores
-    cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
-    year_videos = []
-    for v in video_cache:
-        try:
-            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-            if dt >= cutoff_1y:
-                year_videos.append(v)
-        except (ValueError, KeyError):
-            pass
-
-    year_avg_views = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
-
-    # Market-adjusted baselines
-    bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
-    bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-    bear_avg = _median([v["view_count"] for v in bear_year]) or year_avg_views
-    bull_avg = _median([v["view_count"] for v in bull_year]) or year_avg_views
-
-    market_info = get_current_market_info(_btc_prices)
-
-    recent_videos = []
-    for v in video_cache:
-        try:
-            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-        except (ValueError, KeyError):
-            continue
-        vc = dict(v)
-        vc["_date"] = dt
-        vc["_score"] = round(v["view_count"] / year_avg_views, 1) if year_avg_views else 0
-        tag_video_market_phase(vc, _btc_prices)
-        phase = vc.get("_market_phase", "unknown")
-        phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg_views)
-        vc["_market_score"] = round(v["view_count"] / phase_avg, 1) if phase_avg else 0
-        vc["_category"] = video_categories.get(v["video_id"], "")
-        recent_videos.append(vc)
-
-    recent_videos.sort(key=lambda v: v["_date"], reverse=True)
-    recent_videos = recent_videos[:20]
-
     # Check for trend seed from Trends → Plan This Video handoff
     trend_seed = session.pop("trend_seed", None)
 
     return render_template(
         "workspace.html",
         competitors=competitors_cache,
-        outliers=outliers,
-        recent_videos=recent_videos,
-        market_info=market_info,
         chat_history=chat_history,
         trend_seed=trend_seed,
     )

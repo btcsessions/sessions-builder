@@ -2093,17 +2093,10 @@ tr:hover { background: var(--surface2); }
 /* ===== WORKSPACE ===== */
 .workspace {
     display: grid;
-    grid-template-columns: 260px 1fr 340px;
+    grid-template-columns: 1fr 340px;
     gap: 0;
     height: calc(100vh - var(--nav-height, 55px));
     overflow: hidden;
-}
-.workspace.sidebar-collapsed {
-    grid-template-columns: 40px 1fr 340px;
-}
-@media (max-width: 1100px) {
-    .workspace { grid-template-columns: 1fr 340px; }
-    .ws-sidebar { display: none; }
 }
 @media (max-width: 768px) {
     .workspace { grid-template-columns: 1fr; }
