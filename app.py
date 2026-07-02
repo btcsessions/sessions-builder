@@ -79,31 +79,44 @@ def _do_sync_push():
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
                    sync_gist_id="", sync_github_token="", sync_password="",
-                   channel_niche=None):
+                   channel_niche=None, channel_name=None):
     _ensure_data_dir()
-    # Preserve existing fields not being explicitly set
-    existing = load_settings()
-    # channel_niche: None means "not set by caller, preserve existing"; "" means
-    # "user explicitly cleared it" (fall through to default on read).
-    if channel_niche is None:
-        niche_value = existing.get("channel_niche", "")
-    else:
-        niche_value = channel_niche
-    settings = {
-        "playlist_id": playlist_id or existing.get("playlist_id", ""),
-        "playlist_url": playlist_url or existing.get("playlist_url", ""),
-        "google_key": google_key or existing.get("google_key", ""),
-        "anthropic_key": anthropic_key or existing.get("anthropic_key", ""),
-        "oauth_client_id": oauth_client_id or existing.get("oauth_client_id", ""),
-        "oauth_client_secret": oauth_client_secret or existing.get("oauth_client_secret", ""),
-        "sync_gist_id": sync_gist_id or existing.get("sync_gist_id", ""),
-        "sync_github_token": sync_github_token or existing.get("sync_github_token", ""),
-        "sync_password": sync_password or existing.get("sync_password", ""),
-        "channel_niche": niche_value,
-    }
+    # Start from the existing settings so fields managed elsewhere
+    # (affiliate_links, sponsor_template, default_yt_tags, ...) survive a save.
+    settings = load_settings()
+    settings.update({
+        "playlist_id": playlist_id or settings.get("playlist_id", ""),
+        "playlist_url": playlist_url or settings.get("playlist_url", ""),
+        "google_key": google_key or settings.get("google_key", ""),
+        "anthropic_key": anthropic_key or settings.get("anthropic_key", ""),
+        "oauth_client_id": oauth_client_id or settings.get("oauth_client_id", ""),
+        "oauth_client_secret": oauth_client_secret or settings.get("oauth_client_secret", ""),
+        "sync_gist_id": sync_gist_id or settings.get("sync_gist_id", ""),
+        "sync_github_token": sync_github_token or settings.get("sync_github_token", ""),
+        "sync_password": sync_password or settings.get("sync_password", ""),
+    })
+    # channel_niche / channel_name: None means "not set by caller, preserve
+    # existing"; "" means "user explicitly cleared it" (defaults apply on read).
+    if channel_niche is not None:
+        settings["channel_niche"] = channel_niche
+    if channel_name is not None:
+        settings["channel_name"] = channel_name
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     _schedule_sync_push()
+
+
+DEFAULT_CHANNEL_NAME = "Sovereign Sessions"
+
+
+def get_channel_name() -> str:
+    """Display name for the channel this planner is building for."""
+    return (load_settings().get("channel_name") or "").strip() or DEFAULT_CHANNEL_NAME
+
+
+@app.context_processor
+def inject_channel_name():
+    return {"channel_name": get_channel_name()}
 
 
 def get_channel_niche() -> str:
@@ -363,6 +376,8 @@ def settings_page():
         default_yt_tags=settings.get("default_yt_tags", ""),
         channel_niche=settings.get("channel_niche", ""),
         default_channel_niche=DEFAULT_CHANNEL_NICHE,
+        channel_name_setting=settings.get("channel_name", ""),
+        default_channel_name=DEFAULT_CHANNEL_NAME,
     )
 
 
@@ -379,6 +394,7 @@ def fetch():
     sync_github_token = request.form.get("sync_github_token", "").strip()
     sync_password = request.form.get("sync_password", "").strip()
     channel_niche = request.form.get("channel_niche", "").strip()
+    channel_name = request.form.get("channel_name", "").strip()
 
     if not playlist_url or not google_key:
         return render_template(
@@ -401,7 +417,7 @@ def fetch():
         save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                       oauth_client_id, oauth_client_secret,
                       sync_gist_id, sync_github_token, sync_password,
-                      channel_niche=channel_niche)
+                      channel_niche=channel_niche, channel_name=channel_name)
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -428,6 +444,7 @@ def save_settings_only():
     sync_github_token = request.form.get("sync_github_token", "").strip()
     sync_password = request.form.get("sync_password", "").strip()
     channel_niche = request.form.get("channel_niche", "").strip()
+    channel_name = request.form.get("channel_name", "").strip()
 
     existing = load_settings()
     playlist_id = existing.get("playlist_id", "")
@@ -440,7 +457,7 @@ def save_settings_only():
     save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                   oauth_client_id, oauth_client_secret,
                   sync_gist_id, sync_github_token, sync_password,
-                  channel_niche=channel_niche)
+                  channel_niche=channel_niche, channel_name=channel_name)
 
     return redirect(url_for("settings_page", success="Settings saved."))
 
@@ -760,6 +777,7 @@ def api_generate_plan():
             sponsor_template=settings.get("sponsor_template", ""),
             default_yt_tags=settings.get("default_yt_tags", ""),
             creator_niche=settings.get("channel_niche", ""),
+            affiliate_links=settings.get("affiliate_links", []),
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         return jsonify(plan)
@@ -1003,6 +1021,7 @@ def api_parse_notes():
             market_data=market_data,
             competitors_data=competitors_cache,
             creator_niche=settings.get("channel_niche", ""),
+            affiliate_links=settings.get("affiliate_links", []),
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
@@ -2270,4 +2289,8 @@ def shutdown_app():
 if __name__ == "__main__":
     # Disable reloader when launched from .app bundle (keeps process alive for Dock)
     use_reloader = os.environ.get("LAUNCHED_FROM_APP") != "1"
-    app.run(debug=True, host="127.0.0.1", port=5000, use_reloader=use_reloader)
+    # Set PLANNER_HOST=0.0.0.0 to reach the app from a phone/tablet on the same
+    # network (http://<machine-ip>:5000). Default stays local-only.
+    host = os.environ.get("PLANNER_HOST", "127.0.0.1")
+    port = int(os.environ.get("PLANNER_PORT", "5000"))
+    app.run(debug=True, host=host, port=port, use_reloader=use_reloader)

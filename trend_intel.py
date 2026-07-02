@@ -13,6 +13,10 @@ Sources:
     - Hacker News: top tech stories
     - GitHub: trending repos from the past week
     - TechCrunch, Wired, TechRadar: latest headlines via RSS
+
+  YouTube:
+    - YouTube Data API: trending videos overall + Science & Tech category
+      (uses the Google API key from settings.json when available)
 """
 from __future__ import annotations
 
@@ -436,6 +440,49 @@ def _fetch_techradar_headlines() -> list[dict]:
 #  Aggregation
 # =========================================================================
 
+def _get_google_key() -> str:
+    """Read the Google API key from settings.json (or env) for YouTube trending."""
+    settings_path = os.path.join(DATA_DIR, "settings.json")
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path) as f:
+                key = json.load(f).get("google_key", "")
+            if key:
+                return key
+        except (json.JSONDecodeError, IOError):
+            pass
+    return os.environ.get("GOOGLE_API_KEY", "")
+
+
+def _fetch_youtube_trending(api_key: str, category_id: str = "", region: str = "US",
+                            max_results: int = 12) -> list[dict]:
+    """Fetch trending videos from the YouTube Data API (chart=mostPopular)."""
+    url = (
+        "https://www.googleapis.com/youtube/v3/videos"
+        f"?part=snippet,statistics&chart=mostPopular&regionCode={region}"
+        f"&maxResults={max_results}&key={api_key}"
+    )
+    if category_id:
+        url += f"&videoCategoryId={category_id}"
+    data = _api_get(url)
+    if not data or "items" not in data:
+        return []
+    videos = []
+    for item in data["items"]:
+        snippet = item.get("snippet", {})
+        stats = item.get("statistics", {})
+        try:
+            views = int(stats.get("viewCount", 0))
+        except (TypeError, ValueError):
+            views = 0
+        videos.append({
+            "title": snippet.get("title", ""),
+            "channel": snippet.get("channelTitle", ""),
+            "views": views,
+        })
+    return videos
+
+
 def gather_trend_intel() -> dict:
     """Gather all trend signals. Returns structured intel dict."""
     # Check cache first
@@ -482,6 +529,14 @@ def gather_trend_intel() -> dict:
     intel["tech"]["techcrunch"] = _fetch_techcrunch_headlines()
     intel["tech"]["wired"] = _fetch_wired_headlines()
     intel["tech"]["techradar"] = _fetch_techradar_headlines()
+
+    # --- YouTube trending (needs a Google API key) ---
+    intel["youtube"] = {}
+    google_key = _get_google_key()
+    if google_key:
+        # Category 28 = Science & Technology
+        intel["youtube"]["trending_tech"] = _fetch_youtube_trending(google_key, category_id="28")
+        intel["youtube"]["trending_overall"] = _fetch_youtube_trending(google_key, max_results=8)
 
     # Save cache
     _save_cache(intel)
@@ -614,6 +669,19 @@ def intel_to_prompt_context(intel: dict) -> str:
         for repo in gh[:6]:
             desc = f" — {repo['description']}" if repo['description'] else ""
             lines.append(f"- {repo['name']} ({repo['stars']} stars){desc}")
+
+    # --- YouTube trending ---
+    yt = intel.get("youtube", {})
+    yt_tech = yt.get("trending_tech", [])
+    if yt_tech:
+        lines.append("\nYouTube Trending — Science & Tech (what's ranking RIGHT NOW):")
+        for v in yt_tech[:10]:
+            lines.append(f"- \"{v['title']}\" — {v['channel']} ({v['views']:,} views)")
+    yt_all = yt.get("trending_overall", [])
+    if yt_all:
+        lines.append("\nYouTube Trending — Overall (packaging/title patterns to learn from):")
+        for v in yt_all[:6]:
+            lines.append(f"- \"{v['title']}\" — {v['channel']} ({v['views']:,} views)")
 
     # Tech publication headlines
     for source_key, label in [("techcrunch", "TechCrunch"), ("wired", "Wired"), ("techradar", "TechRadar")]:

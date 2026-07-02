@@ -35,4 +35,16 @@ The app syncs data between machines via a private GitHub Gist. Important:
 
 ### Python Version
 
-macOS has Python 3.9 (system). CachyOS has a newer version. Both work, but Google API libraries show deprecation warnings on 3.9.
+macOS has Python 3.9 (system). CachyOS has a newer version. Both work, but Google API libraries show deprecation warnings on 3.9. Keep code 3.9-compatible (use `from __future__ import annotations` for `X | Y` type hints).
+
+## Sovereign Sessions Tutorial Planner
+
+The planner is branded for the **Sovereign Sessions** channel (freedom tech: bitcoin, privacy, self-hosted AI, sovereign computing). Key facts:
+
+- **Channel Name** and **Channel Niche** are Settings fields (defaults: "Sovereign Sessions" and the freedom-tech niche in `brainstorm.py`). The name drives the nav brand and page titles; the niche is injected into every AI prompt.
+- **Two YouTube data sources** inform outputs: the YouTube Data API key (playlist/video stats) and the OAuth-connected YouTube Analytics API (retention, CTR, impressions). A second own channel can be tracked via Inspiration → "own channel" toggle and is over-weighted in prompts.
+- **Plan generation** (`generate_video_plan`): each outline section includes a `section_script` (short scripted on-camera opener for compartmentalized learning). Descriptions are SEO-optimized and pull REAL URLs from past tutorials and the referral/affiliate **link library** (`affiliate_links` in settings, managed on the plan page).
+- **Web search**: plan generation uses the Anthropic `web_search_20250305` server tool (max 3 searches) and silently falls back to no-search if unavailable.
+- **YouTube trending** feeds trend intel (`trend_intel.py`): overall + Science & Tech mostPopular charts, fetched with the Google API key from settings.
+- `save_settings()` in `app.py` must preserve keys it doesn't manage (affiliate_links, sponsor_template, default_yt_tags, ...) — it starts from the existing dict and updates. Don't rebuild the settings dict from scratch.
+- **Mobile access**: set `PLANNER_HOST=0.0.0.0` (and optionally `PLANNER_PORT`) before launch to reach the app from a phone on the same network at `http://<machine-ip>:5000`. Default stays `127.0.0.1`.

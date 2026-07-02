@@ -31,6 +31,39 @@ def _extract_urls(text: str) -> list[str]:
     return re.findall(r'https?://[^\s<>"\')\]]+', text)
 
 
+def _response_text(response) -> str:
+    """Join all text blocks in a response (web search adds non-text blocks)."""
+    return "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+
+
+def _parse_plan_json(text: str) -> dict:
+    """Parse a JSON plan from model output, tolerating fences or stray prose."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Fall back to the outermost JSON object in the text
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            return json.loads(text[start:end + 1])
+        raise
+
+
+def _build_link_library_section(affiliate_links: list = None) -> str:
+    """Format the creator's locally held referral/affiliate links for prompts."""
+    if not affiliate_links:
+        return ""
+    lines = ["\n**CREATOR'S LINK LIBRARY (referral/affiliate links — use the REAL URLs):**"]
+    for l in affiliate_links:
+        title = (l.get("title") or "").strip()
+        url = (l.get("url") or "").strip()
+        if title and url:
+            lines.append(f"- {title}: {url}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def _fetch_url_text(url: str, timeout: int = 10) -> str:
     """Fetch a URL and return a cleaned text summary (max ~3000 chars)."""
     import urllib.request
@@ -533,7 +566,7 @@ Example — if the user says "make the titles shorter":
 {"titles": ["Short Title 1", "Short Title 2", "Short Title 3"]}
 ```
 
-Available fields: titles (array of strings), thumbnail_ideas (array), intro_hook (string), outline (array of {section, points, duration_hint}), tags (array), description (string).
+Available fields: titles (array of strings), thumbnail_ideas (array), intro_hook (string), outline (array of {section, section_script, points, duration_hint}), tags (array), description (string).
 
 IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking to modify the plan. For general discussion, just respond normally. Format your regular responses with clean markdown — use headers, bullet points, and bold for readability."""
 
@@ -646,6 +679,8 @@ def generate_video_plan(
     sponsor_template: str = "",
     default_yt_tags: str = "",
     creator_niche: str = "",
+    affiliate_links: list = None,
+    use_web_search: bool = True,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -674,8 +709,8 @@ You are now generating a complete video production plan. You must respond with O
   "thumbnail_ideas": ["idea 1", "idea 2", "idea 3"],
   "intro_hook": "A compelling 2-3 sentence opening hook to grab viewers in the first 10 seconds",
   "outline": [
-    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~2 min"}},
-    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~3 min"}}
+    {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~2 min"}},
+    {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~3 min"}}
   ],
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"],
   "description": "Full YouTube description with summary and links to referenced past tutorials if relevant"
@@ -683,25 +718,29 @@ You are now generating a complete video production plan. You must respond with O
 
 IMPORTANT RULES:
 - This is a **{video_type}** video — tailor the structure, pacing, and tone accordingly
-- For tutorials: step-by-step structure, clear sections, practical focus
+- For tutorials: step-by-step structure with clearly segregated sections so each part works as a self-contained, compartmentalized lesson a viewer can jump to. Practical focus.
 - For first impressions: excitement/curiosity hook, unboxing flow, pros/cons, verdict
 - For listicles: numbered items, punchy transitions, teaser of best item early
+- Each outline section gets a "section_script": a short scripted opener (1-3 spoken sentences, in the creator's on-camera voice) that introduces what this section covers and why it matters. For tutorials these are essential — they let viewers who skip around orient instantly.
 - Suggest 3 title options optimized for CTR and YouTube search
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
-- The description should contain:
+- The description must be SEO-optimized: naturally work the main search keywords into the opening sentences. It should contain:
   1. A short paragraph (2-4 sentences) summarizing what the video covers and why it matters — NOT a section-by-section breakdown
-  2. A list of relevant links to app downloads, product websites, and/or associated tutorials — use descriptive labels with [LINK] placeholders (e.g. "Download Umbrel: [LINK]")
+  2. A list of relevant links: when a relevant past tutorial (URLs below) or link-library entry exists, use its REAL URL with a descriptive label (e.g. "Full node setup tutorial: https://..."). Only use a [LINK] placeholder for things with no known URL (e.g. "Download Umbrel: [LINK]")
+  3. Include the referral/affiliate links from the creator's link library that genuinely relate to this video's topic — skip unrelated ones
   Do NOT include timestamps — those are added manually later
   Do NOT include a sponsor section — that will be auto-inserted
 - For "tags": generate 8-12 topic-specific SEO tags for this video (these get COMBINED with the creator's default tags)
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
 - If competitor videos are provided, consider what works in those videos and differentiate
 - Base recommendations on what has performed well in the channel data
+- If web search is available, use it (up to 3 searches) to check current facts, tool versions, and what's ranking on this topic — then fold that into the outline, titles, and SEO keywords. Your final reply must still be ONLY the JSON object.
 
 Here are the creator's past videos for reference links:
 {past_titles}
+{_build_link_library_section(affiliate_links)}
 {_build_title_history_section(title_history)}"""
 
     # Build trend context section if coming from Trends remix
@@ -744,18 +783,25 @@ Use this real-time data to make the plan timely and relevant. Reference specific
 {trend_section}
 {intel_section}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
+    request_kwargs = {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": 4000,
+        "system": system,
+        "messages": [{"role": "user", "content": user_msg}],
+    }
+    if use_web_search:
+        try:
+            response = client.messages.create(
+                **request_kwargs,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+            )
+        except Exception as e:
+            print(f"[Plan] Web search unavailable, generating without it: {e}")
+            response = client.messages.create(**request_kwargs)
+    else:
+        response = client.messages.create(**request_kwargs)
 
-    text = response.content[0].text.strip()
-    # Handle if Claude wraps in code fences despite instructions
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    plan = json.loads(text)
+    plan = _parse_plan_json(_response_text(response))
 
     # Auto-append sponsor block + timestamps reminder to description
     sponsor = sponsor_template or desc_template  # fallback to old field
@@ -806,6 +852,7 @@ def parse_notes_to_plan(
     market_data: dict = None,
     competitors_data: list = None,
     creator_niche: str = "",
+    affiliate_links: list = None,
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -852,6 +899,7 @@ Preserve what's already good, integrate the new information, and improve where t
 {channel_context}
 {market_section}
 {trend_section}
+{_build_link_library_section(affiliate_links)}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -860,7 +908,7 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
   "thumbnail_ideas": ["idea 1", "idea 2", "idea 3"],
   "intro_hook": "A compelling 2-3 sentence opening hook",
   "outline": [
-    {{"section": "Section name", "points": ["key point 1", "key point 2"], "duration_hint": "~X min"}}
+    {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~X min"}}
   ],
   "tags": ["tag1", "tag2", "tag3"],
   "description": "A short paragraph summarizing the video, then a list of relevant links with [LINK] placeholders"
@@ -871,7 +919,8 @@ RULES:
 - If the notes contain title ideas, use them. If not, generate 3 based on the content.
 - Use the channel performance data and market trends above to inform title angles, framing, and packaging — angle the content toward what's currently resonating with the audience
 - Infer logical sections and timing from the outline depth
-- The description should be a short paragraph (2-4 sentences) summarizing the video, followed by relevant links with [LINK] placeholders — NOT a section-by-section breakdown. Do NOT include timestamps.
+- Give each section a short "section_script" (1-3 spoken sentences, creator's on-camera voice) that opens the section — keep any opener the notes already contain
+- The description should be a short paragraph (2-4 sentences) summarizing the video, followed by relevant links — NOT a section-by-section breakdown. Do NOT include timestamps. Use REAL URLs from the creator's link library when relevant; only use [LINK] placeholders for links with no known URL.
 - Keep the creator's voice and phrasing where possible — don't over-polish their notes
 - If {'amending' if existing_plan else 'creating'}: {'merge intelligently — dont discard existing work, integrate the new notes' if existing_plan else 'build the full plan from scratch based on the notes'}
 - This is a **{video_type}** video"""
@@ -891,10 +940,7 @@ RULES:
         messages=[{"role": "user", "content": user_msg}],
     )
 
-    text = response.content[0].text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    plan = json.loads(text)
+    plan = _parse_plan_json(_response_text(response))
 
     # Auto-append sponsor block + timestamps reminder if creating new
     sponsor = sponsor_template or desc_template

@@ -1157,6 +1157,9 @@ function renderOutline(outline) {
                 <input type="text" class="plan-editable-input outline-duration-edit" value="${esc(s.duration_hint)}" data-section="${si}" style="width:5rem; text-align:right;">
                 <button class="btn-icon outline-remove-section" data-section="${si}" title="Remove section">&times;</button>
             </div>
+            <textarea class="plan-editable-input outline-script-edit" data-section="${si}" rows="2"
+                placeholder="Section intro script — 1-3 spoken sentences to open this section on camera..."
+                style="margin: 0.2rem 0 0.3rem 1.5rem; width: calc(100% - 1.5rem); font-style: italic; font-size: 0.85rem; resize: vertical;">${esc(s.section_script || "")}</textarea>
             <ul class="outline-points-list" data-section="${si}">${pts}</ul>
             <button class="btn-icon outline-add-point" data-section="${si}" title="Add point" style="margin-left:1.5rem; font-size:0.75rem;">+ Add point</button>
         </div>`;
@@ -1168,7 +1171,7 @@ function renderOutline(outline) {
     // Wire add section
     container.querySelector("#outline-add-section")?.addEventListener("click", () => {
         const current = getOutlineFromDOM();
-        current.push({ section: "New Section", points: [""], duration_hint: "~2 min" });
+        current.push({ section: "New Section", section_script: "", points: [""], duration_hint: "~2 min" });
         renderOutline(current);
         savePlannerState();
     });
@@ -1302,6 +1305,7 @@ function renderOutline(outline) {
 function getOutlineFromDOM() {
     return [...document.querySelectorAll(".outline-section[data-section]")].map(sec => ({
         section: sec.querySelector(".outline-section-edit")?.value || "",
+        section_script: sec.querySelector(".outline-script-edit")?.value || "",
         duration_hint: sec.querySelector(".outline-duration-edit")?.value || "",
         points: [...sec.querySelectorAll(".outline-point-edit")].map(el => el.value),
     }));
@@ -2001,6 +2005,7 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
   .outline-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3rem; }
   .outline-name { font-weight: 700; font-size: 1rem; }
   .outline-duration { color: #888; font-size: 0.8rem; }
+  .section-script { font-style: italic; color: #555; font-size: 0.9rem; margin: 0.2rem 0 0.4rem 1.5rem; padding-left: 0.6rem; border-left: 3px solid #42a5f5; }
   .outline-points { margin: 0; padding-left: 1.5rem; }
   .outline-points li { margin-bottom: 0.25rem; font-size: 0.9rem; }
   .thumb-list { list-style: none; padding: 0; }
@@ -2064,6 +2069,9 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
       <span class="outline-name">${i + 1}. ${esc(s.section)}</span>
       ${s.duration_hint ? '<span class="outline-duration">' + esc(s.duration_hint) + '</span>' : ''}
     </div>`;
+            if (s.section_script) {
+                html += `<div class="section-script">&ldquo;${esc(s.section_script)}&rdquo;</div>`;
+            }
             if (s.points && s.points.length) {
                 html += `<ul class="outline-points">`;
                 s.points.forEach(p => { html += `<li>${esc(p)}</li>`; });

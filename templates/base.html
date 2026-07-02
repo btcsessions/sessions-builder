@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}YouTube Planner{% endblock %}</title>
+    <title>{% block title %}{{ channel_name }} Planner{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <nav>
-        <a href="{{ url_for('index') }}" class="nav-brand">BTC SESSIONS</a>
+        <a href="{{ url_for('index') }}" class="nav-brand">{{ channel_name }}</a>
         <a href="{{ url_for('index') }}">Planner</a>
         <a href="{{ url_for('trends_page') }}">Trends</a>
         <a href="{{ url_for('competitors_page') }}">Inspiration</a>
