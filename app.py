@@ -9,6 +9,7 @@ from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_
                     get_current_market_info, get_market_summary)
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics, fetch_retention_curves
+import llm
 
 load_dotenv()
 
@@ -79,7 +80,7 @@ def _do_sync_push():
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
                    sync_gist_id="", sync_github_token="", sync_password="",
-                   channel_niche=None, channel_name=None):
+                   channel_niche=None, channel_name=None, ai_settings=None):
     _ensure_data_dir()
     # Start from the existing settings so fields managed elsewhere
     # (affiliate_links, sponsor_template, default_yt_tags, ...) survive a save.
@@ -101,12 +102,24 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
         settings["channel_niche"] = channel_niche
     if channel_name is not None:
         settings["channel_name"] = channel_name
+    # AI provider fields: dict of exact values to set (blank = clear)
+    if ai_settings is not None:
+        settings.update(ai_settings)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     _schedule_sync_push()
 
 
 DEFAULT_CHANNEL_NAME = "Sovereign Sessions"
+
+# AI provider fields managed by the Settings form (posted on every save;
+# blank values intentionally clear the key)
+AI_SETTING_KEYS = ("ai_provider", "openai_key", "maple_key", "maple_url",
+                   "lmstudio_url", "openai_model", "maple_model", "lmstudio_model")
+
+
+def _ai_settings_from_form() -> dict:
+    return {k: request.form.get(k, "").strip() for k in AI_SETTING_KEYS}
 
 
 def get_channel_name() -> str:
@@ -378,6 +391,13 @@ def settings_page():
         default_channel_niche=DEFAULT_CHANNEL_NICHE,
         channel_name_setting=settings.get("channel_name", ""),
         default_channel_name=DEFAULT_CHANNEL_NAME,
+        ai={k: settings.get(k, "") for k in AI_SETTING_KEYS},
+        ai_defaults={
+            "maple_url": llm.DEFAULT_MAPLE_URL,
+            "lmstudio_url": llm.DEFAULT_LMSTUDIO_URL,
+            "openai_model": llm.DEFAULT_OPENAI_MODEL,
+        },
+        provider_labels=llm.PROVIDER_LABELS,
     )
 
 
@@ -417,7 +437,8 @@ def fetch():
         save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                       oauth_client_id, oauth_client_secret,
                       sync_gist_id, sync_github_token, sync_password,
-                      channel_niche=channel_niche, channel_name=channel_name)
+                      channel_niche=channel_niche, channel_name=channel_name,
+                      ai_settings=_ai_settings_from_form())
         save_video_cache(video_cache)
     except Exception as e:
         return render_template(
@@ -457,7 +478,8 @@ def save_settings_only():
     save_settings(playlist_id, google_key, anthropic_key, playlist_url,
                   oauth_client_id, oauth_client_secret,
                   sync_gist_id, sync_github_token, sync_password,
-                  channel_niche=channel_niche, channel_name=channel_name)
+                  channel_niche=channel_niche, channel_name=channel_name,
+                  ai_settings=_ai_settings_from_form())
 
     return redirect(url_for("settings_page", success="Settings saved."))
 
@@ -528,9 +550,8 @@ def api_chat():
     plan_state = data.get("plan_state")
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured. Go back to the home page to set it."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         market_data = {
@@ -547,7 +568,7 @@ def api_chat():
         except Exception as e:
             print(f"[Chat] Trend intel unavailable: {e}")
 
-        reply = chat_with_claude(user_message, video_cache, chat_history, api_key, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context, creator_niche=get_channel_niche())
+        reply = chat_with_claude(user_message, video_cache, chat_history, settings, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context, creator_niche=get_channel_niche())
 
         # Check if reply contains a plan change JSON block
         plan_change = None
@@ -731,15 +752,14 @@ def api_generate_plan():
     if not topic:
         return jsonify({"error": "Topic is required"}), 400
 
-    video_type = data.get("video_type", "tutorial")
+    video_type = data.get("video_type", "")
     links = data.get("links", [])
     competitors = data.get("competitors", [])
     notes = data.get("notes", "")
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured. Set it in Settings."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     trend_context = data.get("trend_context")
 
@@ -769,7 +789,7 @@ def api_generate_plan():
             video_data=video_cache,
             analytics_data=analytics_cache,
             competitors_data=competitors_cache,
-            api_key=api_key,
+            settings=settings,
             market_data=market_data,
             trend_context=trend_context,
             trend_intel_context=trend_intel_context,
@@ -780,6 +800,7 @@ def api_generate_plan():
             affiliate_links=settings.get("affiliate_links", []),
         )
         plan["_scoring_ctx"] = _build_scoring_context()
+        plan["_provider"] = llm.get_last_provider_used()
         return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -862,12 +883,11 @@ def api_swap_title():
     data = request.get_json()
     current_titles = data.get("current_titles", [])
     topic = data.get("topic", "")
-    video_type = data.get("video_type", "tutorial")
+    video_type = data.get("video_type", "")
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import swap_single_title
@@ -880,7 +900,7 @@ def api_swap_title():
             topic=topic,
             video_type=video_type,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             market_data=market_data,
             title_history=title_history,
             creator_niche=get_channel_niche(),
@@ -967,9 +987,8 @@ def api_suggest_links():
     outline = data.get("outline", [])
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import suggest_plan_links
@@ -978,7 +997,7 @@ def api_suggest_links():
             topic=topic,
             outline=outline,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             affiliate_links=affiliate_links,
         )
         return jsonify(result)
@@ -992,16 +1011,15 @@ def api_parse_notes():
     data = request.get_json()
     notes = (data.get("notes") or "").strip()
     topic = (data.get("topic") or "").strip()
-    video_type = data.get("video_type", "tutorial")
+    video_type = data.get("video_type", "")
     existing_plan = data.get("existing_plan")
 
     if not notes:
         return jsonify({"error": "No notes to parse."}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import parse_notes_to_plan
@@ -1013,7 +1031,7 @@ def api_parse_notes():
             notes=notes,
             topic=topic,
             video_type=video_type,
-            api_key=api_key,
+            settings=settings,
             existing_plan=existing_plan,
             sponsor_template=settings.get("sponsor_template", ""),
             default_yt_tags=settings.get("default_yt_tags", ""),
@@ -1034,14 +1052,13 @@ def api_regenerate_titles():
     """Generate new title suggestions for an existing plan."""
     data = request.get_json()
     topic = data.get("topic", "").strip()
-    video_type = data.get("video_type", "tutorial")
+    video_type = data.get("video_type", "")
     notes = data.get("notes", "")
     trend_context = data.get("trend_context")
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import regenerate_titles
@@ -1054,7 +1071,7 @@ def api_regenerate_titles():
             topic=topic,
             notes=notes,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             market_data=market_data,
             trend_context=trend_context,
             title_history=title_history,
@@ -1077,15 +1094,14 @@ def api_score_titles():
     data = request.get_json()
     titles = data.get("titles", [])
     topic = data.get("topic", "").strip()
-    video_type = data.get("video_type", "tutorial")
+    video_type = data.get("video_type", "")
 
     if not titles:
         return jsonify({"error": "No titles to score."}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import score_titles_ai
@@ -1098,7 +1114,7 @@ def api_score_titles():
             topic=topic,
             video_type=video_type,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             market_data=market_data,
             creator_niche=get_channel_niche(),
         )
@@ -1417,16 +1433,15 @@ def api_plan_postmortem():
         return jsonify({"error": "Plan not found or no video linked."}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from brainstorm import generate_plan_postmortem
         result = generate_plan_postmortem(
             plan=plan,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
         )
         plan["postmortem"] = result
         save_plans(plans_cache)
@@ -1560,6 +1575,28 @@ def api_toggle_own_channel():
     return jsonify({"error": "Channel not found"}), 404
 
 
+@app.route("/api/competitors/set-own-role", methods=["POST"])
+def api_set_own_role():
+    """Set a tracked channel's role: '' (competitor), 'legacy' (previous main
+    channel), or 'current' (the new channel these plans are for)."""
+    global competitors_cache
+    data = request.get_json()
+    channel_id = data.get("channel_id", "")
+    role = data.get("role", "")
+    if not channel_id:
+        return jsonify({"error": "channel_id required"}), 400
+    if role not in ("", "legacy", "current"):
+        return jsonify({"error": "role must be '', 'legacy', or 'current'"}), 400
+    for comp in competitors_cache:
+        if comp["channel_id"] == channel_id:
+            comp["own_role"] = role
+            # Keep the old boolean coherent for anything still reading it
+            comp["is_own_channel"] = bool(role)
+            save_competitors(competitors_cache)
+            return jsonify({"ok": True, "own_role": role})
+    return jsonify({"error": "Channel not found"}), 404
+
+
 @app.route("/api/competitors/refresh", methods=["POST"])
 def api_refresh_competitors():
     global competitors_cache
@@ -1587,9 +1624,8 @@ def api_refresh_competitors():
 @app.route("/api/suggest-channels", methods=["POST"])
 def api_suggest_channels():
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     if not video_cache:
         return jsonify({"error": "No videos loaded. Fetch your playlist first."}), 400
@@ -1616,7 +1652,7 @@ def api_suggest_channels():
         result = suggest_channels(
             video_data=video_cache,
             competitors_data=competitors_cache,
-            api_key=api_key,
+            settings=settings,
             market_data=market_data,
             exclude_handles=exclude_handles,
             creator_channel=creator_channel,
@@ -1806,9 +1842,8 @@ def api_market_analysis():
 @app.route("/api/generate-trend-report", methods=["POST"])
 def api_generate_trend_report():
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
     if not video_cache:
         return jsonify({"error": "No video data available."}), 400
 
@@ -1822,7 +1857,7 @@ def api_generate_trend_report():
             video_data=video_cache,
             competitors_data=competitors_cache,
             trends_data=trends_data,
-            api_key=api_key,
+            settings=settings,
             analytics_data=analytics_cache,
             market_data=market_data,
             creator_niche=get_channel_niche(),
@@ -1841,9 +1876,8 @@ def api_analyze_own_video():
         return jsonify({"error": "video_id is required"}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     video = None
     for v in video_cache:
@@ -1889,7 +1923,7 @@ def api_analyze_own_video():
         analysis = analyze_own_video(
             video=video,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             analytics_data=analytics_cache,
             competitors_data=competitors_cache,
             market_data=market_data,
@@ -1910,9 +1944,8 @@ def api_analyze_competitor_video():
         return jsonify({"error": "channel_id and video_id are required"}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     # Find the competitor and video
     competitor = None
@@ -1938,7 +1971,7 @@ def api_analyze_competitor_video():
             video=video,
             competitor=competitor,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             analytics_data=analytics_cache,
             market_data=market_data,
             creator_niche=get_channel_niche(),
@@ -1961,9 +1994,8 @@ def api_remix_video():
         return jsonify({"error": "video_title is required"}), 400
 
     settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
+    if not llm.any_configured(settings):
+        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
     try:
         from trend_intel import gather_trend_intel, intel_to_prompt_context
@@ -1979,7 +2011,7 @@ def api_remix_video():
             source_category=source_category,
             analysis_summary=analysis_summary,
             video_data=video_cache,
-            api_key=api_key,
+            settings=settings,
             focus_topic=focus_topic,
             market_data=market_data,
             trend_intel_context=intel_context,

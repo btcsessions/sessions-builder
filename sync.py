@@ -41,7 +41,8 @@ LOCAL_ONLY_KEYS = ("sync_gist_id", "sync_github_token", "sync_password")
 
 # Keys that contain secrets — stripped from unencrypted pushes, and preserved
 # on pull from unencrypted Gist (since the Gist won't have them)
-SECRET_KEYS = ("google_key", "anthropic_key", "oauth_client_id", "oauth_client_secret")
+SECRET_KEYS = ("google_key", "anthropic_key", "oauth_client_id", "oauth_client_secret",
+               "openai_key", "maple_key")
 
 
 def _get_sync_config() -> tuple[str, str]:
@@ -290,8 +291,7 @@ def push_to_gist() -> bool:
                         # Still strip secrets that GitHub would revoke
                         try:
                             settings_data = json.loads(content)
-                            for key in ("google_key", "anthropic_key",
-                                        "oauth_client_id", "oauth_client_secret"):
+                            for key in SECRET_KEYS:
                                 settings_data.pop(key, None)
                             content = json.dumps(settings_data)
                         except (json.JSONDecodeError, ValueError):

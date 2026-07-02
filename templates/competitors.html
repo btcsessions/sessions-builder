@@ -56,7 +56,12 @@
                     <option value="Freedom Tech" {% if comp.category == 'Freedom Tech' %}selected{% endif %}>Freedom Tech</option>
                     <option value="Mainstream Tech" {% if comp.category == 'Mainstream Tech' %}selected{% endif %}>Mainstream Tech</option>
                 </select>
-                <button class="btn small own-channel-btn{% if comp.is_own_channel %} active{% endif %}" data-channel-id="{{ comp.channel_id }}" title="Mark as your own channel — its videos will be over-weighted as audience signals">{% if comp.is_own_channel %}★ Mine{% else %}☆ Mine{% endif %}</button>
+                {% set role = comp.own_role or ('legacy' if comp.is_own_channel else '') %}
+                <select class="insp-cat-select own-role-select" data-channel-id="{{ comp.channel_id }}" title="Channel role: competitor, your previous main channel (strong but fading signal), or the new channel these plans are for (top-priority signal)">
+                    <option value="" {% if not role %}selected{% endif %}>Competitor</option>
+                    <option value="legacy" {% if role == 'legacy' %}selected{% endif %}>★ Mine — legacy</option>
+                    <option value="current" {% if role == 'current' %}selected{% endif %}>★ Mine — new channel</option>
+                </select>
                 <button class="btn small remove-comp-btn" data-channel-id="{{ comp.channel_id }}" title="Remove">&#10005;</button>
             </div>
             {% endfor %}
@@ -146,7 +151,7 @@ document.querySelectorAll(".remove-comp-btn").forEach(btn => {
 });
 
 // Edit category
-document.querySelectorAll(".insp-cat-select").forEach(sel => {
+document.querySelectorAll(".insp-cat-select:not(.own-role-select)").forEach(sel => {
     sel.addEventListener("change", async () => {
         await fetch("/api/competitors/update-category", {
             method: "POST",
@@ -158,28 +163,19 @@ document.querySelectorAll(".insp-cat-select").forEach(sel => {
     });
 });
 
-// Toggle own channel
-document.querySelectorAll(".own-channel-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        const resp = await fetch("/api/competitors/toggle-own-channel", {
+// Own-channel role: competitor / legacy (previous main) / current (new channel)
+document.querySelectorAll(".own-role-select").forEach(sel => {
+    sel.addEventListener("change", async () => {
+        const resp = await fetch("/api/competitors/set-own-role", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ channel_id: btn.dataset.channelId }),
+            body: JSON.stringify({ channel_id: sel.dataset.channelId, role: sel.value }),
         });
         const data = await resp.json();
         if (data.ok) {
-            if (data.is_own_channel) {
-                btn.textContent = "★ Mine";
-                btn.classList.add("active");
-            } else {
-                btn.textContent = "☆ Mine";
-                btn.classList.remove("active");
-            }
-            btn.style.borderColor = "var(--accent)";
-            setTimeout(() => btn.style.borderColor = "", 1000);
+            sel.style.borderColor = "var(--accent)";
+            setTimeout(() => sel.style.borderColor = "", 1000);
         }
-        btn.disabled = false;
     });
 });
 

@@ -1,0 +1,213 @@
+"""Multi-provider AI layer.
+
+Routes chat completions to the active provider chosen in Settings:
+
+  - anthropic  — Anthropic SDK (the only provider with web search support)
+  - openai     — OpenAI Chat Completions API
+  - maple      — Maple AI via Maple Proxy (OpenAI-compatible, runs locally)
+  - lmstudio   — LM Studio local server (OpenAI-compatible, no key needed)
+
+OpenAI, Maple, and LM Studio all speak the OpenAI chat-completions wire
+format, so one urllib-based client covers all three (no new dependencies).
+
+Offline fallback: if a remote provider fails with a network error and an
+LM Studio URL is configured, the call is retried against LM Studio so the
+app keeps working without an internet connection.
+"""
+from __future__ import annotations
+
+import json
+import socket
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
+
+PROVIDERS = ["anthropic", "openai", "maple", "lmstudio"]
+
+PROVIDER_LABELS = {
+    "anthropic": "Anthropic (Claude)",
+    "openai": "OpenAI",
+    "maple": "Maple AI",
+    "lmstudio": "LM Studio (local)",
+}
+
+DEFAULT_MAPLE_URL = "http://localhost:8080/v1"
+DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
+DEFAULT_MAPLE_MODEL = ""      # Maple Proxy serves its default model when blank
+DEFAULT_LMSTUDIO_MODEL = ""   # LM Studio uses whatever model is loaded
+
+# What actually served the last call — for surfacing in the UI
+_last_provider_used = ""
+
+
+def get_last_provider_used() -> str:
+    return _last_provider_used
+
+
+def is_configured(settings: dict, provider: str) -> bool:
+    """A provider is configured when its credential (or URL) is set."""
+    if provider == "anthropic":
+        import os
+        return bool(settings.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY"))
+    if provider == "openai":
+        return bool(settings.get("openai_key"))
+    if provider == "maple":
+        return bool(settings.get("maple_key") or settings.get("maple_url"))
+    if provider == "lmstudio":
+        # Always available to select — it has a sensible default URL
+        return True
+    return False
+
+
+def configured_providers(settings: dict) -> list:
+    return [p for p in PROVIDERS if is_configured(settings, p)]
+
+
+def any_configured(settings: dict) -> bool:
+    """True if at least one provider that can actually serve is set up.
+
+    LM Studio counts only when explicitly chosen or given a URL, so a
+    totally blank install still prompts for a key.
+    """
+    if settings.get("anthropic_key") or settings.get("openai_key") or settings.get("maple_key"):
+        return True
+    import os
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return True
+    if settings.get("lmstudio_url") or settings.get("ai_provider") == "lmstudio":
+        return True
+    return False
+
+
+def active_provider(settings: dict) -> str:
+    """The provider to use: the configured choice, else first configured."""
+    choice = (settings.get("ai_provider") or "").strip()
+    if choice in PROVIDERS and is_configured(settings, choice):
+        return choice
+    for p in PROVIDERS:
+        if p == "lmstudio":
+            continue  # never auto-pick lmstudio over a configured cloud key
+        if is_configured(settings, p):
+            return p
+    return "lmstudio"
+
+
+def _anthropic_chat(settings: dict, system: str, messages: list, max_tokens: int,
+                    use_web_search: bool = False, model: str = "claude-sonnet-4-20250514") -> str:
+    import os
+    import anthropic
+    api_key = settings.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    client = anthropic.Anthropic(api_key=api_key)
+    kwargs = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages}
+    if use_web_search:
+        try:
+            response = client.messages.create(
+                **kwargs,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+            )
+            return _anthropic_text(response)
+        except Exception as e:
+            print(f"[LLM] Anthropic web search unavailable, retrying without: {e}")
+    response = client.messages.create(**kwargs)
+    return _anthropic_text(response)
+
+
+def _anthropic_text(response) -> str:
+    return "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+
+
+def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
+                        messages: list, max_tokens: int, timeout: int = 180) -> str:
+    """Call an OpenAI-compatible /chat/completions endpoint via urllib."""
+    url = base_url.rstrip("/") + "/chat/completions"
+    oai_messages = []
+    if system:
+        oai_messages.append({"role": "system", "content": system})
+    for m in messages:
+        content = m.get("content", "")
+        # Flatten Anthropic-style content blocks to plain text
+        if isinstance(content, list):
+            content = "\n".join(
+                b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+            )
+        oai_messages.append({"role": m.get("role", "user"), "content": content})
+
+    body = {"messages": oai_messages, "max_tokens": max_tokens}
+    if model:
+        body["model"] = model
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    req = Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    with urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"Empty response from {url}")
+    return (choices[0].get("message", {}).get("content") or "").strip()
+
+
+def _provider_call(provider: str, settings: dict, system: str, messages: list,
+                   max_tokens: int, use_web_search: bool,
+                   anthropic_model: str = "claude-sonnet-4-20250514") -> str:
+    if provider == "anthropic":
+        return _anthropic_chat(settings, system, messages, max_tokens, use_web_search,
+                               model=anthropic_model)
+    if provider == "openai":
+        return _openai_compat_chat(
+            "https://api.openai.com/v1",
+            settings.get("openai_key", ""),
+            settings.get("openai_model") or DEFAULT_OPENAI_MODEL,
+            system, messages, max_tokens,
+        )
+    if provider == "maple":
+        return _openai_compat_chat(
+            settings.get("maple_url") or DEFAULT_MAPLE_URL,
+            settings.get("maple_key", ""),
+            settings.get("maple_model") or DEFAULT_MAPLE_MODEL,
+            system, messages, max_tokens,
+        )
+    if provider == "lmstudio":
+        return _openai_compat_chat(
+            settings.get("lmstudio_url") or DEFAULT_LMSTUDIO_URL,
+            "",
+            settings.get("lmstudio_model") or DEFAULT_LMSTUDIO_MODEL,
+            system, messages, max_tokens,
+            timeout=600,  # local models can be slow
+        )
+    raise ValueError(f"Unknown provider: {provider}")
+
+
+def _is_network_error(exc: Exception) -> bool:
+    """Connectivity failures (no internet / host unreachable), not API errors."""
+    if isinstance(exc, HTTPError):
+        return False  # got a response — server reachable, request rejected
+    if isinstance(exc, (URLError, socket.timeout, ConnectionError, OSError)):
+        return True
+    # Anthropic SDK wraps connection problems in APIConnectionError
+    return "connection" in type(exc).__name__.lower()
+
+
+def llm_chat(settings: dict, system: str, messages: list, max_tokens: int = 3000,
+             use_web_search: bool = False,
+             anthropic_model: str = "claude-sonnet-4-20250514") -> str:
+    """Send a chat request to the active provider.
+
+    Falls back to LM Studio on network errors so the app works offline.
+    """
+    global _last_provider_used
+    provider = active_provider(settings)
+    try:
+        result = _provider_call(provider, settings, system, messages, max_tokens,
+                                use_web_search, anthropic_model)
+        _last_provider_used = provider
+        return result
+    except Exception as e:
+        if provider != "lmstudio" and _is_network_error(e):
+            print(f"[LLM] {provider} unreachable ({e}) — falling back to LM Studio")
+            result = _provider_call("lmstudio", settings, system, messages, max_tokens, False)
+            _last_provider_used = "lmstudio (offline fallback)"
+            return result
+        raise

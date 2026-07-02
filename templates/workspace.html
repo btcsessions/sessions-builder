@@ -36,32 +36,6 @@
 
         <form id="plan-form" class="ws-plan-form">
             <div class="form-group compact">
-                <label>Format</label>
-                <div class="radio-group-inline">
-                    <label class="radio-pill">
-                        <input type="radio" name="video-type" value="tutorial" checked>
-                        <span>Tutorial</span>
-                    </label>
-                    <label class="radio-pill">
-                        <input type="radio" name="video-type" value="comparison">
-                        <span>Comparison</span>
-                    </label>
-                    <label class="radio-pill">
-                        <input type="radio" name="video-type" value="list">
-                        <span>List</span>
-                    </label>
-                    <label class="radio-pill">
-                        <input type="radio" name="video-type" value="integrated setup">
-                        <span>Integrated Setup</span>
-                    </label>
-                    <label class="radio-pill">
-                        <input type="radio" name="video-type" value="first impressions">
-                        <span>First Impressions</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="form-group compact">
                 <label for="video-topic">Topic</label>
                 <input type="text" id="video-topic" placeholder="e.g. Setting up a Bitcoin full node on a Raspberry Pi" required autocomplete="off">
             </div>
@@ -138,6 +112,7 @@
             <section class="plan-card">
                 <div class="plan-card-header-row">
                     <h2>Title Options</h2>
+                    <span id="plan-format-badge" class="plan-format-badge" style="display:none" title="Format inferred by the AI from your topic and notes"></span>
                     <button class="btn small" id="regen-titles-btn" title="Generate new title suggestions">Regenerate</button>
                 </div>
                 <div id="plan-titles" class="plan-titles-list"></div>
@@ -292,10 +267,23 @@ const results = document.getElementById("plan-results");
 // --- Session persistence: save/restore planner state across navigation ---
 let lastPlanData = null;
 
+// Video format: no longer user-selected — the AI infers it from the topic
+// and notes; generated plans report it back via plan.video_type.
+let currentVideoType = "";
+
+function setVideoType(vt) {
+    currentVideoType = vt || "";
+    const badge = document.getElementById("plan-format-badge");
+    if (badge) {
+        badge.textContent = currentVideoType;
+        badge.style.display = currentVideoType ? "" : "none";
+    }
+}
+
 function savePlannerState() {
     const state = {
         // Form inputs
-        videoType: document.querySelector('input[name="video-type"]:checked')?.value || "tutorial",
+        videoType: currentVideoType,
         topic: document.getElementById("video-topic")?.value || "",
         notes: document.getElementById("video-notes")?.value || "",
         links: [...document.querySelectorAll(".supporting-link")].map(el => el.value),
@@ -322,10 +310,7 @@ function restorePlannerState() {
         const state = JSON.parse(raw);
 
         // Restore form inputs
-        if (state.videoType) {
-            const radio = document.querySelector(`input[name="video-type"][value="${state.videoType}"]`);
-            if (radio) radio.checked = true;
-        }
+        setVideoType(state.videoType);
         if (state.topic) document.getElementById("video-topic").value = state.topic;
         if (state.notes) document.getElementById("video-notes").value = state.notes;
 
@@ -425,7 +410,7 @@ document.addEventListener("click", (e) => {
 
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const videoType = document.querySelector('input[name="video-type"]:checked').value;
+    const videoType = currentVideoType;
     const topic = document.getElementById("video-topic").value.trim();
     if (!topic) return;
 
@@ -462,6 +447,8 @@ form.addEventListener("submit", async (e) => {
             planError.style.display = "block";
         } else {
             renderPlan(data);
+            // Carry the inferred format into follow-up calls (regenerate titles, etc.)
+            currentPlanPayload.video_type = data.video_type || videoType;
             results.style.display = "block";
         }
     } catch (err) {
@@ -496,8 +483,7 @@ document.getElementById("clear-plan-btn")?.addEventListener("click", () => {
         // Reset form
         document.getElementById("video-topic").value = "";
         document.getElementById("video-notes").value = "";
-        const typeRadio = document.querySelector('input[name="video-type"][value="tutorial"]');
-        if (typeRadio) typeRadio.checked = true;
+        setVideoType("");
         document.getElementById("links-container").innerHTML = '<div class="multi-input-row"><input type="url" class="supporting-link" placeholder="https://..."><button type="button" class="btn small add-link-btn">+</button></div>';
         document.getElementById("competitors-container").innerHTML = '<div class="multi-input-row"><input type="url" class="competitor-link" placeholder="https://youtube.com/watch?v=..."><button type="button" class="btn small add-competitor-btn">+</button></div>';
 
@@ -544,7 +530,7 @@ document.getElementById("parse-notes-btn")?.addEventListener("click", async () =
     if (!notes) { status.textContent = "Paste or upload some notes first."; return; }
 
     const topic = document.getElementById("video-topic")?.value.trim() || "";
-    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    const videoType = currentVideoType;
 
     btn.disabled = true;
     btn.textContent = "Parsing...";
@@ -600,7 +586,7 @@ document.getElementById("amend-parse-btn")?.addEventListener("click", async () =
     if (!notes) { status.textContent = "Paste or upload some notes first."; return; }
 
     const topic = document.getElementById("video-topic")?.value.trim() || "";
-    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    const videoType = currentVideoType;
     const existingPlan = getCurrentPlanFromDOM();
 
     btn.disabled = true;
@@ -619,6 +605,7 @@ document.getElementById("amend-parse-btn")?.addEventListener("click", async () =
         } else {
             lastPlanData = data;
             if (data._scoring_ctx) scoringCtx = data._scoring_ctx;
+            if (data.video_type) setVideoType(data.video_type);
             renderTitles(data.titles);
             fetchAiScores(data.titles);
             renderEditableSections(data);
@@ -894,7 +881,7 @@ function renderTitles(titles, existingAiScores) {
             btn.textContent = "Scoring...";
             try {
                 const topic = document.getElementById("video-topic")?.value || "";
-                const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+                const videoType = currentVideoType;
                 const resp = await fetch("/api/score-titles", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -979,7 +966,7 @@ function renderTitles(titles, existingAiScores) {
             // Collect all current titles so AI avoids duplicates
             const currentTitles = [...document.querySelectorAll(".title-editable")].map(el => el.value);
             const topic = document.getElementById("video-topic")?.value || "";
-            const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+            const videoType = currentVideoType;
 
             btn.disabled = true;
             btn.textContent = "...";
@@ -1036,7 +1023,7 @@ function renderTitles(titles, existingAiScores) {
             const ai = aiScores[idx];
             const score = ai ? ai.score : scoreTitle(title).score;
             const topic = document.getElementById("video-topic")?.value || "";
-            const format = document.querySelector('input[name="video-type"]:checked')?.value || "";
+            const format = currentVideoType;
 
             btn.disabled = true;
             btn.textContent = "Saving...";
@@ -1069,7 +1056,7 @@ function renderTitles(titles, existingAiScores) {
 
 async function fetchAiScores(titles) {
     const topic = document.getElementById("video-topic")?.value || "";
-    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    const videoType = currentVideoType;
     try {
         const resp = await fetch("/api/score-titles", {
             method: "POST",
@@ -1107,7 +1094,7 @@ async function fetchAiScores(titles) {
 
 async function fetchSingleAiScore(idx, title) {
     const topic = document.getElementById("video-topic")?.value || "";
-    const videoType = document.querySelector('input[name="video-type"]:checked')?.value || "tutorial";
+    const videoType = currentVideoType;
     try {
         const resp = await fetch("/api/score-titles", {
             method: "POST",
@@ -1632,6 +1619,9 @@ function renderPlan(plan) {
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
     lastPlanData = plan;
 
+    // Show the AI-inferred (or restored) format
+    if (plan.video_type) setVideoType(plan.video_type);
+
     // Reset links for fresh plan (unless loading a saved plan with existing links)
     if (!plan._keepLinks) planLinks = [];
 
@@ -1766,9 +1756,7 @@ async function loadSavedPlan(plan) {
     // Restore form state
     const fs = plan.form_state || {};
     if (fs.video_type || plan.video_type) {
-        const vt = fs.video_type || plan.video_type;
-        const radio = document.querySelector(`input[name="video-type"][value="${vt}"]`);
-        if (radio) radio.checked = true;
+        setVideoType(fs.video_type || plan.video_type);
     }
     if (fs.topic || plan.topic) document.getElementById("video-topic").value = fs.topic || plan.topic;
     if (fs.notes) document.getElementById("video-notes").value = fs.notes;
@@ -1856,7 +1844,7 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
 
     const formState = {
         topic: document.getElementById("video-topic")?.value || "",
-        video_type: document.querySelector('input[name="video-type"]:checked')?.value || "tutorial",
+        video_type: currentVideoType,
         notes: document.getElementById("video-notes")?.value || "",
         links: [...document.querySelectorAll(".supporting-link")].map(el => el.value).filter(Boolean),
         competitors: [...document.querySelectorAll(".competitor-link")].map(el => el.value).filter(Boolean),

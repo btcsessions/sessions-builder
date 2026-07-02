@@ -38,13 +38,57 @@
                 <small>Needs YouTube Data API v3 enabled. <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Get one here</a></small>
             </div>
 
+            <hr class="settings-divider">
+
+            <h3>AI Providers</h3>
+            <p class="form-hint">Connect one or more AI providers, then pick which one powers the planner. If your internet connection drops, requests automatically fall back to LM Studio.</p>
+
+            <div class="form-group">
+                <label for="ai_provider">Active Provider</label>
+                <select id="ai_provider" name="ai_provider">
+                    <option value="anthropic" {{ 'selected' if ai.ai_provider == 'anthropic' or not ai.ai_provider }}>{{ provider_labels.anthropic }}</option>
+                    <option value="openai" {{ 'selected' if ai.ai_provider == 'openai' }}>{{ provider_labels.openai }}</option>
+                    <option value="maple" {{ 'selected' if ai.ai_provider == 'maple' }}>{{ provider_labels.maple }}</option>
+                    <option value="lmstudio" {{ 'selected' if ai.ai_provider == 'lmstudio' }}>{{ provider_labels.lmstudio }}</option>
+                </select>
+                <small>Only providers with a key (or URL) entered below can be selected. Anthropic is the only provider with live web search during plan generation.</small>
+            </div>
+
             <div class="form-group">
                 <label for="anthropic_key">Anthropic API Key</label>
                 <input type="password" id="anthropic_key" name="anthropic_key"
                        value="{{ anthropic_key }}"
                        placeholder="sk-ant-...">
-                <small>For AI brainstorming. Can also be set as ANTHROPIC_API_KEY env var.</small>
+                <small>Can also be set as ANTHROPIC_API_KEY env var.</small>
             </div>
+
+            <div class="form-group">
+                <label for="openai_key">OpenAI API Key</label>
+                <input type="password" id="openai_key" name="openai_key"
+                       value="{{ ai.openai_key }}"
+                       placeholder="sk-...">
+                <small>From platform.openai.com (a ChatGPT subscription alone won't work). Model: <input type="text" name="openai_model" value="{{ ai.openai_model }}" placeholder="{{ ai_defaults.openai_model }}" style="width:10rem; display:inline-block;"></small>
+            </div>
+
+            <div class="form-group">
+                <label for="maple_key">Maple AI</label>
+                <input type="password" id="maple_key" name="maple_key"
+                       value="{{ ai.maple_key }}"
+                       placeholder="Maple API key (optional if the local proxy needs none)">
+                <small>Via Maple Proxy (built into the Maple desktop app). Proxy URL: <input type="text" name="maple_url" value="{{ ai.maple_url }}" placeholder="{{ ai_defaults.maple_url }}" style="width:14rem; display:inline-block;"></small>
+                <input type="hidden" name="maple_model" value="{{ ai.maple_model }}">
+            </div>
+
+            <div class="form-group">
+                <label for="lmstudio_url">LM Studio (local)</label>
+                <input type="text" id="lmstudio_url" name="lmstudio_url"
+                       value="{{ ai.lmstudio_url }}"
+                       placeholder="{{ ai_defaults.lmstudio_url }}">
+                <small>Local server URL (enable it in LM Studio → Developer). Uses whatever model is loaded. No key needed. This is also the automatic offline fallback.</small>
+                <input type="hidden" name="lmstudio_model" value="{{ ai.lmstudio_model }}">
+            </div>
+
+            <hr class="settings-divider">
 
             <div class="form-group">
                 <label for="channel_name">Channel Name</label>
@@ -284,6 +328,29 @@
 
 {% block scripts %}
 <script>
+// AI provider dropdown: only providers with credentials are selectable.
+// LM Studio is always selectable (it has a default local URL).
+function refreshProviderOptions() {
+    const sel = document.getElementById("ai_provider");
+    if (!sel) return;
+    const configured = {
+        anthropic: !!document.getElementById("anthropic_key")?.value.trim(),
+        openai: !!document.getElementById("openai_key")?.value.trim(),
+        maple: !!(document.getElementById("maple_key")?.value.trim() ||
+                  document.querySelector('input[name="maple_url"]')?.value.trim()),
+        lmstudio: true,
+    };
+    [...sel.options].forEach(opt => {
+        opt.disabled = !configured[opt.value];
+        if (opt.disabled && opt.selected) sel.value = "lmstudio";
+    });
+}
+["anthropic_key", "openai_key", "maple_key"].forEach(id => {
+    document.getElementById(id)?.addEventListener("input", refreshProviderOptions);
+});
+document.querySelector('input[name="maple_url"]')?.addEventListener("input", refreshProviderOptions);
+refreshProviderOptions();
+
 const fetchBtn = document.getElementById("fetch-analytics-btn");
 if (fetchBtn) {
     const statusMsg = document.getElementById("analytics-status-msg");

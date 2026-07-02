@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import anthropic
+from llm import llm_chat
 from trends import analyze_trends, trends_to_prompt_section
 
 
@@ -31,9 +32,13 @@ def _extract_urls(text: str) -> list[str]:
     return re.findall(r'https?://[^\s<>"\')\]]+', text)
 
 
-def _response_text(response) -> str:
-    """Join all text blocks in a response (web search adds non-text blocks)."""
-    return "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+def _video_type_rule(video_type: str) -> str:
+    """Prompt line describing the video format — explicit or AI-inferred."""
+    if (video_type or "").strip():
+        return f"This is a **{video_type}** video — tailor the structure, pacing, and tone accordingly"
+    return ("No format was specified — INFER the best video format (tutorial, comparison, list, "
+            "setup walkthrough, first impressions, explainer, news reaction, ...) from the topic "
+            "and notes, put it in the \"video_type\" field, and tailor structure, pacing, and tone to it")
 
 
 def _parse_plan_json(text: str) -> dict:
@@ -96,13 +101,12 @@ def generate_trend_report(
     video_data: list[dict],
     competitors_data: list[dict],
     trends_data: dict,
-    api_key: str,
+    settings: dict,
     analytics_data: dict = None,
     market_data: dict = None,
     creator_niche: str = "",
 ) -> dict:
     """Generate an AI-powered trend report with actionable advice."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     # Build a data summary for Claude
     own_avg = trends_data.get("own_avg_views", 0)
@@ -229,14 +233,7 @@ RULES:
 {_build_market_section(market_data)}
 Generate a comprehensive trend report with actionable advice for my next videos. Factor in the current Bitcoin market sentiment when making recommendations."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=4000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -278,28 +275,45 @@ def _build_competitors_section(competitors_data: list = None, creator_niche: str
 
     sections = []
 
-    # Separate own-channel entries from regular competitors
-    own_channels = [c for c in competitors_data if c.get("is_own_channel")]
-    regular_comps = [c for c in competitors_data if not c.get("is_own_channel")]
+    # Separate own-channel entries (by role) from regular competitors.
+    # own_role: "current" = the new channel these plans are FOR;
+    # "legacy" = the creator's previous main channel (is_own_channel migrates here).
+    def _role(c):
+        return c.get("own_role") or ("legacy" if c.get("is_own_channel") else "")
 
-    # Own-channel non-tutorial videos get special treatment
-    if own_channels:
-        sections.append("\n**YOUR OWN CHANNEL — NON-TUTORIAL VIDEOS (OVER-WEIGHTED INDICATORS):**")
-        sections.append("*These are the creator's own non-tutorial videos on their main channel. Many have been MASSIVE outliers. The audience is ALREADY clicking on these — treat them as the strongest signal for how to frame, title, and package ALL content (including tutorials). Study what made these work and apply those patterns aggressively.*\n")
+    current_channels = [c for c in competitors_data if _role(c) == "current"]
+    legacy_channels = [c for c in competitors_data if _role(c) == "legacy"]
+    regular_comps = [c for c in competitors_data if not _role(c)]
 
-        for comp in own_channels:
-            videos = comp.get("videos", [])
-            if not videos:
-                continue
-            avg_views = sum(v["view_count"] for v in videos) // len(videos)
-            # Show more videos for own channel — they're high-signal
-            top_vids = videos[:10]
-            video_lines = "\n".join(
-                f"    - \"{v['title'][:65]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
-                for v in top_vids
-            )
-            sections.append(f"  **{comp['name']}** (avg {avg_views:,} views, {len(videos)} recent videos)")
-            sections.append(f"  Top performers:\n{video_lines}\n")
+    def _own_channel_lines(comp, max_vids):
+        videos = comp.get("videos", [])
+        if not videos:
+            return None
+        avg_views = sum(v["view_count"] for v in videos) // len(videos)
+        video_lines = "\n".join(
+            f"    - \"{v['title'][:65]}\" — {v['view_count']:,} views, {v['engagement_rate']}% eng"
+            for v in videos[:max_vids]
+        )
+        return (f"  **{comp['name']}** (avg {avg_views:,} views, {len(videos)} recent videos)",
+                f"  Top performers:\n{video_lines}\n")
+
+    # The new channel — the one being planned for. Strongest signal as it grows.
+    if current_channels:
+        sections.append("\n**YOUR NEW CHANNEL — THE CHANNEL THESE PLANS ARE FOR (TOP-PRIORITY SIGNAL):**")
+        sections.append("*These are uploads on the creator's NEW channel — the one every plan is being made for. Weight this data above everything else, scaled by how much of it there is: with only a few videos treat it as directional, and as the catalog grows let it dominate over the legacy-channel patterns below.*\n")
+        for comp in current_channels:
+            lines = _own_channel_lines(comp, max_vids=10)
+            if lines:
+                sections.extend(lines)
+
+    # The legacy channel — proven audience data, fading as the new channel grows
+    if legacy_channels:
+        sections.append("\n**YOUR PREVIOUS MAIN CHANNEL (STRONG BUT FADING REFERENCE):**")
+        sections.append("*These are the creator's videos on their previous main channel. The audience overlaps heavily and has proven what it clicks on — treat these as a strong signal for framing, titles, and packaging. BUT they lose relevance as the new channel accumulates its own history: whenever the new channel's data (above) disagrees, the new channel wins.*\n")
+        for comp in legacy_channels:
+            lines = _own_channel_lines(comp, max_vids=10)
+            if lines:
+                sections.extend(lines)
 
     # Group regular competitors by category
     by_category = {}
@@ -522,7 +536,7 @@ def chat_with_claude(
     user_message: str,
     video_data: list[dict],
     chat_history: list[dict],
-    api_key: str,
+    settings: dict,
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
@@ -531,7 +545,6 @@ def chat_with_claude(
     creator_niche: str = "",
 ) -> str:
     """Send a message to Claude with video performance context."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     system_prompt = _build_system_prompt(video_data, analytics_data, competitors_data, market_data, creator_niche)
 
@@ -587,14 +600,8 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": augmented_message})
 
-    response = client.messages.create(
-        model="claude-opus-4-20250514",
-        max_tokens=4000,
-        system=system_prompt,
-        messages=messages,
-    )
-
-    return response.content[0].text
+    return llm_chat(settings, system_prompt, messages, max_tokens=4000,
+                    anthropic_model="claude-opus-4-20250514")
 
 
 def _build_title_history_section(title_history: list = None) -> str:
@@ -668,7 +675,7 @@ def generate_video_plan(
     competitors: list[str],
     notes: str,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
@@ -683,7 +690,6 @@ def generate_video_plan(
     use_web_search: bool = True,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     # Build a list of past video titles for reference links
     past_titles = ""
@@ -713,11 +719,12 @@ You are now generating a complete video production plan. You must respond with O
     {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~3 min"}}
   ],
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"],
-  "description": "Full YouTube description with summary and links to referenced past tutorials if relevant"
+  "description": "Full YouTube description with summary and links to referenced past tutorials if relevant",
+  "video_type": "the video format (e.g. tutorial, comparison, list, setup walkthrough, first impressions)"
 }}
 
 IMPORTANT RULES:
-- This is a **{video_type}** video — tailor the structure, pacing, and tone accordingly
+- {_video_type_rule(video_type)}
 - For tutorials: step-by-step structure with clearly segregated sections so each part works as a self-contained, compartmentalized lesson a viewer can jump to. Practical focus.
 - For first impressions: excitement/curiosity hook, unboxing flow, pros/cons, verdict
 - For listicles: numbered items, punchy transitions, teaser of best item early
@@ -769,7 +776,7 @@ Use this real-time data to make the plan timely and relevant. Reference specific
 
     user_msg = f"""Generate a full video plan:
 
-**Type:** {video_type}
+**Type:** {video_type or "(not specified — infer the best format from the topic and notes)"}
 **Topic:** {topic}
 
 **Supporting Links:**
@@ -783,25 +790,13 @@ Use this real-time data to make the plan timely and relevant. Reference specific
 {trend_section}
 {intel_section}"""
 
-    request_kwargs = {
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 4000,
-        "system": system,
-        "messages": [{"role": "user", "content": user_msg}],
-    }
-    if use_web_search:
-        try:
-            response = client.messages.create(
-                **request_kwargs,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
-            )
-        except Exception as e:
-            print(f"[Plan] Web search unavailable, generating without it: {e}")
-            response = client.messages.create(**request_kwargs)
-    else:
-        response = client.messages.create(**request_kwargs)
-
-    plan = _parse_plan_json(_response_text(response))
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}],
+                    max_tokens=4000, use_web_search=use_web_search)
+    plan = _parse_plan_json(text)
+    if video_type:
+        plan["video_type"] = video_type
+    elif not plan.get("video_type"):
+        plan["video_type"] = "video"
 
     # Auto-append sponsor block + timestamps reminder to description
     sponsor = sponsor_template or desc_template  # fallback to old field
@@ -843,7 +838,7 @@ def parse_notes_to_plan(
     notes: str,
     topic: str,
     video_type: str,
-    api_key: str,
+    settings: dict,
     existing_plan: dict = None,
     desc_template: str = "",
     sponsor_template: str = "",
@@ -855,7 +850,6 @@ def parse_notes_to_plan(
     affiliate_links: list = None,
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     if existing_plan:
         mode = "amend"
@@ -923,24 +917,22 @@ RULES:
 - The description should be a short paragraph (2-4 sentences) summarizing the video, followed by relevant links — NOT a section-by-section breakdown. Do NOT include timestamps. Use REAL URLs from the creator's link library when relevant; only use [LINK] placeholders for links with no known URL.
 - Keep the creator's voice and phrasing where possible — don't over-polish their notes
 - If {'amending' if existing_plan else 'creating'}: {'merge intelligently — dont discard existing work, integrate the new notes' if existing_plan else 'build the full plan from scratch based on the notes'}
-- This is a **{video_type}** video"""
+- {_video_type_rule(video_type)}"""
 
     user_msg = f"""Parse these notes into a structured video plan:
 
-**Video Type:** {video_type}
+**Video Type:** {video_type or "(not specified — infer from the notes)"}
 **Topic:** {topic}
 
 **Notes:**
 {notes}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    plan = _parse_plan_json(_response_text(response))
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=3000)
+    plan = _parse_plan_json(text)
+    if video_type:
+        plan["video_type"] = video_type
+    elif not plan.get("video_type"):
+        plan["video_type"] = "video"
 
     # Auto-append sponsor block + timestamps reminder if creating new
     sponsor = sponsor_template or desc_template
@@ -979,11 +971,10 @@ def suggest_plan_links(
     topic: str,
     outline: list[dict],
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     affiliate_links: list[dict] = None,
 ) -> dict:
     """Suggest relevant links for a video plan — from channel, affiliates, and external."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     # Build channel video list for Claude to search
     channel_videos = "\n".join(
@@ -1050,14 +1041,7 @@ RULES:
 **Outline:**
 {outline_text}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1068,13 +1052,12 @@ def swap_single_title(
     topic: str,
     video_type: str,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     market_data: dict = None,
     title_history: list = None,
     creator_niche: str = "",
 ) -> str:
     """Generate one replacement title that's different from the existing options."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     top_titles = ""
     if video_data:
@@ -1101,14 +1084,10 @@ def swap_single_title(
 
 Generate exactly ONE new title that is distinctly different from all the options above — different angle, different format, different hook. Respond with ONLY the title text, nothing else."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=100,
-        system=system,
-        messages=[{"role": "user", "content": f"Generate one fresh title for a {video_type} video about: {topic}"}],
-    )
-
-    return response.content[0].text.strip().strip('"')
+    vt_label = video_type or "video"
+    return llm_chat(settings, system,
+                    [{"role": "user", "content": f"Generate one fresh title for a {vt_label} video about: {topic}"}],
+                    max_tokens=100).strip().strip('"')
 
 
 def regenerate_titles(
@@ -1116,14 +1095,13 @@ def regenerate_titles(
     topic: str,
     notes: str,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     market_data: dict = None,
     trend_context: dict = None,
     title_history: list = None,
     creator_niche: str = "",
 ) -> list[str]:
     """Generate fresh title suggestions without regenerating the full plan."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     # Build context from top-performing titles
     top_titles = ""
@@ -1163,20 +1141,13 @@ RULES:
 
 Respond with ONLY a JSON array of 5 title strings. No markdown, no code fences."""
 
-    user_msg = f"Generate 5 fresh title options for a {video_type} video about: {topic}"
+    user_msg = f"Generate 5 fresh title options for a {video_type or 'video'} about: {topic}"
     if notes:
         user_msg += f"\nNotes: {notes}"
     if trend_section:
         user_msg += trend_section
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=500,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=500).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1187,12 +1158,11 @@ def score_titles_ai(
     topic: str,
     video_type: str,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     market_data: dict = None,
     creator_niche: str = "",
 ) -> list[dict]:
     """Have Claude score and critique title options with rationale."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     top_titles = ""
     if video_data:
@@ -1238,18 +1208,11 @@ You must respond with ONLY valid JSON (no markdown, no code fences) — an array
 
 Be honest and calibrated. A score of 50 is genuinely average. Most titles should land 55-80. Only truly excellent titles get 85+. Don't grade inflate."""
 
-    user_msg = f"""Score these title options for a {video_type} video about: {topic}
+    user_msg = f"""Score these title options for a {video_type or 'video'} about: {topic}
 
 {titles_text}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1258,10 +1221,9 @@ Be honest and calibrated. A score of 50 is genuinely average. Most titles should
 def generate_plan_postmortem(
     plan: dict,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
 ) -> dict:
     """Generate a post-mortem analysis comparing a plan's predictions vs actual performance."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     avg_views = sum(v.get("view_count", 0) for v in video_data) / len(video_data) if video_data else 1
 
@@ -1297,14 +1259,7 @@ Be honest and specific. Reference the actual numbers."""
 **Engagement Rate:** {plan.get('engagement_rate', 0)}%
 **Market Phase:** {plan.get('market_phase', 'unknown')}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=800,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=800).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1313,14 +1268,13 @@ Be honest and specific. Reference the actual numbers."""
 def analyze_own_video(
     video: dict,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     analytics_data: dict = None,
     competitors_data: list = None,
     market_data: dict = None,
     creator_niche: str = "",
 ) -> dict:
     """Analyze one of the creator's own videos with performance insights."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     avg_views = sum(v["view_count"] for v in video_data) // len(video_data) if video_data else 0
     avg_engagement = round(sum(v["engagement_rate"] for v in video_data) / len(video_data), 2) if video_data else 0
@@ -1451,14 +1405,7 @@ RULES:
 **Published:** {video.get('published_at', 'Unknown')[:10]}
 **Overall Performance:** {performance}{market_line}{analytics_note}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=2000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1468,13 +1415,12 @@ def analyze_competitor_video(
     video: dict,
     competitor: dict,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     analytics_data: dict = None,
     market_data: dict = None,
     creator_niche: str = "",
 ) -> dict:
     """Analyze a competitor's video and suggest takeaways for the creator."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     # Compute competitor channel averages
     comp_videos = competitor.get("videos", [])
@@ -1547,14 +1493,7 @@ RULES:
 **Published:** {video.get('published_at', 'Unknown')[:10]}
 **Performance:** {performance}"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=2000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1563,14 +1502,13 @@ RULES:
 def suggest_channels(
     video_data: list[dict],
     competitors_data: list[dict],
-    api_key: str,
+    settings: dict,
     market_data: dict = None,
     exclude_handles: list[str] = None,
     creator_channel: str = "",
     creator_niche: str = "",
 ) -> dict:
     """Suggest YouTube channels to follow for inspiration."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     topic_sample = "\n".join(
         f"  - {v['title'][:70]}" for v in video_data[:15]
@@ -1654,14 +1592,7 @@ RULES:
     if exclude_handles:
         user_msg += f"\n\nIMPORTANT: I've already seen suggestions for these handles: {', '.join(exclude_handles)}. Give me COMPLETELY DIFFERENT channels this time — do not repeat any of those."
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=2000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
@@ -1673,14 +1604,13 @@ def remix_video(
     source_category: str,
     analysis_summary: str,
     video_data: list[dict],
-    api_key: str,
+    settings: dict,
     focus_topic: str = "",
     market_data: dict = None,
     trend_intel_context: str = "",
     creator_niche: str = "",
 ) -> dict:
     """Generate remix ideas: adapt a video's format/style for the creator's channel."""
-    client = anthropic.Anthropic(api_key=api_key)
 
     creator_top = "\n".join(
         f"  - \"{v['title'][:55]}\" — {v['view_count']:,} views"
@@ -1765,14 +1695,7 @@ RULES:
 - Balance content for new users (onboarding, first steps) with content for existing audience members (advanced setups, optimizations)
 - Never suggest price prediction, trading, or speculation content"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": f"Remix this video for my channel: \"{video_title}\""}],
-    )
-
-    text = response.content[0].text.strip()
+    text = llm_chat(settings, system, [{"role": "user", "content": f"Remix this video for my channel: \"{video_title}\""}], max_tokens=2000).strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(text)
