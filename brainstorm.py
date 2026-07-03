@@ -421,12 +421,32 @@ def chat_with_claude(
             plan_section += "\nTitles:\n" + "\n".join(f"  {i+1}. {t}" for i, t in enumerate(plan_state["titles"]))
         if plan_state.get("intro_hook"):
             plan_section += f"\nIntro Hook: {plan_state['intro_hook']}"
+        if plan_state.get("thumbnail_ideas"):
+            plan_section += "\nThumbnail ideas:\n" + "\n".join(f"  - {t}" for t in plan_state["thumbnail_ideas"])
         if plan_state.get("outline"):
             plan_section += "\nOutline:"
             for sec in plan_state["outline"]:
-                plan_section += f"\n  - {sec.get('section', '')}: {', '.join(sec.get('points', []))}"
+                plan_section += f"\n  - {sec.get('section', '')}"
+                if sec.get("duration_hint"):
+                    plan_section += f" ({sec['duration_hint']})"
+                if sec.get("section_script"):
+                    plan_section += f"\n    On-camera opener: {sec['section_script']}"
+                if sec.get("points"):
+                    plan_section += f"\n    Points: {', '.join(sec['points'])}"
         if plan_state.get("tags"):
             plan_section += f"\nTags: {', '.join(plan_state['tags'])}"
+        elif plan_state.get("yt_tags_csv"):
+            plan_section += f"\nTags: {plan_state['yt_tags_csv']}"
+        if plan_state.get("links"):
+            link_lines = []
+            for l in plan_state["links"]:
+                if isinstance(l, dict):
+                    link_lines.append(f"  - {l.get('label', '')}: {l.get('url', '')}".strip())
+                else:
+                    link_lines.append(f"  - {l}")
+            plan_section += "\nLinks:\n" + "\n".join(link_lines)
+        if plan_state.get("description"):
+            plan_section += f"\nDescription:\n{plan_state['description']}"
 
         plan_section += """
 
@@ -458,8 +478,7 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": augmented_message})
 
-    return llm_chat(settings, system_prompt, messages, max_tokens=4000,
-                    anthropic_model="claude-opus-4-20250514")
+    return llm_chat(settings, system_prompt, messages, max_tokens=4000)
 
 
 def _build_title_history_section(title_history: list = None) -> str:

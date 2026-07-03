@@ -71,6 +71,11 @@ function renderMarkdown(text) {
 
 /* --- Get current plan state from the DOM --- */
 function getCurrentPlanState() {
+    // Prefer the workspace's canonical reader (sees every field, including
+    // description, section scripts, and live user edits)
+    if (typeof window.plannerGetPlanState === "function") {
+        return window.plannerGetPlanState();
+    }
     const results = document.getElementById("plan-results");
     if (!results || results.style.display === "none") return null;
 
@@ -181,6 +186,12 @@ function appendMessage(role, content, planChange) {
 
 /* --- Apply a plan change to the DOM --- */
 function applyPlanChange(change) {
+    // Prefer the workspace's canonical writer (merges into the real plan
+    // state and re-renders the editable panel)
+    if (typeof window.plannerApplyPlanChange === "function") {
+        window.plannerApplyPlanChange(change);
+        return;
+    }
     if (change.titles) {
         if (typeof renderTitles === "function") {
             renderTitles(change.titles);

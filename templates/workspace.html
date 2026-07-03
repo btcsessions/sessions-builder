@@ -1599,6 +1599,31 @@ function renderPlan(plan) {
     savePlannerState();
 }
 
+/* --- Canonical plan hooks for the chat sidebar (chat.js) --- */
+window.plannerGetPlanState = function() {
+    const plan = getCurrentPlanFromDOM();
+    if (!plan) return null;
+    const state = { ...plan };
+    const topicEl = document.getElementById("video-topic");
+    if (topicEl && topicEl.value.trim()) state.topic = topicEl.value.trim();
+    if (typeof currentVideoType !== "undefined" && currentVideoType) state.video_type = currentVideoType;
+    return state;
+};
+
+window.plannerApplyPlanChange = function(change) {
+    const base = getCurrentPlanFromDOM() || lastPlanData || {
+        titles: [], thumbnail_ideas: [], intro_hook: "", outline: [],
+        tags: [], yt_tags_csv: "", links: [], description: "",
+    };
+    const merged = { ...base, ...change, _keepLinks: true };
+    if (change.tags && !change.yt_tags_csv) merged.yt_tags_csv = change.tags.join(", ");
+    if (merged.links) planLinks = merged.links;
+    renderPlan(merged);
+    const results = document.getElementById("plan-results");
+    if (results) results.style.display = "block";
+    return true;
+};
+
 /* --- Regenerate Titles --- */
 document.getElementById("regen-titles-btn").addEventListener("click", async () => {
     const btn = document.getElementById("regen-titles-btn");
