@@ -2241,6 +2241,7 @@ def api_export_data():
     data_files = [
         SETTINGS_FILE, CACHE_FILE, ANALYTICS_FILE,
         COMPETITORS_FILE, CATEGORIES_FILE,
+        TITLE_HISTORY_FILE, PLANS_FILE,
     ]
     # Also include market and snapshot data
     market_dir = os.path.join(DATA_DIR)
@@ -2283,6 +2284,7 @@ def api_import_data():
                 "btc_prices.json", "snapshots.json", "trend_intel.json",
                 "oauth_token.json",
                 "nostr_history.json", "title_history.json",
+                "plans.json",
             }
             for name in zf.namelist():
                 if name in allowed:
