@@ -234,6 +234,7 @@ if (nav) {
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
 /* --- Planner logic --- */
+const BACKEND_CONFIGURED = {{ 'true' if backend_configured else 'false' }};
 const form = document.getElementById("plan-form");
 const generateBtn = document.getElementById("generate-btn");
 const loading = document.getElementById("plan-loading");
@@ -2072,6 +2073,29 @@ function copyText(id) {
 });
 
 /* --- Plan History --- */
+/* Poll a submitted handoff for up to ~60s. Hermes's worker runs every
+   3 minutes, so timing out while still queued is normal — the badge
+   updates whenever the plan history refreshes. */
+async function pollHandoff(planId, btn, attempt = 0) {
+    if (attempt >= 12) {
+        refreshPlanHistory();
+        return;
+    }
+    setTimeout(async () => {
+        try {
+            const resp = await fetch("/api/plans/" + encodeURIComponent(planId) + "/handoff");
+            const data = await resp.json();
+            const status = data.handoff ? data.handoff.status : null;
+            if (status === "completed" || status === "failed") {
+                refreshPlanHistory();
+                return;
+            }
+            if (btn) btn.textContent = "Sent (" + (status || "queued") + ")";
+        } catch (err) { /* transient — keep polling */ }
+        pollHandoff(planId, btn, attempt + 1);
+    }, 5000);
+}
+
 async function refreshPlanHistory() {
     try {
         const resp = await fetch("/api/plans");
@@ -2108,6 +2132,14 @@ async function refreshPlanHistory() {
                     ${pm.title_analysis ? '<div class="pm-section"><strong>Title:</strong> ' + esc(pm.title_analysis) + '</div>' : ''}
                 </div>`;
             }
+            let handoffHtml = '';
+            if (p.handoff && p.handoff.status) {
+                const hs = p.handoff.status;
+                const hsCls = hs === 'completed' ? 'perf-strong' : (hs === 'failed' ? 'perf-under' : 'perf-avg');
+                const delivered = hs === 'completed' && p.handoff.result && p.handoff.result.delivered_to
+                    ? ' · ' + esc(p.handoff.result.delivered_to) : '';
+                handoffHtml = `<span class="saved-title-perf ${hsCls}" data-handoff-badge="${esc(p.id)}">Hermes: ${esc(hs)}${delivered}</span>`;
+            }
             return `<div class="saved-title-item ${linked ? (p.perf_ratio >= 1.2 ? 'proven' : 'used') : ''}">
                 <div class="saved-title-text">${esc(p.chosen_title)}</div>
                 <div class="saved-title-meta">
@@ -2116,11 +2148,13 @@ async function refreshPlanHistory() {
                     ${p.ai_score ? '<span>AI: ' + p.ai_score + '</span>' : ''}
                     <span>${p.created_at}</span>
                     ${perfHtml}
+                    ${handoffHtml}
                 </div>
                 ${postmortemHtml}
                 <div class="saved-title-actions">
                     ${p.full_plan ? '<button class="btn small load-plan-btn" data-id="' + esc(p.id) + '">Load</button>' : ''}
                     ${p.full_plan ? '<button class="btn small export-plan-btn" data-id="' + esc(p.id) + '" title="Download a Markdown recording outline">Export</button>' : ''}
+                    ${p.full_plan && BACKEND_CONFIGURED ? '<button class="btn small handoff-plan-btn" data-id="' + esc(p.id) + '" data-sent="' + (p.handoff ? '1' : '') + '" title="Send the recording outline to Hermes for delivery">Send to Hermes</button>' : ''}
                     ${!linked ? '<button class="btn small auto-match-plan-btn" data-id="' + esc(p.id) + '">Auto-Match Video</button>' : ''}
                     ${linked && !p.postmortem ? '<button class="btn small run-postmortem-btn" data-id="' + esc(p.id) + '">Run Post-Mortem</button>' : ''}
                     <button class="btn small archive-plan-btn" data-id="${esc(p.id)}" title="Archive">Archive</button>
@@ -2154,6 +2188,31 @@ async function refreshPlanHistory() {
         list.querySelectorAll(".export-plan-btn").forEach(btn => {
             btn.addEventListener("click", () => {
                 window.location.href = "/api/plans/" + encodeURIComponent(btn.dataset.id) + "/export";
+            });
+        });
+
+        // Wire Send to Hermes buttons (async recording handoff via backend)
+        list.querySelectorAll(".handoff-plan-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                if (btn.dataset.sent && !confirm("This plan was already sent to Hermes. Send again (delivers a new copy)?")) return;
+                btn.disabled = true;
+                btn.textContent = "Sending...";
+                try {
+                    const resp = await fetch("/api/plans/" + encodeURIComponent(btn.dataset.id) + "/handoff", { method: "POST" });
+                    const data = await resp.json();
+                    if (data.error) {
+                        btn.textContent = "Failed";
+                        btn.title = data.error;
+                        alert("Send to Hermes failed: " + data.error);
+                        setTimeout(() => { btn.textContent = "Send to Hermes"; btn.disabled = false; }, 1500);
+                        return;
+                    }
+                    btn.textContent = "Sent (queued)";
+                    pollHandoff(btn.dataset.id, btn);
+                } catch (err) {
+                    btn.textContent = "Failed";
+                    setTimeout(() => { btn.textContent = "Send to Hermes"; btn.disabled = false; }, 1500);
+                }
             });
         });
 

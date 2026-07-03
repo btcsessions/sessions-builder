@@ -37,7 +37,8 @@ SYNC_FILES = [
 # Don't sync trend_intel.json — it's a cache that auto-refreshes
 
 # Keys that are local-only (never pushed to Gist, preserved on pull)
-LOCAL_ONLY_KEYS = ("sync_gist_id", "sync_github_token", "sync_password")
+LOCAL_ONLY_KEYS = ("sync_gist_id", "sync_github_token", "sync_password",
+                   "backend_url", "backend_token")
 
 # Keys that contain secrets — stripped from unencrypted pushes, and preserved
 # on pull from unencrypted Gist (since the Gist won't have them)

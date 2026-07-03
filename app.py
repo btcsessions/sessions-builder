@@ -9,6 +9,7 @@ from market import (fetch_btc_prices, tag_video_market_phase, record_snapshot,
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics, fetch_retention_curves
 import llm
+import backend_client
 
 load_dotenv()
 
@@ -70,7 +71,8 @@ def _do_sync_push():
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
                    sync_gist_id="", sync_github_token="", sync_password="",
-                   channel_niche=None, channel_name=None, ai_settings=None):
+                   channel_niche=None, channel_name=None, ai_settings=None,
+                   extra_settings=None):
     _ensure_data_dir()
     # Start from the existing settings so fields managed elsewhere
     # (affiliate_links, sponsor_template, default_yt_tags, ...) survive a save.
@@ -95,6 +97,9 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
     # AI provider fields: dict of exact values to set (blank = clear)
     if ai_settings is not None:
         settings.update(ai_settings)
+    # Other managed fields (e.g. backend_url/backend_token): exact values to set
+    if extra_settings is not None:
+        settings.update(extra_settings)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     _schedule_sync_push()
@@ -347,6 +352,7 @@ def index():
         "workspace.html",
         competitors=competitors_cache,
         chat_history=chat_history,
+        backend_configured=backend_client.is_configured(load_settings()),
     )
 
 
@@ -377,6 +383,9 @@ def settings_page():
         default_channel_niche=DEFAULT_CHANNEL_NICHE,
         channel_name_setting=settings.get("channel_name", ""),
         default_channel_name=DEFAULT_CHANNEL_NAME,
+        backend_url=settings.get("backend_url", ""),
+        backend_token=settings.get("backend_token", ""),
+        backend_configured=backend_client.is_configured(settings),
         ai={k: settings.get(k, "") for k in AI_SETTING_KEYS},
         ai_defaults={
             "maple_url": llm.DEFAULT_MAPLE_URL,
@@ -1216,6 +1225,119 @@ def api_export_plan(plan_id):
     buf = io.BytesIO(markdown.encode("utf-8"))
     return send_file(buf, mimetype="text/markdown", as_attachment=True,
                      download_name=export_filename(plan))
+
+
+@app.route("/api/backend/save", methods=["POST"])
+def api_backend_save():
+    """Save the Umbrel backend URL + token, then test the connection."""
+    data = request.get_json() or {}
+    backend_url = (data.get("backend_url") or "").strip().rstrip("/")
+    # Absent/blank token means "keep the current one" so re-testing the URL
+    # doesn't require retyping the secret
+    backend_token = (data.get("backend_token") or "").strip()
+    if not backend_token:
+        backend_token = (load_settings().get("backend_token") or "").strip()
+
+    # Save first so a failed test doesn't force retyping everything
+    save_settings(extra_settings={"backend_url": backend_url,
+                                  "backend_token": backend_token})
+
+    settings = load_settings()
+    if not backend_client.is_configured(settings):
+        return jsonify({"ok": False, "saved": True,
+                        "error": "Backend disabled (URL or token blank)."})
+    try:
+        result = backend_client.health(settings)
+        if result.get("ok"):
+            return jsonify({"ok": True, "saved": True})
+        return jsonify({"ok": False, "saved": True,
+                        "error": f"Unexpected health response: {result}"})
+    except backend_client.BackendError as e:
+        return jsonify({"ok": False, "saved": True, "error": str(e)})
+
+
+def _build_handoff_payload(plan: dict, version: int) -> dict:
+    """Job payload for the Umbrel backend's recording_handoff worker."""
+    from plan_export import render_plan_markdown as _render
+    raw_plan = {k: v for k, v in plan.items() if k != "handoff"}
+    return {
+        "schema_version": 1,
+        "job": {
+            "task_type": "recording_handoff",
+            "idempotency_key": f"plan-{plan['id']}-handoff-v{version}",
+            "requested_output_schema": {"delivered_to": "string",
+                                        "doc_url": "string?",
+                                        "notes": "string?"},
+        },
+        "user_intent": {
+            "topic": plan.get("topic", ""),
+            "video_type": plan.get("video_type", ""),
+        },
+        "source_material": [
+            {"type": "markdown", "title": "Rendered recording outline",
+             "content": _render(plan, get_channel_name())},
+            {"type": "json", "title": "Raw plan", "content": raw_plan},
+        ],
+        "backend_instructions": {"store_result": True, "handoff_allowed": True},
+    }
+
+
+@app.route("/api/plans/<plan_id>/handoff", methods=["POST"])
+def api_submit_handoff(plan_id):
+    """Send a saved plan to Hermes for recording handoff (async job)."""
+    settings = load_settings()
+    if not backend_client.is_configured(settings):
+        return jsonify({"error": "Backend not configured. Set it up in Settings."}), 400
+
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+
+    version = (plan.get("handoff") or {}).get("version", 0) + 1
+    payload = _build_handoff_payload(plan, version)
+    try:
+        job = backend_client.submit_job(settings, payload)
+    except backend_client.BackendError as e:
+        return jsonify({"error": str(e)}), 502
+
+    from datetime import datetime
+    plan["handoff"] = {
+        "job_id": job.get("job_id") or job.get("id"),
+        "idempotency_key": payload["job"]["idempotency_key"],
+        "version": version,
+        "status": job.get("status", "queued"),
+        "submitted_at": datetime.now().isoformat()[:19],
+        "result": job.get("result"),
+    }
+    save_plans(plans_cache)
+    return jsonify({"ok": True, "handoff": plan["handoff"]})
+
+
+@app.route("/api/plans/<plan_id>/handoff", methods=["GET"])
+def api_handoff_status(plan_id):
+    """Poll the backend for the plan's handoff job status."""
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+    handoff = plan.get("handoff")
+    if not handoff or not handoff.get("job_id"):
+        return jsonify({"error": "No handoff submitted for this plan."}), 404
+
+    settings = load_settings()
+    if not backend_client.is_configured(settings):
+        return jsonify({"error": "Backend not configured."}), 400
+    try:
+        job = backend_client.get_job(settings, handoff["job_id"])
+    except backend_client.BackendError as e:
+        return jsonify({"error": str(e), "handoff": handoff}), 502
+
+    status = job.get("status", handoff["status"])
+    result = job.get("result")
+    if status != handoff.get("status") or result != handoff.get("result"):
+        handoff["status"] = status
+        handoff["result"] = result
+        save_plans(plans_cache)
+    return jsonify({"ok": True, "handoff": handoff})
 
 
 @app.route("/api/plans/link-video", methods=["POST"])
