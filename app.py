@@ -3,9 +3,8 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, analyze_competitor_video, analyze_own_video, generate_trend_report, suggest_channels, remix_video, DEFAULT_CHANNEL_NICHE
-from market import (fetch_btc_prices, tag_video_market_phase, compute_longevity_score,
-                    record_snapshot, compute_velocity, compute_longevity_from_snapshots,
+from brainstorm import chat_with_claude, generate_video_plan, suggest_channels, DEFAULT_CHANNEL_NICHE
+from market import (fetch_btc_prices, tag_video_market_phase, record_snapshot,
                     get_current_market_info, get_market_summary)
 from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics, fetch_retention_curves
@@ -15,15 +14,6 @@ load_dotenv()
 
 # Allow OAuth over HTTP for local development
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-
-
-def _median(values: list) -> int:
-    """Compute median of a list of numbers."""
-    if not values:
-        return 0
-    s = sorted(values)
-    n = len(s)
-    return s[n // 2] if n % 2 == 1 else (s[n // 2 - 1] + s[n // 2]) // 2
 
 
 app = Flask(__name__)
@@ -353,14 +343,10 @@ def index():
     if not video_cache:
         return redirect(url_for("settings_page"))
 
-    # Check for trend seed from Trends → Plan This Video handoff
-    trend_seed = session.pop("trend_seed", None)
-
     return render_template(
         "workspace.html",
         competitors=competitors_cache,
         chat_history=chat_history,
-        trend_seed=trend_seed,
     )
 
 
@@ -594,124 +580,6 @@ def api_chat():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/trends")
-def trends_page():
-    if not video_cache:
-        return redirect(url_for("index"))
-
-    from datetime import datetime, timedelta, timezone
-    cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
-
-    # Past-year videos for baseline
-    year_videos = []
-    for v in video_cache:
-        try:
-            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-            if dt >= cutoff_1y:
-                year_videos.append(v)
-        except (ValueError, KeyError):
-            pass
-
-    year_avg_views = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
-    year_avg_likes = sum(v.get("like_count", 0) for v in year_videos) // len(year_videos) if year_videos else 0
-    year_avg_engagement = round(sum(v["engagement_rate"] for v in year_videos) / len(year_videos), 2) if year_videos else 0
-    year_total_views = sum(v["view_count"] for v in year_videos)
-
-    # Market data
-    market_info = get_current_market_info(_btc_prices)
-
-    # Market-adjusted baselines
-    bear_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
-    bull_year = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-    bear_avg = _median([v["view_count"] for v in bear_year]) or year_avg_views
-    bull_avg = _median([v["view_count"] for v in bull_year]) or year_avg_views
-
-    # Sort own videos by publish date (most recent first), add scores
-    snapshots = _snapshots
-    dated_videos = []
-    for v in video_cache:
-        try:
-            dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-            vc = dict(v)
-            vc["_date"] = dt
-            vc["_score"] = round(v["view_count"] / year_avg_views, 1) if year_avg_views else 0
-
-            # Market phase tagging
-            tag_video_market_phase(vc, _btc_prices)
-            phase = vc.get("_market_phase", "unknown")
-            phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg_views)
-            vc["_market_score"] = round(v["view_count"] / phase_avg, 1) if phase_avg else 0
-
-            # Longevity
-            compute_longevity_score(vc)
-            vel = compute_velocity(v["video_id"], snapshots)
-            vc["_velocity"] = vel
-            if vel["has_velocity"]:
-                vc["_longevity_score"] = compute_longevity_from_snapshots(vc, snapshots)
-
-            dated_videos.append(vc)
-        except (ValueError, KeyError):
-            dated_videos.append(dict(v, _date=None, _score=0, _market_phase="unknown",
-                                     _btc_price_at_publish=0, _market_score=0,
-                                     _days_old=0, _views_per_day=0, _longevity_score=0,
-                                     _velocity={"has_velocity": False}))
-
-    dated_videos.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-
-    # Market-segmented performance (last year only, to match the baselines)
-    year_dated = [v for v in dated_videos if v.get("_date") and v["_date"] >= cutoff_1y]
-    market_summary = get_market_summary(_btc_prices, year_dated)
-
-    # Competitor videos: sort by date, keep top recent performers (8 per channel)
-    scored_competitors = []
-    for comp in competitors_cache:
-        vids = comp.get("videos", [])
-        if not vids:
-            scored_competitors.append({**comp, "scored_videos": [], "avg_views": 0})
-            continue
-        comp_avg = sum(v["view_count"] for v in vids) // len(vids) if vids else 1
-        dated_comp = []
-        for v in vids:
-            try:
-                dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-                vc = dict(v)
-                vc["_date"] = dt
-                vc["_score"] = round(v["view_count"] / comp_avg, 1) if comp_avg else 0
-                tag_video_market_phase(vc, _btc_prices)
-                compute_longevity_score(vc)
-                dated_comp.append(vc)
-            except (ValueError, KeyError):
-                dated_comp.append(dict(v, _date=None, _score=0, _market_phase="unknown",
-                                       _days_old=0, _views_per_day=0))
-        dated_comp.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-        recent = dated_comp[:20]
-        recent.sort(key=lambda v: v["view_count"], reverse=True)
-        top_recent = recent[:8]
-        top_recent.sort(key=lambda v: v["_date"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-        scored_competitors.append({**comp, "scored_videos": top_recent, "avg_views": comp_avg})
-
-    total_views = sum(v["view_count"] for v in video_cache)
-    avg_engagement = round(sum(v["engagement_rate"] for v in video_cache) / len(video_cache), 2)
-    trends_data = analyze_trends(dated_videos, competitors_cache)
-
-    return render_template("trends.html", trends=trends_data,
-                           total_videos=len(video_cache),
-                           competitor_count=len(competitors_cache),
-                           videos=dated_videos,
-                           total_views=total_views,
-                           avg_engagement=avg_engagement,
-                           year_avg_views=year_avg_views,
-                           year_avg_likes=year_avg_likes,
-                           year_avg_engagement=year_avg_engagement,
-                           year_total_views=year_total_views,
-                           year_video_count=len(year_videos),
-                           bear_avg=bear_avg,
-                           bull_avg=bull_avg,
-                           market_info=market_info,
-                           market_summary=market_summary,
-                           competitors=scored_competitors)
-
-
 @app.route("/planner")
 def planner():
     # Attach categories to videos
@@ -761,8 +629,6 @@ def api_generate_plan():
     if not llm.any_configured(settings):
         return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
 
-    trend_context = data.get("trend_context")
-
     try:
         market_data = {
             "info": get_current_market_info(_btc_prices),
@@ -791,7 +657,6 @@ def api_generate_plan():
             competitors_data=competitors_cache,
             settings=settings,
             market_data=market_data,
-            trend_context=trend_context,
             trend_intel_context=trend_intel_context,
             title_history=title_history,
             sponsor_template=settings.get("sponsor_template", ""),
@@ -1054,7 +919,6 @@ def api_regenerate_titles():
     topic = data.get("topic", "").strip()
     video_type = data.get("video_type", "")
     notes = data.get("notes", "")
-    trend_context = data.get("trend_context")
 
     settings = load_settings()
     if not llm.any_configured(settings):
@@ -1073,7 +937,6 @@ def api_regenerate_titles():
             video_data=video_cache,
             settings=settings,
             market_data=market_data,
-            trend_context=trend_context,
             title_history=title_history,
             creator_niche=get_channel_niche(),
         )
@@ -1450,23 +1313,6 @@ def api_plan_postmortem():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/plan-context", methods=["POST"])
-def api_plan_context():
-    """Store trend context in session for Trends → Workspace handoff."""
-    data = request.get_json()
-    session["trend_seed"] = {
-        "title": data.get("title", ""),
-        "source": data.get("source", ""),
-        "category": data.get("category", ""),
-        "thumb": data.get("thumb", ""),
-        "analysis_summary": data.get("analysis_summary", ""),
-        "focus_topic": data.get("focus_topic", ""),
-        "remix_ideas": data.get("remix_ideas", []),
-        "style_takeaways": data.get("style_takeaways", []),
-    }
-    return jsonify({"ok": True})
-
-
 @app.route("/competitors")
 def competitors_page():
     # Backfill avatars for channels that don't have one yet
@@ -1782,242 +1628,6 @@ def api_fetch_retention():
         # Count how many had data
         fetched = sum(1 for v in curves.values() if v)
         return jsonify({"ok": True, "fetched": fetched, "total": len(video_ids)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/market-analysis", methods=["POST"])
-def api_market_analysis():
-    """Generate deep market phase analysis with thumbnail vision."""
-    data = request.get_json()
-    phase = data.get("phase", "bear")
-    date_from = data.get("date_from", "")
-    date_to = data.get("date_to", "")
-
-    settings = load_settings()
-    api_key = settings.get("anthropic_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"error": "Anthropic API key not configured."}), 400
-
-    if not video_cache:
-        return jsonify({"error": "No videos loaded."}), 400
-
-    from datetime import datetime, timezone
-
-    # Tag all videos with market phase and filter by phase + date range
-    phase_videos = []
-    for v in video_cache:
-        vc = dict(v)
-        tag_video_market_phase(vc, _btc_prices)
-        if vc.get("_market_phase") != phase:
-            continue
-        # Date range filter
-        try:
-            pub = v["published_at"][:10]
-            if date_from and pub < date_from:
-                continue
-            if date_to and pub > date_to:
-                continue
-        except (KeyError, TypeError):
-            continue
-        phase_videos.append(vc)
-
-    if not phase_videos:
-        return jsonify({"error": f"No {phase} market videos found in that date range."}), 400
-
-    try:
-        from brainstorm import analyze_market_performance
-        result = analyze_market_performance(
-            videos=phase_videos,
-            phase=phase,
-            api_key=api_key,
-            video_categories=video_categories,
-            creator_niche=get_channel_niche(),
-        )
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/generate-trend-report", methods=["POST"])
-def api_generate_trend_report():
-    settings = load_settings()
-    if not llm.any_configured(settings):
-        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
-    if not video_cache:
-        return jsonify({"error": "No video data available."}), 400
-
-    trends_data = analyze_trends(video_cache, competitors_cache)
-    try:
-        market_data = {
-            "info": get_current_market_info(_btc_prices),
-            "summary": get_market_summary(_btc_prices, video_cache),
-        }
-        report = generate_trend_report(
-            video_data=video_cache,
-            competitors_data=competitors_cache,
-            trends_data=trends_data,
-            settings=settings,
-            analytics_data=analytics_cache,
-            market_data=market_data,
-            creator_niche=get_channel_niche(),
-        )
-        return jsonify(report)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/analyze-own-video", methods=["POST"])
-def api_analyze_own_video():
-    data = request.get_json()
-    video_id = data.get("video_id", "")
-
-    if not video_id:
-        return jsonify({"error": "video_id is required"}), 400
-
-    settings = load_settings()
-    if not llm.any_configured(settings):
-        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
-
-    video = None
-    for v in video_cache:
-        if v["video_id"] == video_id:
-            video = v
-            break
-
-    if not video:
-        return jsonify({"error": "Video not found."}), 404
-
-    try:
-        # Enrich video with market phase data
-        video = dict(video)
-        tag_video_market_phase(video, _btc_prices)
-
-        # Compute market-adjusted score
-        from datetime import datetime, timedelta, timezone
-        cutoff_1y = datetime.now(timezone.utc) - timedelta(days=365)
-        year_videos = []
-        for v in video_cache:
-            try:
-                dt = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-                if dt >= cutoff_1y:
-                    year_videos.append(v)
-            except (ValueError, KeyError):
-                pass
-        year_avg = sum(v["view_count"] for v in year_videos) // len(year_videos) if year_videos else 1
-        bear_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bear"]
-        bull_vids = [v for v in year_videos if tag_video_market_phase(dict(v), _btc_prices).get("_market_phase") == "bull"]
-        bear_avg = _median([v["view_count"] for v in bear_vids]) or year_avg
-        bull_avg = _median([v["view_count"] for v in bull_vids]) or year_avg
-        phase = video.get("_market_phase", "unknown")
-        phase_avg = bear_avg if phase == "bear" else (bull_avg if phase == "bull" else year_avg)
-        video["_market_score"] = round(video["view_count"] / phase_avg, 1) if phase_avg else 0
-        video["_phase_avg"] = phase_avg
-        video["_bear_avg"] = bear_avg
-        video["_bull_avg"] = bull_avg
-
-        market_data = {
-            "info": get_current_market_info(_btc_prices),
-            "summary": get_market_summary(_btc_prices, video_cache),
-        }
-        analysis = analyze_own_video(
-            video=video,
-            video_data=video_cache,
-            settings=settings,
-            analytics_data=analytics_cache,
-            competitors_data=competitors_cache,
-            market_data=market_data,
-            creator_niche=get_channel_niche(),
-        )
-        return jsonify(analysis)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/analyze-competitor-video", methods=["POST"])
-def api_analyze_competitor_video():
-    data = request.get_json()
-    channel_id = data.get("channel_id", "")
-    video_id = data.get("video_id", "")
-
-    if not channel_id or not video_id:
-        return jsonify({"error": "channel_id and video_id are required"}), 400
-
-    settings = load_settings()
-    if not llm.any_configured(settings):
-        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
-
-    # Find the competitor and video
-    competitor = None
-    video = None
-    for comp in competitors_cache:
-        if comp["channel_id"] == channel_id:
-            competitor = comp
-            for v in comp["videos"]:
-                if v["video_id"] == video_id:
-                    video = v
-                    break
-            break
-
-    if not competitor or not video:
-        return jsonify({"error": "Competitor or video not found."}), 404
-
-    try:
-        market_data = {
-            "info": get_current_market_info(_btc_prices),
-            "summary": get_market_summary(_btc_prices, video_cache),
-        }
-        analysis = analyze_competitor_video(
-            video=video,
-            competitor=competitor,
-            video_data=video_cache,
-            settings=settings,
-            analytics_data=analytics_cache,
-            market_data=market_data,
-            creator_niche=get_channel_niche(),
-        )
-        return jsonify(analysis)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/remix-video", methods=["POST"])
-def api_remix_video():
-    data = request.get_json()
-    video_title = data.get("video_title", "")
-    video_source = data.get("video_source", "You")
-    source_category = data.get("source_category", "Bitcoin/Crypto")
-    analysis_summary = data.get("analysis_summary", "")
-    focus_topic = data.get("focus_topic", "")
-
-    if not video_title:
-        return jsonify({"error": "video_title is required"}), 400
-
-    settings = load_settings()
-    if not llm.any_configured(settings):
-        return jsonify({"error": "No AI provider configured. Set one up in Settings."}), 400
-
-    try:
-        from trend_intel import gather_trend_intel, intel_to_prompt_context
-        market_data = {
-            "info": get_current_market_info(_btc_prices),
-            "summary": get_market_summary(_btc_prices, video_cache),
-        }
-        intel = gather_trend_intel()
-        intel_context = intel_to_prompt_context(intel)
-        result = remix_video(
-            video_title=video_title,
-            video_source=video_source,
-            source_category=source_category,
-            analysis_summary=analysis_summary,
-            video_data=video_cache,
-            settings=settings,
-            focus_topic=focus_topic,
-            market_data=market_data,
-            trend_intel_context=intel_context,
-            creator_niche=get_channel_niche(),
-        )
-        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
