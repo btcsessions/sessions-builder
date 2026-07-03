@@ -109,7 +109,7 @@ DEFAULT_CHANNEL_NAME = "Sovereign Sessions"
 
 # AI provider fields managed by the Settings form (posted on every save;
 # blank values intentionally clear the key)
-AI_SETTING_KEYS = ("ai_provider", "openai_key", "maple_key", "maple_url",
+AI_SETTING_KEYS = ("ai_provider", "anthropic_model", "openai_key", "maple_key", "maple_url",
                    "lmstudio_url", "openai_model", "maple_model", "lmstudio_model")
 
 
@@ -390,6 +390,7 @@ def settings_page():
         ai_defaults={
             "maple_url": llm.DEFAULT_MAPLE_URL,
             "lmstudio_url": llm.DEFAULT_LMSTUDIO_URL,
+            "anthropic_model": llm.DEFAULT_ANTHROPIC_MODEL,
             "openai_model": llm.DEFAULT_OPENAI_MODEL,
         },
         provider_labels=llm.PROVIDER_LABELS,

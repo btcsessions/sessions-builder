@@ -59,7 +59,7 @@
                 <input type="password" id="anthropic_key" name="anthropic_key"
                        value="{{ anthropic_key }}"
                        placeholder="sk-ant-...">
-                <small>Can also be set as ANTHROPIC_API_KEY env var.</small>
+                <small>Can also be set as ANTHROPIC_API_KEY env var. Model: <input type="text" name="anthropic_model" value="{{ ai.anthropic_model }}" placeholder="{{ ai_defaults.anthropic_model }}" style="width:12rem; display:inline-block;"></small>
             </div>
 
             <div class="form-group">

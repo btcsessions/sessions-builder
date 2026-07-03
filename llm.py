@@ -32,6 +32,7 @@ PROVIDER_LABELS = {
 
 DEFAULT_MAPLE_URL = "http://localhost:8080/v1"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
 DEFAULT_MAPLE_MODEL = ""      # Maple Proxy serves its default model when blank
 DEFAULT_LMSTUDIO_MODEL = ""   # LM Studio uses whatever model is loaded
@@ -93,17 +94,18 @@ def active_provider(settings: dict) -> str:
 
 
 def _anthropic_chat(settings: dict, system: str, messages: list, max_tokens: int,
-                    use_web_search: bool = False, model: str = "claude-sonnet-4-20250514") -> str:
+                    use_web_search: bool = False, model: str = None) -> str:
     import os
     import anthropic
     api_key = settings.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY", "")
     client = anthropic.Anthropic(api_key=api_key)
+    model = model or (settings.get("anthropic_model") or "").strip() or DEFAULT_ANTHROPIC_MODEL
     kwargs = {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages}
     if use_web_search:
         try:
             response = client.messages.create(
                 **kwargs,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
             )
             return _anthropic_text(response)
         except Exception as e:
@@ -132,7 +134,12 @@ def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
             )
         oai_messages.append({"role": m.get("role", "user"), "content": content})
 
-    body = {"messages": oai_messages, "max_tokens": max_tokens}
+    # OpenAI's newer models reject max_tokens in favor of max_completion_tokens;
+    # local OpenAI-compatible servers (Maple, LM Studio) still expect max_tokens.
+    if "api.openai.com" in base_url:
+        body = {"messages": oai_messages, "max_completion_tokens": max_tokens}
+    else:
+        body = {"messages": oai_messages, "max_tokens": max_tokens}
     if model:
         body["model"] = model
 
@@ -141,8 +148,23 @@ def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
         headers["Authorization"] = f"Bearer {api_key}"
 
     req = Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
-    with urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        # Surface the response body — it says WHY (wrong model, no model
+        # loaded, bad param) instead of a bare "HTTP Error 400".
+        detail = ""
+        try:
+            raw = e.read().decode("utf-8", errors="replace")
+            try:
+                detail = json.loads(raw).get("error", {}).get("message", "") or raw
+            except (json.JSONDecodeError, AttributeError):
+                detail = raw
+        except Exception:
+            pass
+        detail = (detail or "").strip()[:300]
+        raise RuntimeError(f"{url} error {e.code}{': ' + detail if detail else ''}")
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"Empty response from {url}")
@@ -151,7 +173,7 @@ def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
 
 def _provider_call(provider: str, settings: dict, system: str, messages: list,
                    max_tokens: int, use_web_search: bool,
-                   anthropic_model: str = "claude-sonnet-4-20250514") -> str:
+                   anthropic_model: str = None) -> str:
     if provider == "anthropic":
         return _anthropic_chat(settings, system, messages, max_tokens, use_web_search,
                                model=anthropic_model)
@@ -192,7 +214,7 @@ def _is_network_error(exc: Exception) -> bool:
 
 def llm_chat(settings: dict, system: str, messages: list, max_tokens: int = 3000,
              use_web_search: bool = False,
-             anthropic_model: str = "claude-sonnet-4-20250514") -> str:
+             anthropic_model: str = None) -> str:
     """Send a chat request to the active provider.
 
     Falls back to LM Studio on network errors so the app works offline.
