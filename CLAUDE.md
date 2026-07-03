@@ -4,28 +4,28 @@
 
 **Always develop on branch `claude/youtube-planning-app-B52L2`.** Do NOT create new branches. If the session was assigned a different branch, ignore it and use this one. Checkout this branch before making any changes.
 
-## Multi-Machine Setup
+## Machine Setup
 
-This app runs on **multiple machines** (same user, same repo, same branch):
+The app runs on a **single Mac laptop** (Apple Silicon) — uses the `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`.
 
-- **macOS** (Apple Silicon Macs) — uses `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`
-- **CachyOS (Arch Linux)** — uses `yt-planner.desktop` launcher and `launch.sh`
+- **CachyOS (Arch Linux) support is parked**, not removed: Ben retired that machine as an active planner client "for now." The Linux launcher files stay in the repo for potential future use.
+- **The recording machine is a delivery target, not a planner install**: finalized plans reach it as exported Markdown outlines (Export button in plan history → `plan_export.py`), never via a second copy of the app.
 
 ### Branch Policy
 
 **All development happens on one branch: `claude/youtube-planning-app-B52L2`.**
 
-Never create separate branches per machine or per platform. Both machines pull from and push to this single branch. The "Update App" button in the GUI pulls from the current branch automatically.
+Never create separate branches per machine or per platform. The "Update App" button in the GUI pulls from the current branch automatically.
 
 ### Platform-Specific Files
 
 - `build_mac_app.sh` — macOS only (builds .app bundle with native Swift launcher)
-- `yt-planner.desktop` — Linux only (desktop launcher)
+- `yt-planner.desktop`, `launch.fish` — parked Linux support (kept for potential future use)
 - `setup.sh`, `launch.sh`, `app.py`, `sync.py` — shared, cross-platform
 
 ### Gist Sync
 
-The app syncs data between machines via a private GitHub Gist. Important:
+Gist sync now serves as an **encrypted off-machine backup**. It was built for multi-machine sync and would resume that role if a second machine returns; the mechanics are unchanged. Important:
 
 - **Encryption**: `settings.json` is encrypted with a user-set sync password before pushing to the Gist. This prevents GitHub secret scanning from detecting and revoking API keys (confirmed: both GitHub tokens and Anthropic keys were revoked this way). The password is set once per machine in Settings and stored locally only.
 - **Local-only keys**: `sync_github_token`, `sync_gist_id`, and `sync_password` are stripped before push and preserved from local settings on pull — they never appear in the Gist.
@@ -35,7 +35,17 @@ The app syncs data between machines via a private GitHub Gist. Important:
 
 ### Python Version
 
-macOS has Python 3.9 (system). CachyOS has a newer version. Both work, but Google API libraries show deprecation warnings on 3.9. Keep code 3.9-compatible (use `from __future__ import annotations` for `X | Y` type hints).
+macOS has Python 3.9 (system). Google API libraries show deprecation warnings on 3.9. Keep code 3.9-compatible (use `from __future__ import annotations` for `X | Y` type hints).
+
+## Hermes/Umbrel Integration (planned)
+
+Agreed direction for connecting the planner to Ben's Hermes agent on his Umbrel — for context when this work starts:
+
+- A **separate backend container on the Umbrel** owns durable state (SQLite documents store), a job queue, and a token-auth HTTP API reached over Tailscale. No sidecar inside the Hermes app container (its packaging/proxy doesn't support one).
+- **Hermes-pull job loop**: the app never talks to Hermes directly. The app submits async jobs to the backend; Hermes polls the backend's queue on cron from inside its container, reasons, and posts results back.
+- **Interactive AI stays local** via `llm.py` (with the LM Studio offline fallback) permanently — backend jobs are for async work only (recording handoff, post-mortems, ingestion).
+- `plan_export.py` renders the recording-outline document as a pure function of the plan dict so the future backend handoff job reuses it unchanged.
+- **Preference boundary**: Hermes owns durable cross-workflow facts about Ben (style, workflow rules); the laptop owns project/domain data (plans, catalog, analytics). Each fact has exactly one home; the planner may *propose* preferences upward for Hermes review, never write them.
 
 ## Sovereign Sessions Tutorial Planner
 
