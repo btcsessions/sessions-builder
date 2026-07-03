@@ -56,8 +56,14 @@ def _parse_plan_json(text: str) -> dict:
         raise
 
 
+def _affiliates_only(links: list) -> list:
+    """Library entries the AI may weave into content (excludes sponsors)."""
+    return [l for l in (links or []) if (l.get("type") or "affiliate") != "sponsor"]
+
+
 def _build_link_library_section(affiliate_links: list = None) -> str:
     """Format the creator's locally held referral/affiliate links for prompts."""
+    affiliate_links = _affiliates_only(affiliate_links)
     if not affiliate_links:
         return ""
     lines = ["\n**CREATOR'S LINK LIBRARY (referral/affiliate links — use the REAL URLs):**"]
@@ -67,6 +73,24 @@ def _build_link_library_section(affiliate_links: list = None) -> str:
         if title and url:
             lines.append(f"- {title}: {url}")
     return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _build_sponsor_block(sponsors: list) -> str:
+    """Deterministic sponsor section for the description.
+
+    Sponsor copy is often contractual, so it is never AI-paraphrased: the
+    blurb is used verbatim when set, otherwise a plain name+link line.
+    """
+    lines = []
+    for s in sponsors or []:
+        blurb = (s.get("blurb") or "").strip()
+        title = (s.get("title") or "").strip()
+        url = (s.get("url") or "").strip()
+        if blurb:
+            lines.append(blurb)
+        elif title and url:
+            lines.append(f"This episode is sponsored by {title} — {url}")
+    return "\n\n".join(lines)
 
 
 def _fetch_url_text(url: str, timeout: int = 10) -> str:
@@ -561,6 +585,7 @@ def generate_video_plan(
     desc_template: str = "",
     sponsor_template: str = "",
     default_yt_tags: str = "",
+    sponsors: list = None,
     creator_niche: str = "",
     affiliate_links: list = None,
     use_web_search: bool = True,
@@ -658,7 +683,7 @@ Use this real-time data to make the plan timely and relevant. Reference specific
         plan["video_type"] = "video"
 
     # Auto-append sponsor block + timestamps reminder to description
-    sponsor = sponsor_template or desc_template  # fallback to old field
+    sponsor = _build_sponsor_block(sponsors) if sponsors else (sponsor_template or desc_template)
     if "description" in plan:
         desc = plan["description"]
         # Strip any AI-generated timestamp placeholders
@@ -701,6 +726,7 @@ def parse_notes_to_plan(
     existing_plan: dict = None,
     desc_template: str = "",
     sponsor_template: str = "",
+    sponsors: list = None,
     default_yt_tags: str = "",
     video_data: list[dict] = None,
     market_data: dict = None,
@@ -794,7 +820,7 @@ RULES:
         plan["video_type"] = "video"
 
     # Auto-append sponsor block + timestamps reminder if creating new
-    sponsor = sponsor_template or desc_template
+    sponsor = _build_sponsor_block(sponsors) if sponsors else (sponsor_template or desc_template)
     if not existing_plan and "description" in plan:
         desc = plan["description"]
         for placeholder in ["[TIMESTAMPS]", "[TIMESTAMP]"]:
@@ -843,7 +869,7 @@ def suggest_plan_links(
 
     affiliate_section = ""
     if affiliate_links:
-        aff_list = "\n".join(f'- "{a["title"]}": {a["url"]}' for a in affiliate_links)
+        aff_list = "\n".join(f'- "{a["title"]}": {a["url"]}' for a in _affiliates_only(affiliate_links))
         affiliate_section = f"""
 
 **Creator's affiliate/referral links (suggest relevant ones):**

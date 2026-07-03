@@ -492,7 +492,10 @@ def api_desc_template():
         })
 
     data = request.get_json()
-    settings["sponsor_template"] = data.get("sponsor_template", "")
+    # sponsor_template is legacy (superseded by sponsor-type library entries);
+    # only touch it when explicitly sent so tag-only saves preserve it
+    if "sponsor_template" in data:
+        settings["sponsor_template"] = data.get("sponsor_template", "")
     settings["default_yt_tags"] = data.get("default_yt_tags", "")
     # Remove old field if migrating
     settings.pop("desc_template", None)
@@ -672,6 +675,7 @@ def api_generate_plan():
             title_history=title_history,
             sponsor_template=settings.get("sponsor_template", ""),
             default_yt_tags=settings.get("default_yt_tags", ""),
+            sponsors=_resolve_sponsors(settings, data.get("sponsors")),
             creator_niche=settings.get("channel_niche", ""),
             affiliate_links=settings.get("affiliate_links", []),
         )
@@ -786,6 +790,15 @@ def api_swap_title():
         return jsonify({"error": str(e)}), 500
 
 
+def _resolve_sponsors(settings: dict, selected_urls) -> list:
+    """Map the per-episode picker's selected URLs to sponsor library entries."""
+    if not selected_urls:
+        return []
+    wanted = {u for u in selected_urls if u}
+    return [l for l in settings.get("affiliate_links", [])
+            if (l.get("type") or "affiliate") == "sponsor" and l.get("url") in wanted]
+
+
 @app.route("/api/affiliate-links", methods=["GET"])
 def api_get_affiliate_links():
     settings = load_settings()
@@ -797,11 +810,16 @@ def api_add_affiliate_link():
     data = request.get_json()
     title = (data.get("title") or "").strip()
     url = (data.get("url") or "").strip()
+    link_type = data.get("type") if data.get("type") in ("affiliate", "sponsor") else "affiliate"
+    blurb = (data.get("blurb") or "").strip()
     if not title or not url:
         return jsonify({"error": "Title and URL required."}), 400
     settings = load_settings()
     links = settings.get("affiliate_links", [])
-    links.append({"title": title, "url": url})
+    entry = {"title": title, "url": url, "type": link_type}
+    if blurb:
+        entry["blurb"] = blurb
+    links.append(entry)
     settings["affiliate_links"] = links
     _ensure_data_dir()
     with open(SETTINGS_FILE, "w") as f:
@@ -910,6 +928,7 @@ def api_parse_notes():
             settings=settings,
             existing_plan=existing_plan,
             sponsor_template=settings.get("sponsor_template", ""),
+            sponsors=_resolve_sponsors(settings, data.get("sponsors")),
             default_yt_tags=settings.get("default_yt_tags", ""),
             video_data=video_cache,
             market_data=market_data,

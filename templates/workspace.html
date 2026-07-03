@@ -42,6 +42,11 @@
                 <textarea id="video-notes" rows="2" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
             </div>
 
+            <div class="form-group compact" id="sponsor-picker-group" style="display:none">
+                <label>Sponsors this episode</label>
+                <div id="sponsor-picker" style="display:flex; gap:0.75rem; flex-wrap:wrap;"></div>
+            </div>
+
             <div class="plan-form-actions">
                 <button type="submit" class="btn primary" id="generate-btn">Generate Plan</button>
                 <span class="action-divider">or</span>
@@ -235,6 +240,33 @@ if (nav) {
 <script>
 /* --- Planner logic --- */
 const BACKEND_CONFIGURED = {{ 'true' if backend_configured else 'false' }};
+
+/* --- Per-episode sponsor picker --- */
+async function initSponsorPicker() {
+    try {
+        const resp = await fetch("/api/affiliate-links");
+        const data = await resp.json();
+        const sponsors = (data.links || []).filter(l => (l.type || "affiliate") === "sponsor");
+        const group = document.getElementById("sponsor-picker-group");
+        const picker = document.getElementById("sponsor-picker");
+        if (!sponsors.length) { group.style.display = "none"; return; }
+        picker.innerHTML = sponsors.map(s =>
+            `<label style="display:flex; gap:0.3rem; align-items:center; font-weight:400; cursor:pointer;">
+                <input type="checkbox" class="sponsor-check" value="${esc(s.url)}"> ${esc(s.title)}
+            </label>`).join("");
+        group.style.display = "";
+    } catch (e) { /* library unavailable — picker stays hidden */ }
+}
+
+function getSelectedSponsors() {
+    return [...document.querySelectorAll(".sponsor-check:checked")].map(el => el.value);
+}
+
+function setSelectedSponsors(urls) {
+    const wanted = new Set(urls || []);
+    document.querySelectorAll(".sponsor-check").forEach(el => { el.checked = wanted.has(el.value); });
+}
+
 const form = document.getElementById("plan-form");
 const generateBtn = document.getElementById("generate-btn");
 const loading = document.getElementById("plan-loading");
@@ -265,6 +297,7 @@ function savePlannerState() {
         notes: document.getElementById("video-notes")?.value || "",
         links: [...document.querySelectorAll(".supporting-link")].map(el => el.value),
         competitors: [...document.querySelectorAll(".competitor-link")].map(el => el.value),
+        sponsors: getSelectedSponsors(),
         // Plan results — capture current edits from DOM
         planData: getCurrentPlanFromDOM() || lastPlanData,
         planVisible: results.style.display !== "none",
@@ -290,6 +323,7 @@ function restorePlannerState() {
         setVideoType(state.videoType);
         if (state.topic) document.getElementById("video-topic").value = state.topic;
         if (state.notes) document.getElementById("video-notes").value = state.notes;
+        if (state.sponsors) setSelectedSponsors(state.sponsors);
 
         // Restore extra link/competitor rows
         if (state.links && state.links.length > 1) {
@@ -401,7 +435,7 @@ form.addEventListener("submit", async (e) => {
     results.style.display = "none";
 
     try {
-        const payload = { video_type: videoType, topic, links, competitors, notes };
+        const payload = { video_type: videoType, topic, links, competitors, notes, sponsors: getSelectedSponsors() };
         currentPlanPayload = payload;
         const resp = await fetch("/api/generate-plan", {
             method: "POST",
@@ -509,7 +543,7 @@ document.getElementById("parse-notes-btn")?.addEventListener("click", async () =
         const resp = await fetch("/api/parse-notes", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ notes, topic, video_type: videoType }),
+            body: JSON.stringify({ notes, topic, video_type: videoType, sponsors: getSelectedSponsors() }),
         });
         const data = await resp.json();
         if (data.error) {
@@ -564,7 +598,7 @@ document.getElementById("amend-parse-btn")?.addEventListener("click", async () =
         const resp = await fetch("/api/parse-notes", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ notes, topic, video_type: videoType, existing_plan: existingPlan }),
+            body: JSON.stringify({ notes, topic, video_type: videoType, existing_plan: existingPlan, sponsors: getSelectedSponsors() }),
         });
         const data = await resp.json();
         if (data.error) {
@@ -1752,6 +1786,7 @@ async function loadSavedPlan(plan) {
     }
     if (fs.topic || plan.topic) document.getElementById("video-topic").value = fs.topic || plan.topic;
     if (fs.notes) document.getElementById("video-notes").value = fs.notes;
+    setSelectedSponsors(fs.sponsors);
 
     // Restore extra link/competitor rows
     const linksContainer = document.getElementById("links-container");
@@ -1840,6 +1875,7 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
         notes: document.getElementById("video-notes")?.value || "",
         links: [...document.querySelectorAll(".supporting-link")].map(el => el.value).filter(Boolean),
         competitors: [...document.querySelectorAll(".competitor-link")].map(el => el.value).filter(Boolean),
+        sponsors: getSelectedSponsors(),
     };
 
     btn.disabled = true;
@@ -2315,5 +2351,9 @@ document.getElementById("plan-history-toggle")?.addEventListener("click", () => 
 });
 
 refreshPlanHistory();
+initSponsorPicker().then(() => {
+    const raw = sessionStorage.getItem("plannerState");
+    if (raw) { try { setSelectedSponsors(JSON.parse(raw).sponsors); } catch (e) {} }
+});
 </script>
 {% endblock %}

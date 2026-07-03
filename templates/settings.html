@@ -243,12 +243,6 @@
             <h3>Description Defaults</h3>
 
             <div class="form-group">
-                <label for="sponsor-template-text">Sponsors</label>
-                <p class="form-hint" style="margin-bottom:0.3rem;">Auto-inserted into every video description.</p>
-                <textarea id="sponsor-template-text" rows="6" class="settings-textarea">{{ sponsor_template }}</textarea>
-            </div>
-
-            <div class="form-group">
                 <label for="default-tags-text">YouTube Tags</label>
                 <p class="form-hint" style="margin-bottom:0.3rem;">Default CSV tags. Plan-specific tags are appended.</p>
                 <textarea id="default-tags-text" rows="3" class="settings-textarea">{{ default_yt_tags }}</textarea>
@@ -261,13 +255,20 @@
         </div>
 
         <div class="setup-form">
-            <h3>Affiliate Links</h3>
-            <p class="form-hint">Your affiliate/referral links. Available to add to any video description.</p>
+            <h3>Sponsors &amp; Affiliate Links</h3>
+            <p class="form-hint">One library for both. <strong>Affiliates</strong> get woven into descriptions when relevant to the episode (near the top). <strong>Sponsors</strong> are chosen per episode in the planner and appear after the main description — blurb text is used word-for-word.</p>
             <div id="affiliate-links-list" class="affiliate-links-list"></div>
-            <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem;">
-                <input type="text" id="aff-link-title" class="settings-textarea" placeholder="Title (e.g. Coldcard Mk4)" style="flex:1; padding:0.4rem 0.5rem;">
-                <input type="url" id="aff-link-url" class="settings-textarea" placeholder="https://affiliate-link..." style="flex:1; padding:0.4rem 0.5rem;">
+            <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+                <input type="text" id="aff-link-title" class="settings-textarea" placeholder="Name (e.g. Coldcard Mk4)" style="flex:1; min-width:9rem; padding:0.4rem 0.5rem;">
+                <input type="url" id="aff-link-url" class="settings-textarea" placeholder="https://link..." style="flex:1; min-width:9rem; padding:0.4rem 0.5rem;">
+                <select id="aff-link-type" class="settings-textarea" style="padding:0.4rem 0.5rem;">
+                    <option value="affiliate">Affiliate</option>
+                    <option value="sponsor">Sponsor</option>
+                </select>
                 <button class="btn small primary" id="add-aff-link-btn">Add</button>
+            </div>
+            <div style="margin-top:0.4rem;">
+                <input type="text" id="aff-link-blurb" class="settings-textarea" placeholder="Optional blurb — for sponsors, the exact copy to insert (e.g. 'Get 10% off with code SOVEREIGN → https://...')" style="width:100%; padding:0.4rem 0.5rem;">
             </div>
             <span id="aff-link-status" class="form-hint"></span>
         </div>
@@ -698,7 +699,6 @@ if (importInput) {
 document.getElementById("save-desc-template-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("save-desc-template-btn");
     const status = document.getElementById("desc-template-status");
-    const sponsor = document.getElementById("sponsor-template-text").value;
     const tags = document.getElementById("default-tags-text").value;
     btn.disabled = true;
     btn.textContent = "Saving...";
@@ -706,7 +706,7 @@ document.getElementById("save-desc-template-btn")?.addEventListener("click", asy
         const resp = await fetch("/api/desc-template", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sponsor_template: sponsor, default_yt_tags: tags }),
+            body: JSON.stringify({ default_yt_tags: tags }),
         });
         const data = await resp.json();
         if (data.ok) {
@@ -739,13 +739,18 @@ function renderAffiliateLinks(links) {
         list.innerHTML = '<p class="form-hint">No affiliate links yet.</p>';
         return;
     }
-    list.innerHTML = links.map((l, i) =>
-        `<div class="aff-link-row">
+    list.innerHTML = links.map((l, i) => {
+        const isSponsor = (l.type || "affiliate") === "sponsor";
+        const badge = `<span class="badge ${isSponsor ? 'disconnected' : 'connected'}" style="font-size:0.65rem;">${isSponsor ? 'Sponsor' : 'Affiliate'}</span>`;
+        const blurb = l.blurb ? `<div class="form-hint" style="flex-basis:100%; margin:0.15rem 0 0;">&ldquo;${escHtml(l.blurb.length > 90 ? l.blurb.slice(0, 90) + '...' : l.blurb)}&rdquo;</div>` : '';
+        return `<div class="aff-link-row" style="flex-wrap:wrap;">
+            ${badge}
             <span class="aff-link-title">${escHtml(l.title)}</span>
             <span class="aff-link-url">${escHtml(l.url.length > 40 ? l.url.slice(0, 40) + '...' : l.url)}</span>
             <button class="btn small aff-remove-btn" data-idx="${i}">&times;</button>
-        </div>`
-    ).join("");
+            ${blurb}
+        </div>`;
+    }).join("");
     list.querySelectorAll(".aff-remove-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
             await fetch("/api/affiliate-links/remove", {
@@ -761,15 +766,18 @@ function renderAffiliateLinks(links) {
 document.getElementById("add-aff-link-btn")?.addEventListener("click", async () => {
     const title = document.getElementById("aff-link-title").value.trim();
     const url = document.getElementById("aff-link-url").value.trim();
+    const type = document.getElementById("aff-link-type").value;
+    const blurb = document.getElementById("aff-link-blurb").value.trim();
     const status = document.getElementById("aff-link-status");
-    if (!title || !url) { status.textContent = "Both title and URL required."; return; }
+    if (!title || !url) { status.textContent = "Both name and URL required."; return; }
     await fetch("/api/affiliate-links/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, url }),
+        body: JSON.stringify({ title, url, type, blurb }),
     });
     document.getElementById("aff-link-title").value = "";
     document.getElementById("aff-link-url").value = "";
+    document.getElementById("aff-link-blurb").value = "";
     status.textContent = "";
     loadAffiliateLinks();
 });
