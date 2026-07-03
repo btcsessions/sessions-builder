@@ -1112,7 +1112,7 @@ def api_save_plan():
             plan["topic"] = topic
             plan["video_type"] = video_type
             plan["ai_score"] = ai_score
-            plan["all_titles"] = plan_data.get("titles", []),
+            plan["all_titles"] = plan_data.get("titles", [])
             plan["full_plan"] = full_plan
             plan["form_state"] = data.get("form_state", {})
             plan["updated_at"] = datetime.now().isoformat()[:10]
@@ -1200,6 +1200,22 @@ def api_get_plan(plan_id):
     if not plan:
         return jsonify({"error": "Plan not found."}), 404
     return jsonify({"plan": plan})
+
+
+@app.route("/api/plans/<plan_id>/export", methods=["GET"])
+def api_export_plan(plan_id):
+    """Download a saved plan as a Markdown recording outline."""
+    import io
+    from plan_export import render_plan_markdown, export_filename
+
+    plan = next((p for p in plans_cache if p["id"] == plan_id), None)
+    if not plan:
+        return jsonify({"error": "Plan not found."}), 404
+
+    markdown = render_plan_markdown(plan, get_channel_name())
+    buf = io.BytesIO(markdown.encode("utf-8"))
+    return send_file(buf, mimetype="text/markdown", as_attachment=True,
+                     download_name=export_filename(plan))
 
 
 @app.route("/api/plans/link-video", methods=["POST"])

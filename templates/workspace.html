@@ -2120,6 +2120,7 @@ async function refreshPlanHistory() {
                 ${postmortemHtml}
                 <div class="saved-title-actions">
                     ${p.full_plan ? '<button class="btn small load-plan-btn" data-id="' + esc(p.id) + '">Load</button>' : ''}
+                    ${p.full_plan ? '<button class="btn small export-plan-btn" data-id="' + esc(p.id) + '" title="Download a Markdown recording outline">Export</button>' : ''}
                     ${!linked ? '<button class="btn small auto-match-plan-btn" data-id="' + esc(p.id) + '">Auto-Match Video</button>' : ''}
                     ${linked && !p.postmortem ? '<button class="btn small run-postmortem-btn" data-id="' + esc(p.id) + '">Run Post-Mortem</button>' : ''}
                     <button class="btn small archive-plan-btn" data-id="${esc(p.id)}" title="Archive">Archive</button>
@@ -2146,6 +2147,13 @@ async function refreshPlanHistory() {
                     btn.textContent = "Error";
                 }
                 setTimeout(() => { btn.textContent = "Load"; btn.disabled = false; }, 1500);
+            });
+        });
+
+        // Wire export buttons (download the recording outline)
+        list.querySelectorAll(".export-plan-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                window.location.href = "/api/plans/" + encodeURIComponent(btn.dataset.id) + "/export";
             });
         });
 
