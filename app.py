@@ -392,6 +392,7 @@ def settings_page():
             "lmstudio_url": llm.DEFAULT_LMSTUDIO_URL,
             "anthropic_model": llm.DEFAULT_ANTHROPIC_MODEL,
             "openai_model": llm.DEFAULT_OPENAI_MODEL,
+            "maple_model": llm.DEFAULT_MAPLE_MODEL,
         },
         provider_labels=llm.PROVIDER_LABELS,
     )

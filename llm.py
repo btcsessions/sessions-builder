@@ -34,7 +34,7 @@ DEFAULT_MAPLE_URL = "http://localhost:8080/v1"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
-DEFAULT_MAPLE_MODEL = ""      # Maple Proxy serves its default model when blank
+DEFAULT_MAPLE_MODEL = "llama3-3-70b"  # Maple Proxy REQUIRES a model; GET /v1/models lists options
 DEFAULT_LMSTUDIO_MODEL = ""   # LM Studio uses whatever model is loaded
 
 # What actually served the last call — for surfacing in the UI

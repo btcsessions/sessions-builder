@@ -75,8 +75,7 @@
                 <input type="password" id="maple_key" name="maple_key"
                        value="{{ ai.maple_key }}"
                        placeholder="Maple API key (optional if the local proxy needs none)">
-                <small>Via Maple Proxy (built into the Maple desktop app). Proxy URL: <input type="text" name="maple_url" value="{{ ai.maple_url }}" placeholder="{{ ai_defaults.maple_url }}" style="width:14rem; display:inline-block;"></small>
-                <input type="hidden" name="maple_model" value="{{ ai.maple_model }}">
+                <small>Via Maple Proxy (built into the Maple desktop app). Proxy URL: <input type="text" name="maple_url" value="{{ ai.maple_url }}" placeholder="{{ ai_defaults.maple_url }}" style="width:14rem; display:inline-block;"> Model: <input type="text" name="maple_model" value="{{ ai.maple_model }}" placeholder="{{ ai_defaults.maple_model }}" style="width:10rem; display:inline-block;"> (see the proxy's /v1/models for options)</small>
             </div>
 
             <div class="form-group">
