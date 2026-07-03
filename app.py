@@ -341,6 +341,15 @@ def index():
     )
 
 
+@app.route("/planner")
+def planner_redirect():
+    """Compatibility shim: the Mac .app launcher polls /planner as its
+    server-readiness check and requires a literal 200 (its curl doesn't
+    follow redirects). Keep this alive until the bundle is rebuilt.
+    Browsers that land here bounce to the workspace via meta refresh."""
+    return '<!doctype html><meta http-equiv="refresh" content="0; url=/"><a href="/">BTC Sessions Planner</a>'
+
+
 @app.route("/settings")
 def settings_page():
     settings = load_settings()

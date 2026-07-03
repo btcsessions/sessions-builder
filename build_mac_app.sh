@@ -132,7 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for _ in 0..<60 {
                 let task = Process()
                 task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-                task.arguments = ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+                task.arguments = ["-s", "-o", "/dev/null", "-w", "%{http_code}", "-L",
                                   "http://127.0.0.1:5000/planner"]
                 let pipe = Pipe()
                 task.standardOutput = pipe

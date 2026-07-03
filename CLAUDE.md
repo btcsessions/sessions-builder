@@ -8,6 +8,8 @@
 
 The app runs on a **single Mac laptop** (Apple Silicon) — uses the `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`.
 
+- **The .app launcher polls `/planner` as its readiness check** (plain curl, requires a literal 200) before opening the browser. The `/planner` shim route in `app.py` must always return 200 directly — removing it (or turning it into a redirect) silently breaks the dock launcher. This bit us once: removing the old /planner page broke app launch.
+
 - **CachyOS (Arch Linux) support is parked**, not removed: Ben retired that machine as an active planner client "for now." The Linux launcher files stay in the repo for potential future use.
 - **The recording machine is a delivery target, not a planner install**: finalized plans reach it as exported Markdown outlines (Export button in plan history → `plan_export.py`), never via a second copy of the app.
 
