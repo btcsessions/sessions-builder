@@ -181,20 +181,6 @@ def load_competitors() -> list:
     return []
 
 
-def save_categories(data: dict):
-    _ensure_data_dir()
-    with open(CATEGORIES_FILE, "w") as f:
-        json.dump(data, f)
-    _schedule_sync_push()
-
-
-def load_categories() -> dict:
-    if os.path.exists(CATEGORIES_FILE):
-        with open(CATEGORIES_FILE) as f:
-            return json.load(f)
-    return {}
-
-
 def save_title_history(data: list):
     _ensure_data_dir()
     with open(TITLE_HISTORY_FILE, "w") as f:
@@ -277,7 +263,6 @@ playlist_info = {
 video_cache = load_video_cache()
 analytics_cache = load_analytics()
 competitors_cache = load_competitors()
-video_categories = load_categories()
 title_history = load_title_history()
 plans_cache = load_plans()
 
@@ -371,8 +356,6 @@ def settings_page():
         has_videos=len(video_cache) > 0,
         error=request.args.get("error"),
         success=request.args.get("success"),
-        videos=video_cache,
-        video_categories=video_categories,
         sync_gist_id=settings.get("sync_gist_id", ""),
         sync_github_token=settings.get("sync_github_token", ""),
         sync_password=settings.get("sync_password", ""),
@@ -592,39 +575,6 @@ def api_chat():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/planner")
-def planner():
-    # Attach categories to videos
-    tagged_videos = []
-    for v in video_cache:
-        vc = dict(v)
-        vc["_category"] = video_categories.get(v["video_id"], "")
-        tagged_videos.append(vc)
-
-    # Compute format performance stats
-    format_stats = {}
-    uncategorized_count = 0
-    for v in tagged_videos:
-        cat = v["_category"]
-        if not cat:
-            uncategorized_count += 1
-            continue
-        if cat not in format_stats:
-            format_stats[cat] = {"count": 0, "views": 0, "engagement": 0}
-        format_stats[cat]["count"] += 1
-        format_stats[cat]["views"] += v["view_count"]
-        format_stats[cat]["engagement"] += v.get("engagement_rate", 0)
-
-    for cat, stats in format_stats.items():
-        stats["avg_views"] = stats["views"] // stats["count"] if stats["count"] else 0
-        stats["avg_engagement"] = round(stats["engagement"] / stats["count"], 2) if stats["count"] else 0
-
-    return render_template("planner.html",
-                           videos=tagged_videos,
-                           format_stats=format_stats,
-                           uncategorized_count=uncategorized_count)
 
 
 @app.route("/api/generate-plan", methods=["POST"])
@@ -1817,47 +1767,6 @@ def update_app():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/video-category", methods=["POST"])
-def api_video_category():
-    global video_categories
-    data = request.get_json()
-    video_id = data.get("video_id", "")
-    category = data.get("category", "")
-
-    if not video_id:
-        return jsonify({"error": "video_id is required"}), 400
-
-    if category:
-        video_categories[video_id] = category
-    else:
-        video_categories.pop(video_id, None)
-
-    save_categories(video_categories)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/video-category/bulk", methods=["POST"])
-def api_video_category_bulk():
-    global video_categories
-    data = request.get_json()
-    assignments = data.get("assignments", [])
-    if not assignments:
-        return jsonify({"error": "No assignments provided"}), 400
-
-    for item in assignments:
-        video_id = item.get("video_id", "")
-        category = item.get("category", "")
-        if not video_id:
-            continue
-        if category:
-            video_categories[video_id] = category
-        else:
-            video_categories.pop(video_id, None)
-
-    save_categories(video_categories)
-    return jsonify({"ok": True, "count": len(assignments)})
-
-
 @app.route("/api/clear-chat", methods=["POST"])
 def clear_chat():
     global chat_history
@@ -1917,12 +1826,11 @@ def api_sync_connect():
         json.dump(settings, f)
 
     # Pull data from the existing Gist
-    global video_cache, analytics_cache, competitors_cache, video_categories, title_history, plans_cache
+    global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
     pull_from_gist()
     video_cache = load_video_cache()
     analytics_cache = load_analytics()
     competitors_cache = load_competitors()
-    video_categories = load_categories()
     title_history = load_title_history()
     plans_cache = load_plans()
 
@@ -1987,13 +1895,12 @@ def api_sync_pull():
     """Manually trigger a sync pull."""
     if not is_sync_configured():
         return jsonify({"error": "Sync not configured"}), 400
-    global video_cache, analytics_cache, competitors_cache, video_categories, title_history, plans_cache
+    global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
     updated = pull_from_gist()
     if updated:
         video_cache = load_video_cache()
         analytics_cache = load_analytics()
         competitors_cache = load_competitors()
-        video_categories = load_categories()
         title_history = load_title_history()
         plans_cache = load_plans()
     return jsonify({"ok": True, "updated": updated})
