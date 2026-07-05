@@ -273,6 +273,17 @@
         </div>
 
         <div class="setup-form">
+            <h3>Learned Lessons</h3>
+            <p class="form-hint">Standing rules the AI follows in every future plan (e.g. &ldquo;In every tutorial, include the BTC Mentor link&rdquo;). Add them here, or just tell the brainstorm chat &mdash; it saves them automatically.</p>
+            <div id="lessons-list" class="affiliate-links-list"></div>
+            <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem;">
+                <input type="text" id="lesson-text" class="settings-textarea" placeholder="e.g. Always end tutorials with a recap section" style="flex:1; padding:0.4rem 0.5rem;">
+                <button class="btn small primary" id="add-lesson-btn">Add</button>
+            </div>
+            <span id="lesson-status" class="form-hint"></span>
+        </div>
+
+        <div class="setup-form">
             <h3>Data Export / Import</h3>
             <p class="form-hint">Move your entire setup between machines.</p>
             <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
@@ -684,6 +695,54 @@ document.getElementById("add-aff-link-btn")?.addEventListener("click", async () 
 });
 
 loadAffiliateLinks();
+
+// Learned Lessons
+async function loadLessons() {
+    const resp = await fetch("/api/lessons");
+    const data = await resp.json();
+    renderLessons(data.lessons || []);
+}
+
+function renderLessons(lessons) {
+    const list = document.getElementById("lessons-list");
+    if (!lessons.length) {
+        list.innerHTML = '<p class="form-hint">No lessons yet.</p>';
+        return;
+    }
+    list.innerHTML = lessons.map((l, i) => `<div class="aff-link-row">
+            <span class="aff-link-title" style="flex:1;">${escHtml(l.text || "")}</span>
+            <button class="btn small lesson-remove-btn" data-idx="${i}">&times;</button>
+        </div>`).join("");
+    list.querySelectorAll(".lesson-remove-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            await fetch("/api/lessons/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: parseInt(btn.dataset.idx) }),
+            });
+            loadLessons();
+        });
+    });
+}
+
+document.getElementById("add-lesson-btn")?.addEventListener("click", async () => {
+    const input = document.getElementById("lesson-text");
+    const status = document.getElementById("lesson-status");
+    const text = input.value.trim();
+    if (!text) { status.textContent = "Lesson text required."; return; }
+    const resp = await fetch("/api/lessons/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+    });
+    const data = await resp.json();
+    if (data.error) { status.textContent = data.error; return; }
+    input.value = "";
+    status.textContent = "";
+    loadLessons();
+});
+
+loadLessons();
 
 // Umbrel Backend save & test
 document.getElementById("backend-save-btn")?.addEventListener("click", async () => {

@@ -75,6 +75,19 @@ def _build_link_library_section(affiliate_links: list = None) -> str:
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
+def _build_lessons_section(lessons: list = None) -> str:
+    """Format the creator's saved standing rules (lessons) for prompts."""
+    texts = [(l.get("text") or "").strip() for l in (lessons or []) if isinstance(l, dict)]
+    texts = [t for t in texts if t]
+    if not texts:
+        return ""
+    lines = ["\n**CREATOR'S STANDING RULES — follow these in every plan you produce:**"]
+    for t in texts:
+        lines.append(f"- {t}")
+    lines.append("Some rules are conditional (e.g. \"in every tutorial...\") — apply them whenever the condition fits.")
+    return "\n".join(lines)
+
+
 def _build_sponsor_block(sponsors: list) -> str:
     """Deterministic sponsor section for the description.
 
@@ -425,6 +438,7 @@ def chat_with_claude(
     plan_state: dict = None,
     trend_intel_context: str = "",
     creator_niche: str = "",
+    lessons: list = None,
 ) -> str:
     """Send a message to Claude with video performance context."""
 
@@ -433,6 +447,26 @@ def chat_with_claude(
     # Append real-time trend intelligence
     if trend_intel_context:
         system_prompt += f"\n\n{trend_intel_context}\n"
+
+    # Standing rules the creator has taught the planner, plus how to save new ones.
+    # NOT gated on plan_state — lessons must be learnable even with no active plan.
+    lessons_section = _build_lessons_section(lessons)
+    if lessons_section:
+        system_prompt += f"\n{lessons_section}\n"
+    system_prompt += """
+
+**SAVING STANDING RULES (lessons):**
+When the user states a durable preference that should apply to FUTURE plans or outlines (phrases like "always...", "from now on...", "never...", "in every tutorial..."), distill it into ONE concise imperative rule and include a fenced code block tagged `plan_lesson` alongside your normal reply:
+
+```plan_lesson
+{"text": "In every tutorial, include the BTC Mentor link in the description"}
+```
+
+- Only save a lesson when the user is clearly stating a standing preference for the future — never for one-off requests about the current plan or general discussion.
+- Keep the rule text short, specific, and imperative; preserve any condition the user stated (e.g. "in every tutorial...").
+- One block per rule; use multiple blocks if the user states multiple rules.
+- Any standing rules listed above are already saved — do not re-save them or close variants. If the user asks what you've learned, answer from that list.
+- Briefly acknowledge in your reply that the rule has been saved."""
 
     # Add plan context if a plan is active
     if plan_state:
@@ -589,6 +623,7 @@ def generate_video_plan(
     creator_niche: str = "",
     affiliate_links: list = None,
     use_web_search: bool = True,
+    lessons: list = None,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
 
@@ -649,6 +684,7 @@ IMPORTANT RULES:
 Here are the creator's past videos for reference links:
 {past_titles}
 {_build_link_library_section(affiliate_links)}
+{_build_lessons_section(lessons)}
 {_build_title_history_section(title_history)}"""
 
     # Real-time trend intelligence
@@ -733,6 +769,7 @@ def parse_notes_to_plan(
     competitors_data: list = None,
     creator_niche: str = "",
     affiliate_links: list = None,
+    lessons: list = None,
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
 
@@ -779,6 +816,7 @@ Preserve what's already good, integrate the new information, and improve where t
 {market_section}
 {trend_section}
 {_build_link_library_section(affiliate_links)}
+{_build_lessons_section(lessons)}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 

@@ -583,7 +583,7 @@ def api_chat():
         except Exception as e:
             print(f"[Chat] Trend intel unavailable: {e}")
 
-        reply = chat_with_claude(user_message, video_cache, chat_history, settings, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context, creator_niche=get_channel_niche())
+        reply = chat_with_claude(user_message, video_cache, chat_history, settings, analytics_cache, competitors_cache, market_data=market_data, plan_state=plan_state, trend_intel_context=trend_intel_context, creator_niche=get_channel_niche(), lessons=settings.get("plan_lessons", []))
 
         # Check if reply contains a plan change JSON block
         plan_change = None
@@ -598,12 +598,31 @@ def api_chat():
                 except json.JSONDecodeError:
                     pass
 
+        # Check for standing-rule (lesson) blocks the model wants saved
+        lessons_saved = []
+        if "```plan_lesson" in reply:
+            import re
+            texts = []
+            for block in re.findall(r"```plan_lesson\s*\n([\s\S]*?)```", reply):
+                try:
+                    text = (json.loads(block).get("text") or "").strip()
+                    if text:
+                        texts.append(text)
+                except json.JSONDecodeError:
+                    pass
+            reply = re.sub(r"```plan_lesson\s*\n[\s\S]*?```", "", reply)
+            reply = re.sub(r"\n{3,}", "\n\n", reply).strip()
+            if texts:
+                lessons_saved = _save_plan_lessons(texts, source="chat")
+
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
 
         result = {"reply": reply}
         if plan_change:
             result["plan_change"] = plan_change
+        if lessons_saved:
+            result["lessons_saved"] = lessons_saved
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -660,6 +679,7 @@ def api_generate_plan():
             sponsors=_resolve_sponsors(settings, data.get("sponsors")),
             creator_niche=settings.get("channel_niche", ""),
             affiliate_links=settings.get("affiliate_links", []),
+            lessons=settings.get("plan_lessons", []),
         )
         plan["_scoring_ctx"] = _build_scoring_context()
         plan["_provider"] = llm.get_last_provider_used()
@@ -827,6 +847,75 @@ def api_remove_affiliate_link():
     return jsonify({"ok": True})
 
 
+def _save_plan_lessons(texts: list, source: str = "chat") -> list:
+    """Append standing rules to settings, skipping duplicates.
+
+    Returns the newly saved entries as [{"text", "index"}] so the UI can
+    offer an undo by index.
+    """
+    from datetime import datetime
+    settings = load_settings()
+    lessons = settings.get("plan_lessons", [])
+    existing = {(l.get("text") or "").strip().lower() for l in lessons}
+    saved = []
+    for text in texts:
+        text = text.strip()
+        if not text or text.lower() in existing:
+            continue
+        lessons.append({"text": text, "created_at": datetime.now().isoformat(), "source": source})
+        existing.add(text.lower())
+        saved.append({"text": text, "index": len(lessons) - 1})
+    if saved:
+        settings["plan_lessons"] = lessons
+        _ensure_data_dir()
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(settings, f)
+        _schedule_sync_push()
+    return saved
+
+
+@app.route("/api/lessons", methods=["GET"])
+def api_get_lessons():
+    settings = load_settings()
+    return jsonify({"lessons": settings.get("plan_lessons", [])})
+
+
+@app.route("/api/lessons/add", methods=["POST"])
+def api_add_lesson():
+    data = request.get_json()
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "Lesson text required."}), 400
+    saved = _save_plan_lessons([text], source="manual")
+    if not saved:
+        return jsonify({"error": "That lesson is already saved."}), 400
+    return jsonify({"ok": True, "saved": saved})
+
+
+@app.route("/api/lessons/remove", methods=["POST"])
+def api_remove_lesson():
+    data = request.get_json()
+    idx = data.get("index")
+    text = (data.get("text") or "").strip()
+    settings = load_settings()
+    lessons = settings.get("plan_lessons", [])
+    # Prefer matching by text — indexes shift when other lessons are removed
+    if text:
+        matches = [i for i, l in enumerate(lessons) if (l.get("text") or "").strip() == text]
+        if not matches:
+            return jsonify({"error": "Lesson not found."}), 400
+        idx = matches[0]
+    elif idx is None or idx < 0 or idx >= len(lessons):
+        return jsonify({"error": "Invalid index."}), 400
+    lessons.pop(idx)
+    settings["plan_lessons"] = lessons
+    _ensure_data_dir()
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    _schedule_sync_push()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/search-tutorials", methods=["POST"])
 def api_search_tutorials():
     """Search own channel videos by keyword — no AI, just fast text matching."""
@@ -917,6 +1006,7 @@ def api_parse_notes():
             competitors_data=competitors_cache,
             creator_niche=settings.get("channel_niche", ""),
             affiliate_links=settings.get("affiliate_links", []),
+            lessons=settings.get("plan_lessons", []),
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)

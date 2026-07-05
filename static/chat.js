@@ -123,7 +123,7 @@ function getCurrentPlanState() {
 }
 
 /* --- Append messages --- */
-function appendMessage(role, content, planChange) {
+function appendMessage(role, content, planChange, lessonsSaved) {
     const welcome = chatMessages.querySelector(".chat-welcome");
     if (welcome) welcome.remove();
 
@@ -178,6 +178,52 @@ function appendMessage(role, content, planChange) {
         changeBar.appendChild(rejectBtn);
         changeBar.appendChild(status);
         div.appendChild(changeBar);
+    }
+
+    // If the assistant saved standing rules, confirm each with an undo
+    if (lessonsSaved && lessonsSaved.length && role === "assistant") {
+        lessonsSaved.forEach((lesson) => {
+            const lessonBar = document.createElement("div");
+            lessonBar.className = "chat-plan-change";
+
+            const label = document.createElement("span");
+            label.className = "chat-change-label";
+            label.textContent = `📌 Saved for future plans: ${lesson.text}`;
+
+            const undoBtn = document.createElement("button");
+            undoBtn.className = "btn small";
+            undoBtn.textContent = "Undo";
+
+            const status = document.createElement("span");
+            status.className = "chat-change-status";
+
+            undoBtn.addEventListener("click", async () => {
+                try {
+                    const resp = await fetch("/api/lessons/remove", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: lesson.text }),
+                    });
+                    const data = await resp.json();
+                    if (data.error) {
+                        status.textContent = data.error;
+                        status.style.color = "var(--text-muted)";
+                    } else {
+                        status.textContent = "Removed";
+                        status.style.color = "var(--text-muted)";
+                        undoBtn.remove();
+                    }
+                } catch (err) {
+                    status.textContent = "Failed to remove";
+                    status.style.color = "var(--text-muted)";
+                }
+            });
+
+            lessonBar.appendChild(label);
+            lessonBar.appendChild(undoBtn);
+            lessonBar.appendChild(status);
+            div.appendChild(lessonBar);
+        });
     }
 
     chatMessages.appendChild(div);
@@ -277,7 +323,7 @@ chatForm.addEventListener("submit", async (e) => {
         if (data.error) {
             appendMessage("assistant", `Error: ${data.error}`);
         } else {
-            appendMessage("assistant", data.reply, data.plan_change || null);
+            appendMessage("assistant", data.reply, data.plan_change || null, data.lessons_saved || null);
         }
     } catch (err) {
         setLoading(false);
