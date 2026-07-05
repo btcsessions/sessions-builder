@@ -310,11 +310,19 @@ function savePlannerState() {
         // Current title edits
         titleEdits: [...document.querySelectorAll(".title-editable")].map(el => el.value),
     };
-    sessionStorage.setItem("plannerState", JSON.stringify(state));
+    // localStorage (not sessionStorage): the plan must survive closing the
+    // browser tab and reopening the app from the dock, not just navigation
+    localStorage.setItem("plannerState", JSON.stringify(state));
 }
 
 function restorePlannerState() {
-    const raw = sessionStorage.getItem("plannerState");
+    // Migrate any state saved by the old sessionStorage version
+    const legacy = sessionStorage.getItem("plannerState");
+    if (legacy && !localStorage.getItem("plannerState")) {
+        localStorage.setItem("plannerState", legacy);
+    }
+    sessionStorage.removeItem("plannerState");
+    const raw = localStorage.getItem("plannerState");
     if (!raw) return;
     try {
         const state = JSON.parse(raw);
@@ -395,11 +403,9 @@ function renderPlanFromCache(plan, cachedAiScores, titleEdits) {
 
 // Auto-save on any interaction
 document.addEventListener("input", () => savePlannerState());
-// Also save when plan renders or AI scores arrive
-const _origFetchAiScores = typeof fetchAiScores !== 'undefined' ? fetchAiScores : null;
-
-// Restore state on page load
-restorePlannerState();
+// NOTE: restorePlannerState() is called at the very end of this script —
+// it assigns to let-bindings declared throughout the file, so calling it
+// any earlier throws a silent TDZ ReferenceError and the plan never restores.
 
 document.addEventListener("click", (e) => {
     if (e.target.classList.contains("add-link-btn")) {
@@ -498,8 +504,8 @@ document.getElementById("clear-plan-btn")?.addEventListener("click", () => {
         originalTitles = [];
         planLinks = [];
 
-        // Clear session storage
-        sessionStorage.removeItem("plannerState");
+        // Clear persisted state
+        localStorage.removeItem("plannerState");
 
         // Hide import sections
         document.getElementById("import-notes-section").style.display = "none";
@@ -1630,6 +1636,9 @@ function renderPlan(plan) {
     fetchAiScores(plan.titles);
     renderEditableSections(plan);
     renderPlanLinks();
+    // Show results before saving so the snapshot records planVisible: true —
+    // otherwise navigating away right after generation restores no plan
+    results.style.display = "block";
     savePlannerState();
 }
 
@@ -2351,8 +2360,11 @@ document.getElementById("plan-history-toggle")?.addEventListener("click", () => 
 });
 
 refreshPlanHistory();
+// Restore state now that every let-binding and function above is initialized
+restorePlannerState();
 initSponsorPicker().then(() => {
-    const raw = sessionStorage.getItem("plannerState");
+    // Sponsor checkboxes are built async, after restorePlannerState() ran
+    const raw = localStorage.getItem("plannerState");
     if (raw) { try { setSelectedSponsors(JSON.parse(raw).sponsors); } catch (e) {} }
 });
 </script>
