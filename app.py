@@ -1308,29 +1308,14 @@ def api_get_plan(plan_id):
 def api_export_plan(plan_id):
     """Download a saved plan as a Markdown recording outline."""
     import io
-    from plan_export import render_plan_markdown, export_filename, _sponsor_block
+    from plan_export import render_plan_markdown, export_filename
 
     plan = next((p for p in plans_cache if p["id"] == plan_id), None)
     if not plan:
         return jsonify({"error": "Plan not found."}), 404
 
-    # Ticked sponsors (form_state) drive the export; every known sponsor's
-    # block AND bare legacy blurb are scrubbed from the saved prose so
-    # nothing appears twice or stale
-    settings = load_settings()
-    library = settings.get("affiliate_links", [])
-    selected = _resolve_sponsors(settings, (plan.get("form_state") or {}).get("sponsors"))
-    strip_texts = []
-    link_blurbs = {}
-    for l in library:
-        if (l.get("type") or "affiliate") == "sponsor":
-            strip_texts.append(_sponsor_block(l))
-            if (l.get("blurb") or "").strip():
-                strip_texts.append(l["blurb"].strip())
-        elif (l.get("blurb") or "").strip() and (l.get("url") or "").strip():
-            link_blurbs[l["url"].strip()] = l["blurb"].strip()
-    markdown = render_plan_markdown(plan, get_channel_name(), sponsors=selected,
-                                    strip_texts=strip_texts, link_blurbs=link_blurbs)
+    # WYSIWYG: the saved description already contains the synced LINKS block
+    markdown = render_plan_markdown(plan, get_channel_name())
     buf = io.BytesIO(markdown.encode("utf-8"))
     return send_file(buf, mimetype="text/markdown", as_attachment=True,
                      download_name=export_filename(plan))

@@ -9,82 +9,8 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-SEPARATOR = "————————————————————"
-TIMESTAMPS_MARKER = "PASTE TIMESTAMPS HERE"
 
-
-def _sponsor_block(entry: dict) -> str:
-    """Title + URL line, then the blurb verbatim (contractual copy is never
-    paraphrased). Local duplicate of brainstorm._build_sponsor_block's
-    per-entry logic so this module stays import-light (see docstring).
-    """
-    blurb = (entry.get("blurb") or "").strip()
-    title = (entry.get("title") or "").strip()
-    url = (entry.get("url") or "").strip()
-    if not (title and url):
-        return blurb
-    return f"{title}: {url}" + (f"\n{blurb}" if blurb else "")
-
-
-def _link_line(link) -> str:
-    if isinstance(link, dict):
-        url = (link.get("url") or "").strip()
-        label = (link.get("label") or link.get("title") or "").strip()
-        if not url or url == "[LINK]":
-            return ""
-        return f"{label}: {url}" if label else url
-    if isinstance(link, str) and link.strip():
-        return link.strip()
-    return ""
-
-
-def scrub_description_body(description: str, strip_texts: list = None) -> str:
-    """Reduce a description to its prose body.
-
-    Removes anything assemble_youtube_description re-adds: the given texts
-    (sponsor blurbs, link lines), [LINK ...] placeholder lines, the
-    timestamps marker, and leftover blank-line runs.
-    """
-    body = description or ""
-    for text in strip_texts or []:
-        if text:
-            body = body.replace(text, "")
-    body = re.sub(r"^.*\[LINK[^\]]*\].*$", "", body, flags=re.MULTILINE)
-    body = body.replace(TIMESTAMPS_MARKER, "")
-    body = re.sub(r"\n{3,}", "\n\n", body)
-    return body.strip()
-
-
-def assemble_youtube_description(body: str, links: list = None, sponsors: list = None,
-                                 link_blurbs: dict = None) -> str:
-    """Assemble the final paste-into-YouTube description.
-
-    One LINKS section: video/affiliate links first (each with its library
-    blurb underneath when one exists), then selected sponsors' blocks.
-    """
-    link_blurbs = link_blurbs or {}
-    blocks = []
-    for link in links or []:
-        line = _link_line(link)
-        if not line:
-            continue
-        url = (link.get("url") or "").strip() if isinstance(link, dict) else link.strip()
-        blurb = (link_blurbs.get(url) or "").strip()
-        blocks.append(line + (f"\n{blurb}" if blurb else ""))
-    for s in sponsors or []:
-        b = _sponsor_block(s)
-        if b and b not in blocks:
-            blocks.append(b)
-
-    parts = [body.strip()] if body and body.strip() else []
-    if blocks:
-        parts.append(SEPARATOR + "\nLINKS\n\n" + "\n\n".join(blocks))
-    parts.append(SEPARATOR + "\n" + TIMESTAMPS_MARKER)
-    return "\n\n".join(parts)
-
-
-def render_plan_markdown(plan: dict, channel_name: str = "", sponsors: list = None,
-                         strip_texts: list = None, link_blurbs: dict = None) -> str:
+def render_plan_markdown(plan: dict, channel_name: str = "") -> str:
     full = plan.get("full_plan") or {}
     lines = []
 
@@ -145,20 +71,13 @@ def render_plan_markdown(plan: dict, channel_name: str = "", sponsors: list = No
             if sec.get("points"):
                 lines.append("")
 
+    # WYSIWYG: the workspace keeps the description's LINKS block in sync with
+    # the links list and sponsor ticks, so the saved text is the final artifact
     description = (full.get("description") or "").strip()
-    links = full.get("links") or []
-    if description or links or sponsors:
-        # Checkbox/link state is the source of truth: scrub anything the
-        # assembler re-adds out of the saved prose, then rebuild the single
-        # LINKS section (video/affiliate links first, sponsor blocks second).
-        texts = list(strip_texts or [])
-        texts += [_sponsor_block(s) for s in sponsors or []]
-        texts += list((link_blurbs or {}).values())
-        texts += [_link_line(link) for link in links]
-        body = scrub_description_body(description, texts)
+    if description:
         lines.append("## Description (paste into YouTube)")
         lines.append("")
-        lines.append(assemble_youtube_description(body, links, sponsors, link_blurbs))
+        lines.append(description)
         lines.append("")
 
     tags = full.get("tags") or []

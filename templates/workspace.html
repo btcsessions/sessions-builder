@@ -141,9 +141,7 @@
                     <input type="url" id="plan-link-url" class="plan-editable-input" placeholder="https://...">
                     <button class="btn small" id="add-link-manual-btn">Add</button>
                 </div>
-                <div style="margin-top:0.5rem;">
-                    <button class="btn small" id="insert-links-btn">Insert into Description</button>
-                </div>
+                <p class="form-hint" style="margin-top:0.5rem;">Links and ticked sponsors appear in the description's LINKS block automatically.</p>
             </section>
 
             <section class="plan-card">
@@ -252,33 +250,64 @@ function sponsorBlockText(s) {
     return `${s.title}: ${s.url}` + (blurb ? `\n${blurb}` : "");
 }
 
-// Insert/remove a sponsor's block in the live description, same spot Generate puts it
-function toggleSponsorInDescription(sponsor, checked) {
+/* --- Managed LINKS block ---
+   The description box is the single, always-complete artifact: exports render
+   it verbatim. A machine-managed block at the bottom (between the separator
+   header and PASTE TIMESTAMPS HERE) mirrors the links list and ticked
+   sponsors; entries whose URL already appears in the prose are skipped so
+   AI-woven or Generate-baked copies never double up. The prose above the
+   block is never touched. */
+const DESC_SEPARATOR = "————————————————————";
+const TIMESTAMPS_MARKER = "PASTE TIMESTAMPS HERE";
+const MANAGED_BLOCK_RE = new RegExp(
+    DESC_SEPARATOR + "\\nLINKS\\n[\\s\\S]*?(?:" + DESC_SEPARATOR + "\\n)?(?=" + TIMESTAMPS_MARKER + "|$)");
+
+function syncLinksIntoDescription() {
     const descEl = document.getElementById("plan-description");
-    if (!descEl || !descEl.value.trim()) return; // no plan yet — selection rides the next Generate
+    if (!descEl || !descEl.value.trim()) return; // no plan on screen yet
+
+    // Prose = everything except the managed block and the trailing marker
+    let prose = descEl.value.replace(MANAGED_BLOCK_RE, "");
+    prose = prose.split(TIMESTAMPS_MARKER).join("").replace(/\s+$/, "");
+
+    const blocks = [];
+    (planLinks || []).filter(l => l.label).forEach(l => {
+        const realUrl = l.url && l.url !== "[LINK]";
+        if (realUrl && prose.includes(l.url)) return; // already in the prose
+        const line = realUrl ? `${l.label}: ${l.url}` : `${l.label}: [URL NEEDED]`;
+        const lib = affiliateLinksCache.find(a => a.url === l.url);
+        const blurb = lib ? (lib.blurb || "").trim() : "";
+        blocks.push(blurb ? `${line}\n${blurb}` : line);
+    });
+    getSelectedSponsors().forEach(url => {
+        const s = sponsorsCache.find(x => x.url === url);
+        if (!s || prose.includes(s.url)) return;
+        const block = sponsorBlockText(s);
+        if (block && !blocks.includes(block)) blocks.push(block);
+    });
+
+    let desc = prose;
+    if (blocks.length) {
+        desc += "\n\n" + DESC_SEPARATOR + "\nLINKS\n\n" + blocks.join("\n\n") + "\n\n" + DESC_SEPARATOR + "\n";
+    } else {
+        desc += "\n\n";
+    }
+    desc += TIMESTAMPS_MARKER;
+    descEl.value = desc;
+}
+
+// Remove a sponsor's baked-in text from the prose (untick on older plans
+// where Generate or the previous checkbox flow wrote it into the body)
+function removeSponsorFromProse(sponsor) {
+    const descEl = document.getElementById("plan-description");
+    if (!descEl || !descEl.value.trim()) return;
     let desc = descEl.value;
     const block = sponsorBlockText(sponsor);
-    const legacyBlurb = (sponsor.blurb || "").trim(); // blurb-only format from older plans
-    const MARKER = "PASTE TIMESTAMPS HERE";
-    if (checked) {
-        if (desc.includes(block)) return; // already there (e.g. inserted by Generate)
-        if (legacyBlurb && desc.includes(legacyBlurb)) {
-            desc = desc.replace(legacyBlurb, block); // upgrade old baked format in place
-        } else {
-            const at = desc.indexOf(MARKER);
-            if (at !== -1) {
-                desc = desc.slice(0, at).replace(/\s+$/, "") + "\n\n" + block + "\n\n" + desc.slice(at);
-            } else {
-                desc = desc.replace(/\s+$/, "") + "\n\n" + block;
-            }
-        }
-    } else {
-        if (desc.includes(block)) desc = desc.replace(block, "");
-        else if (legacyBlurb && desc.includes(legacyBlurb)) desc = desc.replace(legacyBlurb, "");
-        else return;
-        desc = desc.replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "");
-    }
-    descEl.value = desc;
+    const legacyBlurb = (sponsor.blurb || "").trim();
+    if (block && desc.includes(block)) desc = desc.replace(block, "");
+    else if (legacyBlurb && desc.includes(legacyBlurb)) desc = desc.replace(legacyBlurb, "");
+    else return;
+    descEl.value = desc.replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "");
 }
 
 async function initSponsorPicker() {
@@ -297,7 +326,8 @@ async function initSponsorPicker() {
         picker.querySelectorAll(".sponsor-check").forEach(cb => {
             cb.addEventListener("change", () => {
                 const sponsor = sponsorsCache.find(s => s.url === cb.value);
-                if (sponsor) toggleSponsorInDescription(sponsor, cb.checked);
+                if (sponsor && !cb.checked) removeSponsorFromProse(sponsor);
+                syncLinksIntoDescription();
                 savePlannerState();
             });
         });
@@ -312,16 +342,7 @@ function getSelectedSponsors() {
 function setSelectedSponsors(urls) {
     const wanted = new Set(urls || []);
     document.querySelectorAll(".sponsor-check").forEach(el => { el.checked = wanted.has(el.value); });
-    syncSponsorDescription();
-}
-
-// Bring the visible description in line with the checkbox state (idempotent;
-// no-ops while no plan is on screen or the sponsor library isn't loaded yet)
-function syncSponsorDescription() {
-    document.querySelectorAll(".sponsor-check").forEach(el => {
-        const sponsor = sponsorsCache.find(s => s.url === el.value);
-        if (sponsor) toggleSponsorInDescription(sponsor, el.checked);
-    });
+    syncLinksIntoDescription();
 }
 
 const form = document.getElementById("plan-form");
@@ -1556,13 +1577,18 @@ function renderPlanLinks() {
         });
     });
 
-    // Wire edits back to planLinks
+    // Wire edits back to planLinks (managed block re-syncs when editing ends)
     list.querySelectorAll(".link-label-edit").forEach(input => {
         input.addEventListener("input", () => { planLinks[parseInt(input.dataset.idx)].label = input.value; });
+        input.addEventListener("change", () => { syncLinksIntoDescription(); savePlannerState(); });
     });
     list.querySelectorAll(".link-url-edit").forEach(input => {
         input.addEventListener("input", () => { planLinks[parseInt(input.dataset.idx)].url = input.value; });
+        input.addEventListener("change", () => { syncLinksIntoDescription(); savePlannerState(); });
     });
+
+    // Keep the description's managed LINKS block mirroring the list
+    syncLinksIntoDescription();
 }
 
 // Manual add
@@ -1628,32 +1654,6 @@ document.getElementById("suggest-links-btn")?.addEventListener("click", async ()
 });
 
 // Insert links into description
-document.getElementById("insert-links-btn")?.addEventListener("click", () => {
-    if (!planLinks.length) return;
-    const descEl = document.getElementById("plan-description");
-    const linksText = planLinks.map(l => `${l.label}: ${l.url}`).join("\n");
-
-    const desc = descEl.value;
-    // Try to insert after the first paragraph, before sponsor/timestamps
-    const lines = desc.split("\n");
-    let insertIdx = -1;
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim() === "" && i > 0) { insertIdx = i; break; }
-    }
-
-    if (insertIdx >= 0) {
-        lines.splice(insertIdx + 1, 0, "", linksText);
-        descEl.value = lines.join("\n");
-    } else {
-        descEl.value = desc.trimEnd() + "\n\n" + linksText;
-    }
-    savePlannerState();
-
-    const btn = document.getElementById("insert-links-btn");
-    btn.textContent = "Inserted!";
-    setTimeout(() => { btn.textContent = "Insert into Description"; }, 1500);
-});
-
 // Read current edited plan state from the DOM
 function getCurrentPlanFromDOM() {
     if (!lastPlanData) return null;
@@ -1924,8 +1924,8 @@ async function loadSavedPlan(plan) {
     // Render the plan
     renderPlanFromCache(fp, {}, []);
     results.style.display = "block";
-    // Description exists only now — reflect the restored sponsor ticks in it
-    syncSponsorDescription();
+    // Description exists only now — reflect the restored ticks/links in it
+    syncLinksIntoDescription();
 
     // Fire off AI scoring for titles
     fetchAiScores(fp.titles);
@@ -2020,46 +2020,11 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     // Titles exported in the order shown (user can reorder with arrows)
 
     const tags = document.getElementById("plan-yt-tags")?.value || "";
-    const sep = "————————————————————";
 
-    // Checkbox/link state is the source of truth. Scrub anything the
-    // assembler re-adds out of the prose, then rebuild the single LINKS
-    // section: video/affiliate links (with library blurbs) first, ticked
-    // sponsors' blocks (title + URL + blurb) second.
-    let body = plan.description || "";
-    sponsorsCache.forEach(s => {
-        body = body.split(sponsorBlockText(s)).join("");
-        const blurb = (s.blurb || "").trim();
-        if (blurb) body = body.split(blurb).join(""); // legacy blurb-only format
-    });
-    affiliateLinksCache.forEach(a => {
-        const blurb = (a.blurb || "").trim();
-        if (blurb) body = body.split(blurb).join("");
-    });
-    (planLinks || []).forEach(l => {
-        if (l.label && l.url && l.url !== "[LINK]") body = body.split(`${l.label}: ${l.url}`).join("");
-    });
-    body = body.replace(/^.*\[LINK[^\]]*\].*$/gm, "")
-               .split("PASTE TIMESTAMPS HERE").join("")
-               .replace(/\n{3,}/g, "\n\n").trim();
-
-    const linkBlocks = (planLinks || []).filter(l => l.label).map(l => {
-        const line = (l.url && l.url !== "[LINK]") ? `${l.label}: ${l.url}` : `${l.label}: [URL NEEDED]`;
-        const lib = affiliateLinksCache.find(a => a.url === l.url);
-        const blurb = lib ? (lib.blurb || "").trim() : "";
-        return blurb ? `${line}\n${blurb}` : line;
-    });
-    const sponsorBlocks = [...new Set(getSelectedSponsors()
-        .map(url => sponsorsCache.find(s => s.url === url))
-        .filter(Boolean)
-        .map(sponsorBlockText))];
-
-    let fullDesc = body;
-    const linkSection = linkBlocks.concat(sponsorBlocks);
-    if (linkSection.length) {
-        fullDesc += "\n\n" + sep + "\nLINKS\n\n" + linkSection.join("\n\n");
-    }
-    fullDesc += "\n\n" + sep + "\nPASTE TIMESTAMPS HERE";
+    // WYSIWYG: the description box is the artifact — the managed LINKS block
+    // is already synced into it, so export it exactly as shown
+    syncLinksIntoDescription();
+    const fullDesc = document.getElementById("plan-description").value.trim();
 
     function scoreColor(s) {
         if (s >= 75) return "#4caf50";
