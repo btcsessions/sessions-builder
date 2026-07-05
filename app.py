@@ -1308,13 +1308,20 @@ def api_get_plan(plan_id):
 def api_export_plan(plan_id):
     """Download a saved plan as a Markdown recording outline."""
     import io
-    from plan_export import render_plan_markdown, export_filename
+    from plan_export import render_plan_markdown, export_filename, _sponsor_blurb
 
     plan = next((p for p in plans_cache if p["id"] == plan_id), None)
     if not plan:
         return jsonify({"error": "Plan not found."}), 404
 
-    markdown = render_plan_markdown(plan, get_channel_name())
+    # Ticked sponsors (form_state) drive the export; known blurbs are
+    # scrubbed from the saved prose so nothing appears twice or stale
+    settings = load_settings()
+    selected = _resolve_sponsors(settings, (plan.get("form_state") or {}).get("sponsors"))
+    known_blurbs = [_sponsor_blurb(l) for l in settings.get("affiliate_links", [])
+                    if (l.get("type") or "affiliate") == "sponsor"]
+    markdown = render_plan_markdown(plan, get_channel_name(),
+                                    sponsors=selected, known_sponsor_blurbs=known_blurbs)
     buf = io.BytesIO(markdown.encode("utf-8"))
     return send_file(buf, mimetype="text/markdown", as_attachment=True,
                      download_name=export_filename(plan))

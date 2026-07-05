@@ -303,6 +303,16 @@ function getSelectedSponsors() {
 function setSelectedSponsors(urls) {
     const wanted = new Set(urls || []);
     document.querySelectorAll(".sponsor-check").forEach(el => { el.checked = wanted.has(el.value); });
+    syncSponsorDescription();
+}
+
+// Bring the visible description in line with the checkbox state (idempotent;
+// no-ops while no plan is on screen or the sponsor library isn't loaded yet)
+function syncSponsorDescription() {
+    document.querySelectorAll(".sponsor-check").forEach(el => {
+        const sponsor = sponsorsCache.find(s => s.url === el.value);
+        if (sponsor) toggleSponsorInDescription(sponsor, el.checked);
+    });
 }
 
 const form = document.getElementById("plan-form");
@@ -1894,6 +1904,8 @@ async function loadSavedPlan(plan) {
     // Render the plan
     renderPlanFromCache(fp, {}, []);
     results.style.display = "block";
+    // Description exists only now — reflect the restored sponsor ticks in it
+    syncSponsorDescription();
 
     // Fire off AI scoring for titles
     fetchAiScores(fp.titles);
@@ -1910,10 +1922,8 @@ async function loadSavedPlan(plan) {
 /* --- Save Plan Button --- */
 let currentPlanId = null; // tracks if we're editing an existing saved plan
 
-document.getElementById("save-plan-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("save-plan-btn");
-    const status = document.getElementById("save-plan-status");
-    if (!lastPlanData) { status.textContent = "No plan to save."; return; }
+async function savePlanToHistory() {
+    if (!lastPlanData) throw new Error("No plan to save.");
 
     // Get current state of everything from the DOM (includes user edits)
     const currentPlan = getCurrentPlanFromDOM() || lastPlanData;
@@ -1932,36 +1942,40 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
         sponsors: getSelectedSponsors(),
     };
 
+    const resp = await fetch("/api/plans/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            plan: currentPlan,
+            plan_id: currentPlanId,
+            chosen_title: chosenTitle,
+            topic: formState.topic,
+            video_type: formState.video_type,
+            ai_score: ai ? ai.score : null,
+            form_state: formState,
+        }),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || "Failed to save.");
+    currentPlanId = data.plan_id;
+    refreshPlanHistory();
+    savePlannerState();
+}
+
+document.getElementById("save-plan-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("save-plan-btn");
+    const status = document.getElementById("save-plan-status");
+    if (!lastPlanData) { status.textContent = "No plan to save."; return; }
+
     btn.disabled = true;
     btn.textContent = "Saving...";
     try {
-        const resp = await fetch("/api/plans/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                plan: currentPlan,
-                plan_id: currentPlanId,
-                chosen_title: chosenTitle,
-                topic: formState.topic,
-                video_type: formState.video_type,
-                ai_score: ai ? ai.score : null,
-                form_state: formState,
-            }),
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            currentPlanId = data.plan_id;
-            btn.textContent = "Saved";
-            setTimeout(() => { btn.textContent = "Save Plan"; }, 2000);
-            status.textContent = "";
-            refreshPlanHistory();
-            savePlannerState();
-        } else {
-            status.textContent = data.error || "Failed to save.";
-            btn.textContent = "Save Plan";
-        }
+        await savePlanToHistory();
+        btn.textContent = "Saved";
+        setTimeout(() => { btn.textContent = "Save Plan"; }, 2000);
+        status.textContent = "";
     } catch (err) {
-        status.textContent = "Failed: " + err.message;
+        status.textContent = err.message.startsWith("Failed") ? err.message : "Failed: " + err.message;
         btn.textContent = "Save Plan";
     }
     btn.disabled = false;
@@ -1988,54 +2002,32 @@ document.getElementById("export-plan-btn")?.addEventListener("click", () => {
     const tags = document.getElementById("plan-yt-tags")?.value || "";
     const sep = "————————————————————";
 
-    // Parse the description into structured parts
-    const rawDesc = plan.description || "";
-    // Remove [LINK ...] placeholders — we use real links from planLinks
-    const descCleaned = rawDesc.replace(/\[LINK[^\]]*\]\s*/g, "").trim();
+    // Checkbox/link state is the source of truth. Scrub anything the
+    // assembler re-adds out of the prose, then rebuild the single LINKS
+    // section: video links first, ticked sponsors' blurbs second.
+    let body = plan.description || "";
+    sponsorsCache.forEach(s => { body = body.split(sponsorBlurbText(s)).join(""); });
+    (planLinks || []).forEach(l => {
+        if (l.label && l.url && l.url !== "[LINK]") body = body.split(`${l.label}: ${l.url}`).join("");
+    });
+    body = body.replace(/^.*\[LINK[^\]]*\].*$/gm, "")
+               .split("PASTE TIMESTAMPS HERE").join("")
+               .replace(/\n{3,}/g, "\n\n").trim();
 
-    // Extract intro = first paragraph (before any sponsor/timestamps/blank-line block)
-    const lines = descCleaned.split("\n");
-    let introParagraph = "";
-    let sponsorBlock = "";
-    let foundSponsorStart = -1;
-    let foundTimestampLine = -1;
-
-    // Find where sponsors/PASTE TIMESTAMPS starts
-    for (let i = 0; i < lines.length; i++) {
-        const lt = lines[i].trim().toUpperCase();
-        if (foundSponsorStart < 0 && (lt.startsWith("SHOW SPONSOR") || lt.startsWith("BITCOIN WELL") || lt.startsWith("COINKITE"))) {
-            foundSponsorStart = i;
-        }
-        if (lt === "PASTE TIMESTAMPS HERE") {
-            foundTimestampLine = i;
-        }
-    }
-
-    if (foundSponsorStart >= 0) {
-        introParagraph = lines.slice(0, foundSponsorStart).join("\n").trim();
-        const sponsorEnd = foundTimestampLine >= 0 ? foundTimestampLine : lines.length;
-        sponsorBlock = lines.slice(foundSponsorStart, sponsorEnd).join("\n").trim();
-    } else if (foundTimestampLine >= 0) {
-        introParagraph = lines.slice(0, foundTimestampLine).join("\n").trim();
-    } else {
-        // No sponsors or timestamps found — first paragraph is intro
-        introParagraph = descCleaned.split("\n\n")[0].trim();
-    }
-
-    // Build links from planLinks data
     const allLinks = (planLinks || []).filter(l => l.label);
     const linksFormatted = allLinks.map(l => {
-        if (l.url && l.url !== "[LINK]") return `${l.label}\n${l.url}`;
-        return `${l.label}\n[URL NEEDED]`;
-    }).join("\n\n");
+        if (l.url && l.url !== "[LINK]") return `${l.label}: ${l.url}`;
+        return `${l.label}: [URL NEEDED]`;
+    }).join("\n");
+    const sponsorBlurbs = [...new Set(getSelectedSponsors()
+        .map(url => sponsorsCache.find(s => s.url === url))
+        .filter(Boolean)
+        .map(sponsorBlurbText))];
 
-    // Assemble the full description in the requested format
-    let fullDesc = introParagraph;
-    if (allLinks.length) {
-        fullDesc += "\n\nLINKS\n" + linksFormatted;
-    }
-    if (sponsorBlock) {
-        fullDesc += "\n\n" + sep + "\nSPONSORS\n" + sponsorBlock;
+    let fullDesc = body;
+    if (allLinks.length || sponsorBlurbs.length) {
+        const blocks = (allLinks.length ? [linksFormatted] : []).concat(sponsorBlurbs);
+        fullDesc += "\n\n" + sep + "\nLINKS\n\n" + blocks.join("\n\n");
     }
     fullDesc += "\n\n" + sep + "\nPASTE TIMESTAMPS HERE";
 
@@ -2299,10 +2291,20 @@ async function refreshPlanHistory() {
             });
         });
 
-        // Wire export buttons (download the recording outline)
+        // Wire export buttons (download the recording outline).
+        // Exporting the plan that's open in the workspace saves it first,
+        // so the export always reflects what's on screen (ticked sponsors,
+        // added links, edits) without a manual re-save.
         list.querySelectorAll(".export-plan-btn").forEach(btn => {
-            btn.addEventListener("click", () => {
-                window.location.href = "/api/plans/" + encodeURIComponent(btn.dataset.id) + "/export";
+            btn.addEventListener("click", async () => {
+                const id = btn.dataset.id;
+                if (id === currentPlanId) {
+                    btn.textContent = "Saving...";
+                    try { await savePlanToHistory(); }
+                    catch (e) { /* fall back to exporting the last saved copy */ }
+                    btn.textContent = "Export";
+                }
+                window.location.href = "/api/plans/" + encodeURIComponent(id) + "/export";
             });
         });
 
