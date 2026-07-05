@@ -242,11 +242,42 @@ if (nav) {
 const BACKEND_CONFIGURED = {{ 'true' if backend_configured else 'false' }};
 
 /* --- Per-episode sponsor picker --- */
+let sponsorsCache = [];
+
+// Mirrors _build_sponsor_block in brainstorm.py — blurb copy is contractual, used verbatim
+function sponsorBlurbText(s) {
+    const blurb = (s.blurb || "").trim();
+    return blurb || `This episode is sponsored by ${s.title} — ${s.url}`;
+}
+
+// Insert/remove a sponsor's blurb in the live description, same spot Generate puts it
+function toggleSponsorInDescription(sponsor, checked) {
+    const descEl = document.getElementById("plan-description");
+    if (!descEl || !descEl.value.trim()) return; // no plan yet — selection rides the next Generate
+    let desc = descEl.value;
+    const blurb = sponsorBlurbText(sponsor);
+    const MARKER = "PASTE TIMESTAMPS HERE";
+    if (checked) {
+        if (desc.includes(blurb)) return; // already there (e.g. inserted by Generate)
+        const at = desc.indexOf(MARKER);
+        if (at !== -1) {
+            desc = desc.slice(0, at).replace(/\s+$/, "") + "\n\n" + blurb + "\n\n" + desc.slice(at);
+        } else {
+            desc = desc.replace(/\s+$/, "") + "\n\n" + blurb;
+        }
+    } else {
+        if (!desc.includes(blurb)) return;
+        desc = desc.replace(blurb, "").replace(/\n{3,}/g, "\n\n").replace(/^\s+/, "");
+    }
+    descEl.value = desc;
+}
+
 async function initSponsorPicker() {
     try {
         const resp = await fetch("/api/affiliate-links");
         const data = await resp.json();
         const sponsors = (data.links || []).filter(l => (l.type || "affiliate") === "sponsor");
+        sponsorsCache = sponsors;
         const group = document.getElementById("sponsor-picker-group");
         const picker = document.getElementById("sponsor-picker");
         if (!sponsors.length) { group.style.display = "none"; return; }
@@ -254,6 +285,13 @@ async function initSponsorPicker() {
             `<label style="display:flex; gap:0.3rem; align-items:center; font-weight:400; cursor:pointer;">
                 <input type="checkbox" class="sponsor-check" value="${esc(s.url)}"> ${esc(s.title)}
             </label>`).join("");
+        picker.querySelectorAll(".sponsor-check").forEach(cb => {
+            cb.addEventListener("change", () => {
+                const sponsor = sponsorsCache.find(s => s.url === cb.value);
+                if (sponsor) toggleSponsorInDescription(sponsor, cb.checked);
+                savePlannerState();
+            });
+        });
         group.style.display = "";
     } catch (e) { /* library unavailable — picker stays hidden */ }
 }
@@ -1426,7 +1464,8 @@ async function loadAffiliatePicker() {
     try {
         const resp = await fetch("/api/affiliate-links");
         const data = await resp.json();
-        affiliateLinksCache = data.links || [];
+        // Sponsors are handled by the sponsor picker (blurb into description), not as plain links
+        affiliateLinksCache = (data.links || []).filter(l => (l.type || "affiliate") !== "sponsor");
         const picker = document.getElementById("affiliate-picker");
         const list = document.getElementById("affiliate-picker-list");
         if (!affiliateLinksCache.length) { picker.style.display = "none"; return; }
@@ -1435,12 +1474,12 @@ async function loadAffiliatePicker() {
         list.innerHTML = affiliateLinksCache.map((l, i) => {
             const alreadyAdded = planLinks.some(pl => pl.url === l.url);
             return `<label class="affiliate-check-row">
-                <input type="checkbox" class="aff-check" data-idx="${i}" ${alreadyAdded ? 'checked disabled' : ''}>
+                <input type="checkbox" class="aff-check" data-idx="${i}" ${alreadyAdded ? 'checked' : ''}>
                 <span class="aff-check-title">${esc(l.title)}</span>
             </label>`;
         }).join("");
 
-        list.querySelectorAll(".aff-check:not(:disabled)").forEach(cb => {
+        list.querySelectorAll(".aff-check").forEach(cb => {
             cb.addEventListener("change", () => {
                 const idx = parseInt(cb.dataset.idx);
                 const link = affiliateLinksCache[idx];
@@ -1450,7 +1489,13 @@ async function loadAffiliatePicker() {
                         renderPlanLinks();
                         savePlannerState();
                     }
-                    cb.disabled = true;
+                } else {
+                    const at = planLinks.findIndex(pl => pl.url === link.url);
+                    if (at !== -1) {
+                        planLinks.splice(at, 1);
+                        renderPlanLinks();
+                        savePlannerState();
+                    }
                 }
             });
         });
