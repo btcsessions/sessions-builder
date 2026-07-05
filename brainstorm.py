@@ -99,10 +99,14 @@ def _build_sponsor_block(sponsors: list) -> str:
         blurb = (s.get("blurb") or "").strip()
         title = (s.get("title") or "").strip()
         url = (s.get("url") or "").strip()
+        if not (title and url):
+            if blurb:
+                lines.append(blurb)
+            continue
+        block = f"{title}: {url}"
         if blurb:
-            lines.append(blurb)
-        elif title and url:
-            lines.append(f"This episode is sponsored by {title} — {url}")
+            block += "\n" + blurb
+        lines.append(block)
     return "\n\n".join(lines)
 
 
@@ -515,7 +519,7 @@ Example — if the user says "make the titles shorter":
 {"titles": ["Short Title 1", "Short Title 2", "Short Title 3"]}
 ```
 
-Available fields: titles (array of strings), thumbnail_ideas (array), intro_hook (string), outline (array of {section, section_script, points, duration_hint}), tags (array), description (string).
+Available fields: titles (array of strings), thumbnail_ideas (array), intro_hook (string), outline (array of {section, section_script, points, duration_hint}), tags (array), description (string), links (array of {label, url}).
 
 IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking to modify the plan. For general discussion, just respond normally. Format your regular responses with clean markdown — use headers, bullet points, and bold for readability."""
 
@@ -655,7 +659,10 @@ You are now generating a complete video production plan. You must respond with O
     {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~3 min"}}
   ],
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"],
-  "description": "Full YouTube description with summary and links to referenced past tutorials if relevant",
+  "description": "Prose-only YouTube description (see the description rule below)",
+  "links": [
+    {{"label": "descriptive label", "url": "https://real-url-or [LINK] placeholder"}}
+  ],
   "video_type": "the video format (e.g. tutorial, comparison, list, setup walkthrough, first impressions)"
 }}
 
@@ -669,12 +676,11 @@ IMPORTANT RULES:
 - Thumbnail ideas should describe the visual concept, text overlay, and mood
 - The outline should be a realistic video skeleton with timing hints
 - Tags should be relevant for YouTube SEO (8-12 tags)
-- The description must be SEO-optimized: naturally work the main search keywords into the opening sentences. It should contain:
-  1. A short paragraph (2-4 sentences) summarizing what the video covers and why it matters — NOT a section-by-section breakdown
-  2. A list of relevant links: when a relevant past tutorial (URLs below) or link-library entry exists, use its REAL URL with a descriptive label (e.g. "Full node setup tutorial: https://..."). Only use a [LINK] placeholder for things with no known URL (e.g. "Download Umbrel: [LINK]")
-  3. Include the referral/affiliate links from the creator's link library that genuinely relate to this video's topic — skip unrelated ones
+- The description must be SEO-optimized PROSE ONLY: naturally work the main search keywords into the opening sentences. A short paragraph (2-4 sentences) summarizing what the video covers and why it matters — NOT a section-by-section breakdown — plus an optional one-line caution/disclaimer when the topic warrants it.
+  Do NOT put ANY link lists, section headers (e.g. "LINKS & RESOURCES", "WHAT YOU'LL LEARN"), or emoji-headed blocks in the description — the app appends links, sponsors, and timestamps itself
   Do NOT include timestamps — those are added manually later
   Do NOT include a sponsor section — that will be auto-inserted
+- ALL links go in the "links" JSON field instead: relevant past tutorials (REAL URLs below) with descriptive labels, plus referral/affiliate links from the creator's link library that genuinely relate to this video's topic (skip unrelated ones). Use "[LINK]" as the url only for things with no known URL (e.g. {{"label": "Download Umbrel", "url": "[LINK]"}})
 - For "tags": generate 8-12 topic-specific SEO tags for this video (these get COMBINED with the creator's default tags)
 - If supporting links are provided, reference and incorporate them naturally in the outline and description
 - If competitor videos are provided, consider what works in those videos and differentiate
@@ -828,7 +834,10 @@ You must respond with ONLY valid JSON (no markdown, no code fences):
     {{"section": "Section name", "section_script": "1-3 spoken sentences to open this section on camera", "points": ["key point 1", "key point 2"], "duration_hint": "~X min"}}
   ],
   "tags": ["tag1", "tag2", "tag3"],
-  "description": "A short paragraph summarizing the video, then a list of relevant links with [LINK] placeholders"
+  "description": "Prose-only: a short paragraph summarizing the video (see the description rule below)",
+  "links": [
+    {{"label": "descriptive label", "url": "https://real-url-or [LINK] placeholder"}}
+  ]
 }}
 
 RULES:
@@ -837,7 +846,8 @@ RULES:
 - Use the channel performance data and market trends above to inform title angles, framing, and packaging — angle the content toward what's currently resonating with the audience
 - Infer logical sections and timing from the outline depth
 - Give each section a short "section_script" (1-3 spoken sentences, creator's on-camera voice) that opens the section — keep any opener the notes already contain
-- The description should be a short paragraph (2-4 sentences) summarizing the video, followed by relevant links — NOT a section-by-section breakdown. Do NOT include timestamps. Use REAL URLs from the creator's link library when relevant; only use [LINK] placeholders for links with no known URL.
+- The description must be PROSE ONLY: a short paragraph (2-4 sentences) summarizing the video — NOT a section-by-section breakdown. No link lists, no section headers (e.g. "LINKS & RESOURCES", "WHAT YOU'LL LEARN"), no timestamps — the app appends links, sponsors, and timestamps itself.
+- ALL links go in the "links" JSON field: links mentioned in the notes and relevant link-library entries with REAL URLs; use "[LINK]" as the url only when no URL is known.
 - Keep the creator's voice and phrasing where possible — don't over-polish their notes
 - If {'amending' if existing_plan else 'creating'}: {'merge intelligently — dont discard existing work, integrate the new notes' if existing_plan else 'build the full plan from scratch based on the notes'}
 - {_video_type_rule(video_type)}"""

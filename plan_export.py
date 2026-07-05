@@ -13,18 +13,17 @@ SEPARATOR = "————————————————————"
 TIMESTAMPS_MARKER = "PASTE TIMESTAMPS HERE"
 
 
-def _sponsor_blurb(entry: dict) -> str:
-    """Blurb copy is contractual, so it is used verbatim when set.
-
-    Kept as a local duplicate of brainstorm._build_sponsor_block's per-entry
-    logic so this module stays import-light (see docstring).
+def _sponsor_block(entry: dict) -> str:
+    """Title + URL line, then the blurb verbatim (contractual copy is never
+    paraphrased). Local duplicate of brainstorm._build_sponsor_block's
+    per-entry logic so this module stays import-light (see docstring).
     """
     blurb = (entry.get("blurb") or "").strip()
-    if blurb:
-        return blurb
     title = (entry.get("title") or "").strip()
     url = (entry.get("url") or "").strip()
-    return f"This episode is sponsored by {title} — {url}" if title and url else ""
+    if not (title and url):
+        return blurb
+    return f"{title}: {url}" + (f"\n{blurb}" if blurb else "")
 
 
 def _link_line(link) -> str:
@@ -56,28 +55,36 @@ def scrub_description_body(description: str, strip_texts: list = None) -> str:
     return body.strip()
 
 
-def assemble_youtube_description(body: str, links: list = None, sponsors: list = None) -> str:
+def assemble_youtube_description(body: str, links: list = None, sponsors: list = None,
+                                 link_blurbs: dict = None) -> str:
     """Assemble the final paste-into-YouTube description.
 
-    One LINKS section: video links first, then selected sponsors' blurbs.
+    One LINKS section: video/affiliate links first (each with its library
+    blurb underneath when one exists), then selected sponsors' blocks.
     """
-    link_lines = [l for l in (_link_line(link) for link in links or []) if l]
-    blurbs = []
+    link_blurbs = link_blurbs or {}
+    blocks = []
+    for link in links or []:
+        line = _link_line(link)
+        if not line:
+            continue
+        url = (link.get("url") or "").strip() if isinstance(link, dict) else link.strip()
+        blurb = (link_blurbs.get(url) or "").strip()
+        blocks.append(line + (f"\n{blurb}" if blurb else ""))
     for s in sponsors or []:
-        b = _sponsor_blurb(s)
-        if b and b not in blurbs:
-            blurbs.append(b)
+        b = _sponsor_block(s)
+        if b and b not in blocks:
+            blocks.append(b)
 
     parts = [body.strip()] if body and body.strip() else []
-    if link_lines or blurbs:
-        blocks = (["\n".join(link_lines)] if link_lines else []) + blurbs
+    if blocks:
         parts.append(SEPARATOR + "\nLINKS\n\n" + "\n\n".join(blocks))
     parts.append(SEPARATOR + "\n" + TIMESTAMPS_MARKER)
     return "\n\n".join(parts)
 
 
-def render_plan_markdown(plan: dict, channel_name: str = "",
-                         sponsors: list = None, known_sponsor_blurbs: list = None) -> str:
+def render_plan_markdown(plan: dict, channel_name: str = "", sponsors: list = None,
+                         strip_texts: list = None, link_blurbs: dict = None) -> str:
     full = plan.get("full_plan") or {}
     lines = []
 
@@ -95,6 +102,22 @@ def render_plan_markdown(plan: dict, channel_name: str = "",
     meta.append(f"Exported: {datetime.now().strftime('%Y-%m-%d')}")
     lines.append(" · ".join(meta))
     lines.append("")
+
+    titles = [t.strip() for t in (full.get("titles") or []) if t and t.strip()]
+    if titles:
+        lines.append("## Title Options")
+        lines.append("")
+        for i, t in enumerate(titles, 1):
+            lines.append(f"{i}. {t}")
+        lines.append("")
+
+    thumbs = [t.strip() for t in (full.get("thumbnail_ideas") or []) if t and t.strip()]
+    if thumbs:
+        lines.append("## Thumbnail Ideas")
+        lines.append("")
+        for t in thumbs:
+            lines.append(f"- {t}")
+        lines.append("")
 
     hook = (full.get("intro_hook") or "").strip()
     if hook:
@@ -127,14 +150,15 @@ def render_plan_markdown(plan: dict, channel_name: str = "",
     if description or links or sponsors:
         # Checkbox/link state is the source of truth: scrub anything the
         # assembler re-adds out of the saved prose, then rebuild the single
-        # LINKS section (video links first, sponsor blurbs second).
-        strip_texts = list(known_sponsor_blurbs or [])
-        strip_texts += [_sponsor_blurb(s) for s in sponsors or []]
-        strip_texts += [_link_line(link) for link in links]
-        body = scrub_description_body(description, strip_texts)
+        # LINKS section (video/affiliate links first, sponsor blocks second).
+        texts = list(strip_texts or [])
+        texts += [_sponsor_block(s) for s in sponsors or []]
+        texts += list((link_blurbs or {}).values())
+        texts += [_link_line(link) for link in links]
+        body = scrub_description_body(description, texts)
         lines.append("## Description (paste into YouTube)")
         lines.append("")
-        lines.append(assemble_youtube_description(body, links, sponsors))
+        lines.append(assemble_youtube_description(body, links, sponsors, link_blurbs))
         lines.append("")
 
     tags = full.get("tags") or []
@@ -143,14 +167,6 @@ def render_plan_markdown(plan: dict, channel_name: str = "",
         lines.append("## Tags")
         lines.append("")
         lines.append(yt_tags_csv if yt_tags_csv else ", ".join(tags))
-        lines.append("")
-
-    thumbs = [t.strip() for t in (full.get("thumbnail_ideas") or []) if t and t.strip()]
-    if thumbs:
-        lines.append("## Thumbnail Ideas")
-        lines.append("")
-        for t in thumbs:
-            lines.append(f"- {t}")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
