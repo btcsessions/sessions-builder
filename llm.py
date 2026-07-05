@@ -152,23 +152,90 @@ def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
         with urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except HTTPError as e:
-        # Surface the response body — it says WHY (wrong model, no model
-        # loaded, bad param) instead of a bare "HTTP Error 400".
-        detail = ""
-        try:
-            raw = e.read().decode("utf-8", errors="replace")
-            try:
-                detail = json.loads(raw).get("error", {}).get("message", "") or raw
-            except (json.JSONDecodeError, AttributeError):
-                detail = raw
-        except Exception:
-            pass
-        detail = (detail or "").strip()[:300]
-        raise RuntimeError(f"{url} error {e.code}{': ' + detail if detail else ''}")
+        raise RuntimeError(_http_error_message(url, e))
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"Empty response from {url}")
     return (choices[0].get("message", {}).get("content") or "").strip()
+
+
+def _http_error_message(url: str, e: HTTPError) -> str:
+    """Surface the response body — it says WHY (wrong model, no model
+    loaded, bad key) instead of a bare "HTTP Error 400"."""
+    detail = ""
+    try:
+        raw = e.read().decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(raw).get("error", {}).get("message", "") or raw
+        except (json.JSONDecodeError, AttributeError):
+            detail = raw
+    except Exception:
+        pass
+    detail = (detail or "").strip()[:300]
+    return f"{url} error {e.code}{': ' + detail if detail else ''}"
+
+
+def _get_json(url: str, headers: dict, timeout: int = 10) -> dict:
+    """GET a JSON endpoint via urllib."""
+    req = Request(url, headers=headers, method="GET")
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        raise RuntimeError(_http_error_message(url, e))
+
+
+# Non-chat OpenAI models that would clutter the model dropdown.
+_OPENAI_NON_CHAT_PREFIXES = ("whisper-", "tts-", "dall-e", "text-embedding", "omni-moderation")
+
+
+def _openai_compat_list_models(base_url: str, api_key: str) -> list:
+    """Model IDs from an OpenAI-compatible GET /models endpoint."""
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    data = _get_json(base_url.rstrip("/") + "/models", headers)
+    models = [m.get("id", "") for m in data.get("data", []) if m.get("id")]
+    if "api.openai.com" in base_url:
+        models = [m for m in models if not m.startswith(_OPENAI_NON_CHAT_PREFIXES)]
+    return sorted(models)
+
+
+def _anthropic_list_models(api_key: str) -> list:
+    """Model IDs from the Anthropic models API (already newest-first)."""
+    data = _get_json(
+        "https://api.anthropic.com/v1/models?limit=100",
+        {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+    )
+    return [m.get("id", "") for m in data.get("data", []) if m.get("id")]
+
+
+def list_models(provider: str, settings: dict) -> list:
+    """Model IDs available from a provider, for the Settings dropdowns.
+
+    Raises RuntimeError/URLError/socket.timeout on failure — callers turn
+    those into a friendly message; typing a model manually always works.
+    """
+    if provider == "anthropic":
+        import os
+        api_key = settings.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("No Anthropic API key set")
+        return _anthropic_list_models(api_key)
+    if provider == "openai":
+        api_key = settings.get("openai_key", "")
+        if not api_key:
+            raise RuntimeError("No OpenAI API key set")
+        return _openai_compat_list_models("https://api.openai.com/v1", api_key)
+    if provider == "maple":
+        return _openai_compat_list_models(
+            settings.get("maple_url") or DEFAULT_MAPLE_URL,
+            settings.get("maple_key", ""),
+        )
+    if provider == "lmstudio":
+        return _openai_compat_list_models(
+            settings.get("lmstudio_url") or DEFAULT_LMSTUDIO_URL, "")
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 def _provider_call(provider: str, settings: dict, system: str, messages: list,

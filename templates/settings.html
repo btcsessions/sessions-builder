@@ -59,7 +59,7 @@
                 <input type="password" id="anthropic_key" name="anthropic_key"
                        value="{{ anthropic_key }}"
                        placeholder="sk-ant-...">
-                <small>Can also be set as ANTHROPIC_API_KEY env var. Model: <input type="text" name="anthropic_model" value="{{ ai.anthropic_model }}" placeholder="{{ ai_defaults.anthropic_model }}" style="width:12rem; display:inline-block;"></small>
+                <small>Can also be set as ANTHROPIC_API_KEY env var. Model: <input type="text" name="anthropic_model" list="anthropic-models" data-provider="anthropic" autocomplete="off" value="{{ ai.anthropic_model }}" placeholder="{{ ai_defaults.anthropic_model }}" style="width:12rem; display:inline-block;"><datalist id="anthropic-models"></datalist> <span class="form-hint" id="anthropic-model-status"></span></small>
             </div>
 
             <div class="form-group">
@@ -67,7 +67,7 @@
                 <input type="password" id="openai_key" name="openai_key"
                        value="{{ ai.openai_key }}"
                        placeholder="sk-...">
-                <small>From platform.openai.com (a ChatGPT subscription alone won't work). Model: <input type="text" name="openai_model" value="{{ ai.openai_model }}" placeholder="{{ ai_defaults.openai_model }}" style="width:10rem; display:inline-block;"></small>
+                <small>From platform.openai.com (a ChatGPT subscription alone won't work). Model: <input type="text" name="openai_model" list="openai-models" data-provider="openai" autocomplete="off" value="{{ ai.openai_model }}" placeholder="{{ ai_defaults.openai_model }}" style="width:10rem; display:inline-block;"><datalist id="openai-models"></datalist> <span class="form-hint" id="openai-model-status"></span></small>
             </div>
 
             <div class="form-group">
@@ -75,7 +75,7 @@
                 <input type="password" id="maple_key" name="maple_key"
                        value="{{ ai.maple_key }}"
                        placeholder="Maple API key (optional if the local proxy needs none)">
-                <small>Via Maple Proxy (built into the Maple desktop app). Proxy URL: <input type="text" name="maple_url" value="{{ ai.maple_url }}" placeholder="{{ ai_defaults.maple_url }}" style="width:14rem; display:inline-block;"> Model: <input type="text" name="maple_model" value="{{ ai.maple_model }}" placeholder="{{ ai_defaults.maple_model }}" style="width:10rem; display:inline-block;"> (see the proxy's /v1/models for options)</small>
+                <small>Via Maple Proxy (built into the Maple desktop app). Proxy URL: <input type="text" name="maple_url" value="{{ ai.maple_url }}" placeholder="{{ ai_defaults.maple_url }}" style="width:14rem; display:inline-block;"> Model: <input type="text" name="maple_model" list="maple-models" data-provider="maple" autocomplete="off" value="{{ ai.maple_model }}" placeholder="{{ ai_defaults.maple_model }}" style="width:10rem; display:inline-block;"><datalist id="maple-models"></datalist> <span class="form-hint" id="maple-model-status"></span></small>
             </div>
 
             <div class="form-group">
@@ -83,8 +83,7 @@
                 <input type="text" id="lmstudio_url" name="lmstudio_url"
                        value="{{ ai.lmstudio_url }}"
                        placeholder="{{ ai_defaults.lmstudio_url }}">
-                <small>Local server URL (enable it in LM Studio → Developer). Uses whatever model is loaded. No key needed. This is also the automatic offline fallback.</small>
-                <input type="hidden" name="lmstudio_model" value="{{ ai.lmstudio_model }}">
+                <small>Local server URL (enable it in LM Studio → Developer). No key needed. This is also the automatic offline fallback. Model: <input type="text" name="lmstudio_model" list="lmstudio-models" data-provider="lmstudio" autocomplete="off" value="{{ ai.lmstudio_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"><datalist id="lmstudio-models"></datalist> <span class="form-hint" id="lmstudio-model-status"></span> Leave blank to use the currently loaded model.</small>
             </div>
 
             <hr class="settings-divider">
@@ -316,6 +315,60 @@ function refreshProviderOptions() {
 });
 document.querySelector('input[name="maple_url"]')?.addEventListener("input", refreshProviderOptions);
 refreshProviderOptions();
+
+// Model dropdowns: fetch each provider's model list lazily on first focus
+// of its model field. The inputs stay free-text so offline / missing-key
+// setups can still type a model name manually.
+const modelCache = {};  // provider -> true once its datalist is filled
+
+function modelFetchPayload(provider) {
+    // Send the creds currently typed in the form so an unsaved key works
+    return {
+        provider: provider,
+        anthropic_key: document.getElementById("anthropic_key")?.value.trim() || "",
+        openai_key: document.getElementById("openai_key")?.value.trim() || "",
+        maple_key: document.getElementById("maple_key")?.value.trim() || "",
+        maple_url: document.querySelector('input[name="maple_url"]')?.value.trim() || "",
+        lmstudio_url: document.getElementById("lmstudio_url")?.value.trim() || "",
+    };
+}
+
+async function loadModels(provider) {
+    if (modelCache[provider]) return;
+    modelCache[provider] = true;  // dedupe concurrent focus events
+    const status = document.getElementById(provider + "-model-status");
+    if (status) status.textContent = "loading models…";
+    try {
+        const resp = await fetch("/api/list-models", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(modelFetchPayload(provider)),
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || "request failed");
+        const datalist = document.getElementById(provider + "-models");
+        datalist.innerHTML = "";
+        data.models.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m;
+            datalist.appendChild(opt);
+        });
+        if (status) status.textContent = data.models.length + " models available";
+    } catch (err) {
+        delete modelCache[provider];  // allow a retry on next focus
+        if (status) status.textContent = "couldn't load models (" + err.message + ") — type a name manually";
+    }
+}
+
+document.querySelectorAll("input[data-provider]").forEach(inp => {
+    inp.addEventListener("focus", () => loadModels(inp.dataset.provider));
+});
+// Editing a provider's key/URL invalidates its cached list so refocusing refetches
+[["anthropic_key", "anthropic"], ["openai_key", "openai"],
+ ["maple_key", "maple"], ["lmstudio_url", "lmstudio"]].forEach(([id, provider]) => {
+    document.getElementById(id)?.addEventListener("input", () => delete modelCache[provider]);
+});
+document.querySelector('input[name="maple_url"]')?.addEventListener("input", () => delete modelCache.maple);
 
 const fetchBtn = document.getElementById("fetch-analytics-btn");
 if (fetchBtn) {

@@ -473,6 +473,29 @@ def save_settings_only():
     return redirect(url_for("settings_page", success="Settings saved."))
 
 
+@app.route("/api/list-models", methods=["POST"])
+def api_list_models():
+    """Model IDs available from an AI provider, for the Settings dropdowns.
+
+    Unsaved credentials typed into the form are sent along and overlaid
+    (non-empty values only, so a blank form field doesn't hide an
+    env-var-configured key). Nothing is persisted.
+    """
+    data = request.get_json(silent=True) or {}
+    provider = (data.get("provider") or "").strip()
+    if provider not in llm.PROVIDERS:
+        return jsonify({"ok": False, "error": "Unknown provider"}), 400
+    settings = dict(load_settings())
+    for key in ("anthropic_key", "openai_key", "maple_key", "maple_url", "lmstudio_url"):
+        value = (data.get(key) or "").strip()
+        if value:
+            settings[key] = value
+    try:
+        return jsonify({"ok": True, "models": llm.list_models(provider, settings)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or type(e).__name__})
+
+
 @app.route("/api/desc-template", methods=["GET", "POST"])
 def api_desc_template():
     """Get or save the description defaults (sponsor block, default YT tags)."""
