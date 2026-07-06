@@ -38,7 +38,10 @@
             </div>
 
             <div class="form-group compact">
-                <label for="video-notes">Notes</label>
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <label for="video-notes">Notes</label>
+                    <button type="button" class="btn small mic-btn" data-dictate="video-notes" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
+                </div>
                 <textarea id="video-notes" rows="2" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
             </div>
 
@@ -57,7 +60,6 @@
             <div id="import-notes-section" class="import-notes-section" style="display:none">
                 <textarea id="import-notes-text" class="import-notes-text" rows="8" placeholder="Paste your outline, notes, or conversation export here..."></textarea>
                 <div class="import-notes-actions">
-                    <button type="button" class="btn small mic-btn" data-dictate="import-notes-text" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
                     <label class="btn small import-file-label">
                         Upload File
                         <input type="file" id="import-file-input" accept=".txt,.md,.text" style="display:none">
