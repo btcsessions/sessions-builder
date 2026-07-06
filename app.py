@@ -110,7 +110,8 @@ DEFAULT_CHANNEL_NAME = "Sovereign Sessions"
 # AI provider fields managed by the Settings form (posted on every save;
 # blank values intentionally clear the key)
 AI_SETTING_KEYS = ("ai_provider", "anthropic_model", "openai_key", "maple_key", "maple_url",
-                   "lmstudio_url", "openai_model", "maple_model", "lmstudio_model")
+                   "lmstudio_url", "openai_model", "maple_model", "lmstudio_model",
+                   "whisper_url", "whisper_model", "dictation_provider", "dictation_model")
 
 
 def _ai_settings_from_form() -> dict:
@@ -385,6 +386,8 @@ def settings_page():
             "anthropic_model": llm.DEFAULT_ANTHROPIC_MODEL,
             "openai_model": llm.DEFAULT_OPENAI_MODEL,
             "maple_model": llm.DEFAULT_MAPLE_MODEL,
+            "whisper_url": llm.DEFAULT_WHISPER_URL,
+            "dictation_model": llm.DEFAULT_DICTATION_ANTHROPIC_MODEL,
         },
         provider_labels=llm.PROVIDER_LABELS,
     )
@@ -1010,6 +1013,33 @@ def api_parse_notes():
         )
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def api_transcribe():
+    """Transcribe dictated audio (local Whisper) and refine it into clean text."""
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio uploaded"}), 400
+    f = request.files["audio"]
+    mode = (request.form.get("mode") or "notes").strip()
+
+    settings = load_settings()
+    try:
+        raw = llm.transcribe_audio(settings, f.read(), f.filename or "audio.webm",
+                                   f.mimetype or "audio/webm")
+        if not raw.strip():
+            return jsonify({"raw": "", "refined": ""})
+        # Refine when a chat provider is available; otherwise degrade to raw-only.
+        refined = raw
+        if llm.any_configured(settings):
+            try:
+                from brainstorm import refine_dictation
+                refined = refine_dictation(settings, raw, mode) or raw
+            except Exception as e:
+                print(f"[Dictation] refine failed, returning raw transcript: {e}")
+        return jsonify({"raw": raw, "refined": refined})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

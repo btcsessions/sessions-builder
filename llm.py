@@ -32,7 +32,12 @@ PROVIDER_LABELS = {
 
 DEFAULT_MAPLE_URL = "http://localhost:8080/v1"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
+DEFAULT_WHISPER_URL = "http://127.0.0.1:8081/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
+# Dictation cleanup is an easy, latency-sensitive task — default to a fast
+# model, not the heavyweight plan-generation model. Alias, not a dated id
+# (dated ids get retired and 404).
+DEFAULT_DICTATION_ANTHROPIC_MODEL = "claude-haiku-4-5"
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
 DEFAULT_MAPLE_MODEL = "llama3-3-70b"  # Maple Proxy REQUIRES a model; GET /v1/models lists options
 DEFAULT_LMSTUDIO_MODEL = ""   # LM Studio uses whatever model is loaded
@@ -173,6 +178,54 @@ def _http_error_message(url: str, e: HTTPError) -> str:
         pass
     detail = (detail or "").strip()[:300]
     return f"{url} error {e.code}{': ' + detail if detail else ''}"
+
+
+def transcribe_audio(settings: dict, audio: bytes, filename: str = "audio.webm",
+                     content_type: str = "audio/webm") -> str:
+    """Transcribe audio via a local OpenAI-compatible Whisper server.
+
+    POSTs multipart/form-data to <whisper_url>/audio/transcriptions —
+    keyless like LM Studio (Authorization header only if whisper_key is
+    set). The multipart body is built by hand so we stay on urllib.
+    """
+    import uuid
+    base = (settings.get("whisper_url") or DEFAULT_WHISPER_URL).rstrip("/")
+    url = base + "/audio/transcriptions"
+    model = (settings.get("whisper_model") or "").strip() or "whisper-1"
+
+    boundary = "----planner-" + uuid.uuid4().hex
+    parts = []
+    for name, value in (("model", model), ("response_format", "text")):
+        parts.append(
+            "--{b}\r\nContent-Disposition: form-data; name=\"{n}\"\r\n\r\n{v}\r\n"
+            .format(b=boundary, n=name, v=value).encode("utf-8"))
+    parts.append(
+        "--{b}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{f}\"\r\n"
+        "Content-Type: {c}\r\n\r\n"
+        .format(b=boundary, f=filename.replace('"', ""), c=content_type).encode("utf-8"))
+    parts.append(audio)
+    parts.append("\r\n--{b}--\r\n".format(b=boundary).encode("utf-8"))
+    body = b"".join(parts)
+
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    if settings.get("whisper_key"):
+        headers["Authorization"] = f"Bearer {settings['whisper_key']}"
+
+    req = Request(url, data=body, headers=headers, method="POST")
+    try:
+        # Long timeout: local transcription of a long ramble can be slow.
+        with urlopen(req, timeout=600) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except HTTPError as e:
+        raise RuntimeError(_http_error_message(url, e))
+    # response_format=text returns plain text, but some servers reply JSON anyway
+    raw = raw.strip()
+    if raw.startswith("{"):
+        try:
+            return (json.loads(raw).get("text") or "").strip()
+        except json.JSONDecodeError:
+            pass
+    return raw
 
 
 def _get_json(url: str, headers: dict, timeout: int = 10) -> dict:

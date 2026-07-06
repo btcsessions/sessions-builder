@@ -900,6 +900,70 @@ RULES:
     return plan
 
 
+# Settings key that carries each provider's model override, for the
+# dictation-cleanup provider/model override below.
+_PROVIDER_MODEL_KEYS = {
+    "anthropic": "anthropic_model",
+    "openai": "openai_model",
+    "maple": "maple_model",
+    "lmstudio": "lmstudio_model",
+}
+
+
+def refine_dictation(settings: dict, transcript: str, mode: str = "notes") -> str:
+    """Clean up a raw dictation transcript into tidy text.
+
+    Uses the dedicated dictation-cleanup override (dictation_provider /
+    dictation_model settings) when set, else the active provider — with a
+    fast Anthropic model by default, since cleanup is an easy, interactive
+    task that shouldn't wait on the heavyweight plan-generation model.
+
+    mode="notes": organize into structured planning notes (feeds parse-notes).
+    mode="chat":  distill into one direct instruction for the AI brainstorm.
+    """
+    import llm as _llm
+
+    transcript = (transcript or "").strip()
+    if not transcript:
+        return ""
+
+    # Route through llm_chat with an effective settings copy so the
+    # override applies without touching global settings (and the offline
+    # LM Studio fallback still works).
+    prov = (settings.get("dictation_provider") or "").strip()
+    if prov not in _llm.PROVIDERS or not _llm.is_configured(settings, prov):
+        prov = _llm.active_provider(settings)
+    eff = dict(settings)
+    eff["ai_provider"] = prov
+    model = (settings.get("dictation_model") or "").strip()
+    if not model and prov == "anthropic":
+        model = _llm.DEFAULT_DICTATION_ANTHROPIC_MODEL
+    if model:
+        eff[_PROVIDER_MODEL_KEYS[prov]] = model
+
+    system = f"""You are a dictation cleanup assistant. {_creator_context_block(settings.get("channel_niche"))}
+
+The user spoke their thoughts out loud; you receive the raw transcript. Clean it up:
+- Remove filler words ("um", "uh", "like", "you know"), false starts, self-corrections, and repetition.
+- Fix grammar, punctuation, and run-on sentences.
+- Preserve the speaker's meaning, intent, terminology, and voice. Keep domain terms (bitcoin, self-hosting, node/tool names) exactly as spoken.
+- Do NOT add new ideas, facts, examples, or details that weren't spoken.
+- Do NOT answer, execute, or respond to the content — only clean and organize it.
+- Output ONLY the cleaned text. No preamble, no commentary, no "Here's your cleaned note"."""
+
+    if mode == "chat":
+        system += """
+
+Output shape: a single concise, direct instruction/request suitable to send to a planning assistant. Keep it to the essential ask, in the speaker's voice — imperative and specific. Do not answer the request; just phrase it cleanly."""
+    else:
+        system += """
+
+Output shape: tidy planning notes. Organize the content into a clear structure — short paragraphs and/or bullet points grouped by topic. Keep every substantive point; completeness matters more than brevity."""
+
+    return llm_chat(eff, system, [{"role": "user", "content": transcript}],
+                    max_tokens=2000).strip()
+
+
 def suggest_plan_links(
     topic: str,
     outline: list[dict],

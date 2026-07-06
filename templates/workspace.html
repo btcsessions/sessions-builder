@@ -57,6 +57,7 @@
             <div id="import-notes-section" class="import-notes-section" style="display:none">
                 <textarea id="import-notes-text" class="import-notes-text" rows="8" placeholder="Paste your outline, notes, or conversation export here..."></textarea>
                 <div class="import-notes-actions">
+                    <button type="button" class="btn small mic-btn" data-dictate="import-notes-text" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
                     <label class="btn small import-file-label">
                         Upload File
                         <input type="file" id="import-file-input" accept=".txt,.md,.text" style="display:none">
@@ -80,6 +81,7 @@
                 <div id="amend-notes-section" style="display:none">
                     <textarea id="amend-notes-text" class="import-notes-text" rows="6" placeholder="Paste notes to merge into this plan..."></textarea>
                     <div class="import-notes-actions">
+                        <button type="button" class="btn small mic-btn" data-dictate="amend-notes-text" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
                         <label class="btn small import-file-label">
                             Upload File
                             <input type="file" class="amend-file-input" accept=".txt,.md,.text" style="display:none">
@@ -218,6 +220,7 @@
         </div>
         <form id="chat-form" class="chat-input-area">
             <input type="text" id="chat-input" placeholder="Ask anything — paste links too..." autocomplete="off">
+            <button type="button" class="btn small mic-btn chat-mic" data-dictate="chat-input" data-dictate-mode="chat" title="Dictate">🎤</button>
             <button type="submit" class="btn primary">Send</button>
         </form>
     </aside>
@@ -235,6 +238,7 @@ if (nav) {
 }
 </script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
+<script src="{{ url_for('static', filename='dictation.js') }}"></script>
 <script>
 /* --- Planner logic --- */
 const BACKEND_CONFIGURED = {{ 'true' if backend_configured else 'false' }};

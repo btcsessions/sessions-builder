@@ -86,6 +86,26 @@
                 <small>Local server URL (enable it in LM Studio → Developer). No key needed. This is also the automatic offline fallback. Model: <input type="text" name="lmstudio_model" list="lmstudio-models" data-provider="lmstudio" autocomplete="off" value="{{ ai.lmstudio_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"><datalist id="lmstudio-models"></datalist> <span class="form-hint" id="lmstudio-model-status"></span> Leave blank to use the currently loaded model.</small>
             </div>
 
+            <div class="form-group">
+                <label for="whisper_url">Voice Dictation — Whisper Server (local)</label>
+                <input type="text" id="whisper_url" name="whisper_url"
+                       value="{{ ai.whisper_url }}"
+                       placeholder="{{ ai_defaults.whisper_url }}">
+                <small>Local OpenAI-compatible transcription server (e.g. Speaches / faster-whisper-server) — powers the mic buttons. Audio never leaves this machine. No key needed. Model: <input type="text" name="whisper_model" value="{{ ai.whisper_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"> Leave blank to use the server's loaded model.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="dictation_provider">Dictation Cleanup</label>
+                <select id="dictation_provider" name="dictation_provider" style="max-width:20rem;">
+                    <option value="" {{ 'selected' if not ai.dictation_provider }}>Same as main provider</option>
+                    <option value="anthropic" {{ 'selected' if ai.dictation_provider == 'anthropic' }}>{{ provider_labels.anthropic }}</option>
+                    <option value="openai" {{ 'selected' if ai.dictation_provider == 'openai' }}>{{ provider_labels.openai }}</option>
+                    <option value="maple" {{ 'selected' if ai.dictation_provider == 'maple' }}>{{ provider_labels.maple }}</option>
+                    <option value="lmstudio" {{ 'selected' if ai.dictation_provider == 'lmstudio' }}>{{ provider_labels.lmstudio }}</option>
+                </select>
+                <small>Which AI tidies up your dictated speech. A fast model is best — cleanup is easy and you're waiting on it. Model: <input type="text" name="dictation_model" value="{{ ai.dictation_model }}" placeholder="blank = fast default ({{ ai_defaults.dictation_model }})" style="width:16rem; display:inline-block;"> Pick LM Studio to keep the whole voice path on this machine.</small>
+            </div>
+
             <hr class="settings-divider">
 
             <div class="form-group">
@@ -307,8 +327,6 @@
 // AI provider dropdown: only providers with credentials are selectable.
 // LM Studio is always selectable (it has a default local URL).
 function refreshProviderOptions() {
-    const sel = document.getElementById("ai_provider");
-    if (!sel) return;
     const configured = {
         anthropic: !!document.getElementById("anthropic_key")?.value.trim(),
         openai: !!document.getElementById("openai_key")?.value.trim(),
@@ -316,10 +334,21 @@ function refreshProviderOptions() {
                   document.querySelector('input[name="maple_url"]')?.value.trim()),
         lmstudio: true,
     };
-    [...sel.options].forEach(opt => {
-        opt.disabled = !configured[opt.value];
-        if (opt.disabled && opt.selected) sel.value = "lmstudio";
-    });
+    const sel = document.getElementById("ai_provider");
+    if (sel) {
+        [...sel.options].forEach(opt => {
+            opt.disabled = !configured[opt.value];
+            if (opt.disabled && opt.selected) sel.value = "lmstudio";
+        });
+    }
+    // Dictation cleanup dropdown: same gating; blank ("same as main") always allowed
+    const dict = document.getElementById("dictation_provider");
+    if (dict) {
+        [...dict.options].forEach(opt => {
+            opt.disabled = opt.value !== "" && !configured[opt.value];
+            if (opt.disabled && opt.selected) dict.value = "";
+        });
+    }
 }
 ["anthropic_key", "openai_key", "maple_key"].forEach(id => {
     document.getElementById(id)?.addEventListener("input", refreshProviderOptions);
