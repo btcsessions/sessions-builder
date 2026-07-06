@@ -91,7 +91,7 @@
                 <input type="text" id="whisper_url" name="whisper_url"
                        value="{{ ai.whisper_url }}"
                        placeholder="{{ ai_defaults.whisper_url }}">
-                <small>Local OpenAI-compatible transcription server (e.g. Speaches / faster-whisper-server) — powers the mic buttons. Audio never leaves this machine. No key needed. Model: <input type="text" name="whisper_model" value="{{ ai.whisper_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"> Leave blank to use the server's loaded model.</small>
+                <small>Local transcription server — powers the mic buttons. Audio never leaves this machine. No key needed. One-time install: run <code>bash setup_whisper.sh</code> in the project folder; the planner then starts/stops the server automatically. Model: <input type="text" name="whisper_model" value="{{ ai.whisper_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"> Leave blank to use the server's loaded model.</small>
             </div>
 
             <div class="form-group">

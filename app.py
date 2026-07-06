@@ -2152,6 +2152,12 @@ def shutdown_app():
 if __name__ == "__main__":
     # Disable reloader when launched from .app bundle (keeps process alive for Dock)
     use_reloader = os.environ.get("LAUNCHED_FROM_APP") != "1"
+    # Auto-start the local Whisper dictation server (if installed via
+    # setup_whisper.sh). Only in the serving process — under the werkzeug
+    # reloader the parent just watches files; the child sets WERKZEUG_RUN_MAIN.
+    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        import whisper_manager
+        whisper_manager.maybe_start_whisper(load_settings())
     # Set PLANNER_HOST=0.0.0.0 to reach the app from a phone/tablet on the same
     # network (http://<machine-ip>:5000). Default stays local-only.
     host = os.environ.get("PLANNER_HOST", "127.0.0.1")
