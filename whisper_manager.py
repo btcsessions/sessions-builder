@@ -46,7 +46,7 @@ def _local_port(settings: dict):
     parsed = urlparse(url if "//" in url else "//" + url)
     if parsed.hostname not in ("127.0.0.1", "localhost"):
         return None
-    return parsed.port or 8081
+    return parsed.port or 8090
 
 
 def _port_in_use(port: int) -> bool:

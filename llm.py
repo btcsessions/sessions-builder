@@ -32,7 +32,7 @@ PROVIDER_LABELS = {
 
 DEFAULT_MAPLE_URL = "http://localhost:8080/v1"
 DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
-DEFAULT_WHISPER_URL = "http://127.0.0.1:8081/v1"
+DEFAULT_WHISPER_URL = "http://127.0.0.1:8090/v1"
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
 # Dictation cleanup is an easy, latency-sensitive task — default to a fast
 # model, not the heavyweight plan-generation model. Alias, not a dated id
