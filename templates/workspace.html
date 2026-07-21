@@ -171,6 +171,9 @@
             <div class="plan-save-bar">
                 <button class="btn primary" id="save-plan-btn">Save Plan</button>
                 <button class="btn secondary" id="export-plan-btn">Export</button>
+                {% if backend_configured %}
+                <button class="btn secondary" id="send-hermes-btn" title="Save and send the recording outline to Hermes for delivery">Send to Hermes</button>
+                {% endif %}
                 <span id="save-plan-status" class="form-hint"></span>
             </div>
         </div>
@@ -2020,6 +2023,65 @@ document.getElementById("save-plan-btn")?.addEventListener("click", async () => 
         btn.textContent = "Save Plan";
     }
     btn.disabled = false;
+});
+
+/* --- Send to Hermes (save bar) --- */
+/* Saves the on-screen plan first (so Hermes gets exactly what's shown and we
+   have a plan id), then submits the async recording handoff. Mirrors the
+   plan-history "Send to Hermes" button but for the plan currently open. */
+document.getElementById("send-hermes-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("send-hermes-btn");
+    const status = document.getElementById("save-plan-status");
+    if (!lastPlanData) { if (status) status.textContent = "No plan to send."; return; }
+
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    try {
+        await savePlanToHistory();
+    } catch (err) {
+        if (status) status.textContent = "Save failed: " + err.message;
+        btn.textContent = "Send to Hermes";
+        btn.disabled = false;
+        return;
+    }
+
+    // Confirm re-send if this plan already has a handoff on record (GET 404s
+    // when none exists, so chk.ok is false and we skip straight to sending).
+    try {
+        const chk = await fetch("/api/plans/" + encodeURIComponent(currentPlanId) + "/handoff");
+        if (chk.ok) {
+            const d = await chk.json();
+            if (d.handoff && !confirm("This plan was already sent to Hermes. Send again (delivers a new copy)?")) {
+                btn.textContent = "Send to Hermes";
+                btn.disabled = false;
+                return;
+            }
+        }
+    } catch (e) { /* transient — proceed with send */ }
+
+    btn.textContent = "Sending...";
+    try {
+        const resp = await fetch("/api/plans/" + encodeURIComponent(currentPlanId) + "/handoff", { method: "POST" });
+        const data = await resp.json();
+        if (data.error) {
+            btn.textContent = "Send to Hermes";
+            if (status) status.textContent = "";
+            alert("Send to Hermes failed: " + data.error);
+            btn.disabled = false;
+            return;
+        }
+        btn.textContent = "Sent (queued)";
+        pollHandoff(currentPlanId, btn);
+        // Re-enable so it can be sent again later; the badge in plan history
+        // tracks live status once the worker picks it up.
+        setTimeout(() => {
+            if (btn.textContent.startsWith("Sent")) { btn.textContent = "Send to Hermes"; btn.disabled = false; }
+        }, 4000);
+    } catch (err) {
+        btn.textContent = "Send to Hermes";
+        if (status) status.textContent = "Send to Hermes failed.";
+        btn.disabled = false;
+    }
 });
 
 /* --- Export Plan --- */
