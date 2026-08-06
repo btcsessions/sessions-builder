@@ -41,19 +41,67 @@ def _video_type_rule(video_type: str) -> str:
             "and notes, put it in the \"video_type\" field, and tailor structure, pacing, and tone to it")
 
 
-def _parse_plan_json(text: str) -> dict:
-    """Parse a JSON plan from model output, tolerating fences or stray prose."""
+def _outermost_json(text: str) -> str:
+    """Slice out the outermost {...} or [...] block, dropping any stray prose the
+    model wrapped around the JSON."""
+    candidates = []
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start, end = text.find(open_ch), text.rfind(close_ch)
+        if start != -1 and end > start:
+            candidates.append((start, text[start:end + 1]))
+    if not candidates:
+        return text
+    # Prefer whichever bracket type opens first in the text.
+    return min(candidates, key=lambda c: c[0])[1]
+
+
+def _patch_json_error(text: str, e: json.JSONDecodeError):
+    """Return `text` with a single fix applied at the parser's error position, or
+    None if this isn't an error we know how to patch. Covers the two glitches
+    models actually emit: a dropped comma between elements, and a trailing comma
+    before a closing bracket."""
+    if e.msg.startswith("Expecting ',' delimiter"):
+        return text[:e.pos] + "," + text[e.pos:]
+    if (e.msg.startswith("Expecting property name enclosed in double quotes")
+            or e.msg.startswith("Expecting value")):
+        head = text[:e.pos].rstrip()
+        if head.endswith(","):
+            return head[:-1] + text[e.pos:]
+    return None
+
+
+def _repair_json(text: str, max_fixes: int = 25):
+    """Retry json.loads, using the parser's own error position to patch common
+    LLM JSON glitches between tries. Falls through to the real JSONDecodeError if
+    the text can't be repaired within max_fixes passes."""
+    for _ in range(max_fixes):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            patched = _patch_json_error(text, e)
+            if patched is None or patched == text:
+                raise
+            text = patched
+    return json.loads(text)  # out of fixes — surface the underlying error
+
+
+def _loads_ai_json(text: str):
+    """Parse JSON emitted by a model, tolerating code fences, surrounding prose,
+    and the common LLM glitches (a missing or trailing comma)."""
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Fall back to the outermost JSON object in the text
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            return json.loads(text[start:end + 1])
-        raise
+        # Trim to the outermost JSON value, then attempt an error-guided repair.
+        return _repair_json(_outermost_json(text))
+
+
+def _parse_plan_json(text: str) -> dict:
+    """Parse a JSON plan from model output, tolerating fences, stray prose, and
+    common LLM JSON glitches (missing/trailing commas)."""
+    return _loads_ai_json(text)
 
 
 def _affiliates_only(links: list) -> list:
@@ -1039,9 +1087,7 @@ RULES:
 {outline_text}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def swap_single_title(
@@ -1138,9 +1184,7 @@ Respond with ONLY a JSON array of 5 title strings. No markdown, no code fences."
         user_msg += f"\nNotes: {notes}"
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=500).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def score_titles_ai(
@@ -1203,9 +1247,7 @@ Be honest and calibrated. A score of 50 is genuinely average. Most titles should
 {titles_text}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def generate_plan_postmortem(
@@ -1250,9 +1292,7 @@ Be honest and specific. Reference the actual numbers."""
 **Market Phase:** {plan.get('market_phase', 'unknown')}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=800).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def suggest_channels(
@@ -1349,6 +1389,4 @@ RULES:
         user_msg += f"\n\nIMPORTANT: I've already seen suggestions for these handles: {', '.join(exclude_handles)}. Give me COMPLETELY DIFFERENT channels this time — do not repeat any of those."
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=2000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
