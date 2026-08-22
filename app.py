@@ -1915,7 +1915,22 @@ def update_app():
             return jsonify({"error": result.stderr.strip() or "Git pull failed"}), 500
         if "Already up to date" in output:
             return jsonify({"updated": False, "message": "Already up to date."})
-        return jsonify({"updated": True, "message": output})
+
+        # A pull alone doesn't apply anything — the running process keeps its
+        # already-imported modules. Restart in place (exec keeps the same PID,
+        # so the .app wrapper is unaffected) after the response is sent.
+        def _restart():
+            import sys
+            import time
+            time.sleep(0.8)
+            try:
+                import whisper_manager
+                whisper_manager.stop_whisper()  # exec skips atexit handlers
+            except Exception:
+                pass
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        threading.Thread(target=_restart, daemon=True).start()
+        return jsonify({"updated": True, "restarting": True, "message": output})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

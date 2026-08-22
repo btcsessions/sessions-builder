@@ -44,7 +44,18 @@
             if (data.error) {
                 alert("Update failed: " + data.error);
             } else if (data.updated) {
-                alert("App updated! Restart the app to apply changes.");
+                // Server restarts itself; wait for it to come back, then reload
+                updateBtn.textContent = "Restarting...";
+                const deadline = Date.now() + 60000;
+                await new Promise(r => setTimeout(r, 2500));
+                while (Date.now() < deadline) {
+                    try {
+                        const ping = await fetch("/planner", { cache: "no-store" });
+                        if (ping.ok) { location.reload(); return; }
+                    } catch (e) { /* still restarting */ }
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                alert("App updated, but the server didn't come back — quit and reopen the app.");
             } else {
                 alert(data.message);
             }
