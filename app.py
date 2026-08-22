@@ -3,7 +3,7 @@ import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
 from dotenv import load_dotenv
 from youtube import fetch_playlist_videos, parse_playlist_id, fetch_channel_videos
-from brainstorm import chat_with_claude, generate_video_plan, suggest_channels, DEFAULT_CHANNEL_NICHE
+from brainstorm import chat_with_claude, generate_video_plan, suggest_channels, DEFAULT_CHANNEL_NICHE, _loads_ai_json
 from market import (fetch_btc_prices, tag_video_market_phase, record_snapshot,
                     get_current_market_info, get_market_summary)
 from trends import analyze_trends
@@ -595,10 +595,10 @@ def api_chat():
             match = re.search(r"```plan_change\s*\n([\s\S]*?)```", reply)
             if match:
                 try:
-                    plan_change = json.loads(match.group(1))
+                    plan_change = _loads_ai_json(match.group(1))
                     # Remove the JSON block from the displayed reply
                     reply = reply[:match.start()].rstrip() + reply[match.end():].lstrip()
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
                     pass
 
         # Check for standing-rule (lesson) blocks the model wants saved
@@ -608,10 +608,10 @@ def api_chat():
             texts = []
             for block in re.findall(r"```plan_lesson\s*\n([\s\S]*?)```", reply):
                 try:
-                    text = (json.loads(block).get("text") or "").strip()
+                    text = (_loads_ai_json(block).get("text") or "").strip()
                     if text:
                         texts.append(text)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
                     pass
             reply = re.sub(r"```plan_lesson\s*\n[\s\S]*?```", "", reply)
             reply = re.sub(r"\n{3,}", "\n\n", reply).strip()

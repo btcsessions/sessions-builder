@@ -41,19 +41,63 @@ def _video_type_rule(video_type: str) -> str:
             "and notes, put it in the \"video_type\" field, and tailor structure, pacing, and tone to it")
 
 
-def _parse_plan_json(text: str) -> dict:
-    """Parse a JSON plan from model output, tolerating fences or stray prose."""
+def _strip_code_fences(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Fall back to the outermost JSON object in the text
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            return json.loads(text[start:end + 1])
-        raise
+    return text
+
+
+def _attempt_json_fix(text: str, err: json.JSONDecodeError) -> str | None:
+    """Return a repaired copy of near-JSON text based on the parse error, or None."""
+    msg, pos = err.msg, err.pos
+    if msg.startswith(("Expecting ',' delimiter", "Expecting ':' delimiter")):
+        # An unescaped '"' inside a string value ended the string early; the
+        # parser then chokes on the text that follows. Escape that quote.
+        q = text.rfind('"', 0, pos)
+        if q > 0:
+            return text[:q] + '\\"' + text[q + 1:]
+    elif msg.startswith(("Expecting value", "Expecting property name")):
+        # Trailing comma before a closing bracket/brace
+        if pos < len(text) and text[pos] in "}]":
+            c = text.rfind(",", 0, pos)
+            if c != -1 and not text[c + 1:pos].strip():
+                return text[:c] + text[c + 1:]
+    return None
+
+
+def _loads_ai_json(text: str):
+    """Parse JSON from model output, repairing the mistakes models actually make.
+
+    Tolerates code fences, prose around the JSON, raw control characters in
+    strings (strict=False), unescaped inner quotes, and trailing commas.
+    """
+    text = _strip_code_fences(text)
+    # Trim prose surrounding the outermost object/array
+    starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
+    ends = [i for i in (text.rfind("}"), text.rfind("]")) if i != -1]
+    if starts and ends and max(ends) > min(starts):
+        text = text[min(starts):max(ends) + 1]
+    last_err = None
+    for _ in range(200):
+        try:
+            return json.loads(text, strict=False)
+        except json.JSONDecodeError as e:
+            last_err = e
+            fixed = _attempt_json_fix(text, e)
+            if fixed is None:
+                break
+            text = fixed
+    if last_err.msg.startswith("Unterminated string") or last_err.pos >= len(text.rstrip()):
+        raise ValueError("The AI response was cut off before the end (try again, "
+                         "or raise max tokens)") from last_err
+    raise ValueError(f"The AI returned malformed JSON ({last_err.msg} at line "
+                     f"{last_err.lineno}) — please try again") from last_err
+
+
+def _parse_plan_json(text: str) -> dict:
+    """Parse a JSON plan from model output, tolerating fences or stray prose."""
+    return _loads_ai_json(text)
 
 
 def _affiliates_only(links: list) -> list:
@@ -1039,9 +1083,7 @@ RULES:
 {outline_text}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def swap_single_title(
@@ -1138,9 +1180,7 @@ Respond with ONLY a JSON array of 5 title strings. No markdown, no code fences."
         user_msg += f"\nNotes: {notes}"
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=500).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def score_titles_ai(
@@ -1203,9 +1243,7 @@ Be honest and calibrated. A score of 50 is genuinely average. Most titles should
 {titles_text}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=1000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def generate_plan_postmortem(
@@ -1250,9 +1288,7 @@ Be honest and specific. Reference the actual numbers."""
 **Market Phase:** {plan.get('market_phase', 'unknown')}"""
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=800).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
 
 
 def suggest_channels(
@@ -1349,6 +1385,4 @@ RULES:
         user_msg += f"\n\nIMPORTANT: I've already seen suggestions for these handles: {', '.join(exclude_handles)}. Give me COMPLETELY DIFFERENT channels this time — do not repeat any of those."
 
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=2000).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(text)
+    return _loads_ai_json(text)
