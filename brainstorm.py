@@ -66,33 +66,61 @@ def _attempt_json_fix(text: str, err: json.JSONDecodeError) -> str | None:
     return None
 
 
+def _save_debug_response(raw: str) -> str:
+    """Save an unparseable AI response next to the app data for diagnosis."""
+    import os
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        path = os.path.join(data_dir, "last_ai_error.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(raw)
+        return path
+    except OSError:
+        return ""
+
+
 def _loads_ai_json(text: str):
     """Parse JSON from model output, repairing the mistakes models actually make.
 
     Tolerates code fences, prose around the JSON, raw control characters in
     strings (strict=False), unescaped inner quotes, and trailing commas.
     """
+    raw = text
     text = _strip_code_fences(text)
     # Trim prose surrounding the outermost object/array
     starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
     ends = [i for i in (text.rfind("}"), text.rfind("]")) if i != -1]
     if starts and ends and max(ends) > min(starts):
         text = text[min(starts):max(ends) + 1]
+    elif not starts:
+        text = ""  # no JSON anywhere in the reply
     last_err = None
-    for _ in range(200):
-        try:
-            return json.loads(text, strict=False)
-        except json.JSONDecodeError as e:
-            last_err = e
-            fixed = _attempt_json_fix(text, e)
-            if fixed is None:
-                break
-            text = fixed
+    if text:
+        for _ in range(200):
+            try:
+                return json.loads(text, strict=False)
+            except json.JSONDecodeError as e:
+                last_err = e
+                fixed = _attempt_json_fix(text, e)
+                if fixed is None:
+                    break
+                text = fixed
+    debug_path = _save_debug_response(raw)
+    debug_note = f" (full response saved to {debug_path})" if debug_path else ""
+    # A reply with no braces, or one whose first bracket immediately fails to
+    # parse, is prose (a refusal/explanation), not broken JSON — say what the
+    # model actually said.
+    if not text or (last_err.msg.startswith("Expecting value") and last_err.pos <= 2):
+        snippet = " ".join(raw.split())[:160]
+        raise ValueError("The AI reply contained no JSON plan"
+                         + (f' — it said: "{snippet}..."' if snippet else " (empty response)")
+                         + f" Try again.{debug_note}")
     if last_err.msg.startswith("Unterminated string") or last_err.pos >= len(text.rstrip()):
-        raise ValueError("The AI response was cut off before the end (try again, "
-                         "or raise max tokens)") from last_err
+        raise ValueError("The AI response was cut off before the end — likely the "
+                         f"output token limit; try again{debug_note}") from last_err
     raise ValueError(f"The AI returned malformed JSON ({last_err.msg} at line "
-                     f"{last_err.lineno}) — please try again") from last_err
+                     f"{last_err.lineno}) — please try again{debug_note}") from last_err
 
 
 def _parse_plan_json(text: str) -> dict:
@@ -760,8 +788,10 @@ Use this real-time data to make the plan timely and relevant. Reference specific
 {notes_text}
 {intel_section}"""
 
+    # Generous output budget: plans built from long pasted notes/outlines can
+    # far exceed 4k tokens and were getting truncated mid-JSON.
     text = llm_chat(settings, system, [{"role": "user", "content": user_msg}],
-                    max_tokens=4000, use_web_search=use_web_search)
+                    max_tokens=12000, use_web_search=use_web_search)
     plan = _parse_plan_json(text)
     if video_type:
         plan["video_type"] = video_type
@@ -904,7 +934,8 @@ RULES:
 **Notes:**
 {notes}"""
 
-    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=3000)
+    # Long pasted outlines produce plans well over the old 3k-token budget
+    text = llm_chat(settings, system, [{"role": "user", "content": user_msg}], max_tokens=12000)
     plan = _parse_plan_json(text)
     if video_type:
         plan["video_type"] = video_type
