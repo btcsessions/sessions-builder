@@ -905,6 +905,19 @@ tr:hover { background: var(--surface2); }
     cursor: help;
     white-space: nowrap;
 }
+.seo-badge {
+    display: inline-block;
+    vertical-align: middle;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    border-radius: 9px;
+    padding: 0.15rem 0.45rem;
+    margin-left: 0.4rem;
+    letter-spacing: 0.02em;
+    cursor: help;
+    white-space: nowrap;
+}
 .title-reorder-btns {
     display: flex;
     flex-direction: column;

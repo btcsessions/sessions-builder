@@ -691,6 +691,8 @@ def api_generate_plan():
             vidiq_keyword_section=vidiq_section,
             extra_tags=vidiq_keywords,
         )
+        if vidiq_keywords:
+            plan["vidiq_keywords"] = vidiq_keywords
         _vidiq_optimize_plan_titles(settings, plan, topic)
         plan["_scoring_ctx"] = _build_scoring_context()
         plan["_provider"] = llm.get_last_provider_used()
@@ -1049,6 +1051,8 @@ def api_parse_notes():
             vidiq_keyword_section=vidiq_section,
             extra_tags=vidiq_keywords,
         )
+        if vidiq_keywords:
+            result["vidiq_keywords"] = vidiq_keywords
         _vidiq_optimize_plan_titles(settings, result, topic)
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)

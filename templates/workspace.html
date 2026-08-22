@@ -150,7 +150,7 @@
 
             <section class="plan-card">
                 <div class="plan-card-header-row">
-                    <h2>Tags</h2>
+                    <h2>Tags <span id="tags-seo-badge" class="seo-badge" style="display:none"></span></h2>
                     <div style="display:flex; gap:0.4rem; align-items:center;">
                         <span id="tags-char-count" class="form-hint" style="margin:0;"></span>
                         <button class="btn small" id="copy-yt-tags-btn" title="Copy to clipboard">Copy</button>
@@ -162,7 +162,7 @@
 
             <section class="plan-card">
                 <div class="plan-card-header-row">
-                    <h2>Description</h2>
+                    <h2>Description <span id="desc-seo-badge" class="seo-badge" style="display:none"></span></h2>
                     <button class="btn small" id="copy-desc-btn" title="Copy to clipboard">Copy</button>
                 </div>
                 <textarea id="plan-description" class="plan-editable-text" rows="10"></textarea>
@@ -995,6 +995,7 @@ function renderTitles(titles, existingAiScores) {
                 label.style.color = getScoreColor(score);
             }
             refreshVidiqChip(row);
+            updateSeoBadges();  // focus keyword derives from the top title
         });
     });
 
@@ -1466,6 +1467,10 @@ function renderEditableSections(plan) {
 
     // Description — textarea
     document.getElementById("plan-description").value = plan.description;
+
+    // SEO checklist badges (fed by vidIQ keyword research from plan time)
+    if (plan.vidiq_keywords) seoKeywords = plan.vidiq_keywords;
+    updateSeoBadges();
 }
 
 function updateTagCharCount() {
@@ -1477,7 +1482,94 @@ function updateTagCharCount() {
 }
 
 // Live character count on tags textarea
-document.getElementById("plan-yt-tags")?.addEventListener("input", updateTagCharCount);
+document.getElementById("plan-yt-tags")?.addEventListener("input", () => { updateTagCharCount(); updateSeoBadges(); });
+document.getElementById("plan-description")?.addEventListener("input", updateSeoBadges);
+
+/* --- SEO checklist scores for description + tags ---------------------------
+   Replicates the style of vidIQ's browser-extension SEO checklist (keyword
+   placement, length, tag coverage) locally, using the real vidIQ keyword
+   research fetched at plan time (plan.vidiq_keywords). Live: recomputed on
+   every edit. */
+let seoKeywords = [];  // high-opportunity keywords from vidIQ, best first
+
+function seoFocusKeyword() {
+    // The keyword the plan is actually targeting: prefer one that appears in
+    // the top title, else the top vidIQ keyword, else the topic field.
+    const topTitle = (document.querySelector("#plan-titles .title-editable")?.value || "").toLowerCase();
+    for (const kw of seoKeywords) {
+        if (topTitle.includes(kw.toLowerCase())) return kw;
+    }
+    if (seoKeywords.length) return seoKeywords[0];
+    return (document.getElementById("video-topic")?.value || "").trim();
+}
+
+function seoScoreDescription(desc) {
+    const focus = seoFocusKeyword();
+    const lower = desc.toLowerCase();
+    const f = focus.toLowerCase();
+    let score = 0;
+    const notes = [];
+    if (!desc.trim()) return { score: 0, notes: ["Empty description"] };
+    if (f && lower.slice(0, 150).includes(f)) { score += 30; notes.push(`✓ focus keyword "${focus}" in the first 150 chars (+30)`); }
+    else if (f && lower.includes(f)) { score += 15; notes.push(`△ focus keyword "${focus}" present but not near the top (+15)`); }
+    else if (f) { notes.push(`✗ focus keyword "${focus}" missing (0/30)`); }
+    const occurrences = f ? lower.split(f).length - 1 : 0;
+    if (occurrences >= 2) { score += 15; notes.push(`✓ keyword used ${occurrences}× (+15)`); }
+    else if (f) { notes.push("✗ keyword should appear at least twice (0/15)"); }
+    if (desc.length >= 500) { score += 25; notes.push(`✓ substantial description (${desc.length} chars) (+25)`); }
+    else if (desc.length >= 250) { score += 15; notes.push(`△ decent length (${desc.length} chars) (+15)`); }
+    else { notes.push(`✗ too short (${desc.length} chars, aim for 500+) (0/25)`); }
+    const secondary = seoKeywords.filter(k => k.toLowerCase() !== f && lower.includes(k.toLowerCase()));
+    if (secondary.length >= 2) { score += 20; notes.push(`✓ covers ${secondary.length} more vidIQ keywords (+20)`); }
+    else if (secondary.length === 1) { score += 10; notes.push(`△ covers 1 more vidIQ keyword (+10)`); }
+    else if (seoKeywords.length) { notes.push("✗ no secondary vidIQ keywords used (0/20)"); }
+    else { score += 10; notes.push("△ no vidIQ keyword data (generate with vidIQ configured) (+10)"); }
+    if (/https?:\/\//.test(desc)) { score += 10; notes.push("✓ contains links (+10)"); }
+    else { notes.push("✗ no links yet (0/10)"); }
+    return { score, notes };
+}
+
+function seoScoreTags(tagsCsv) {
+    const focus = seoFocusKeyword();
+    const f = focus.toLowerCase();
+    const tags = tagsCsv.split(",").map(t => t.trim()).filter(Boolean);
+    const lowerTags = tags.map(t => t.toLowerCase());
+    let score = 0;
+    const notes = [];
+    if (!tags.length) return { score: 0, notes: ["No tags"] };
+    if (f && lowerTags.some(t => t.includes(f))) { score += 25; notes.push(`✓ focus keyword "${focus}" in tags (+25)`); }
+    else if (f) { notes.push(`✗ focus keyword "${focus}" missing from tags (0/25)`); }
+    if (f && lowerTags[0] && lowerTags[0].includes(f)) { score += 15; notes.push("✓ focus keyword in the FIRST tag (+15)"); }
+    else if (f) { notes.push("✗ put the focus keyword in the first tag (0/15)"); }
+    if (tags.length >= 8) { score += 20; notes.push(`✓ ${tags.length} tags (+20)`); }
+    else if (tags.length >= 5) { score += 10; notes.push(`△ ${tags.length} tags, aim for 8+ (+10)`); }
+    else { notes.push(`✗ only ${tags.length} tags (0/20)`); }
+    const covered = seoKeywords.filter(k => lowerTags.some(t => t.includes(k.toLowerCase())));
+    if (covered.length >= 3) { score += 25; notes.push(`✓ covers ${covered.length} vidIQ keywords (+25)`); }
+    else if (covered.length >= 1) { score += 10; notes.push(`△ covers ${covered.length} vidIQ keyword(s) (+10)`); }
+    else if (seoKeywords.length) { notes.push("✗ no vidIQ keywords in tags (0/25)"); }
+    else { score += 12; notes.push("△ no vidIQ keyword data (generate with vidIQ configured) (+12)"); }
+    if (tagsCsv.length >= 300 && tagsCsv.length <= 500) { score += 15; notes.push(`✓ good use of the 500-char budget (${tagsCsv.length}) (+15)`); }
+    else if (tagsCsv.length >= 200 && tagsCsv.length <= 500) { score += 8; notes.push(`△ ${tagsCsv.length}/500 chars used (+8)`); }
+    else if (tagsCsv.length > 500) { notes.push(`✗ over the 500-char limit (${tagsCsv.length}) (0/15)`); }
+    else { notes.push(`✗ only ${tagsCsv.length}/500 chars used (0/15)`); }
+    return { score, notes };
+}
+
+function updateSeoBadges() {
+    const pairs = [
+        ["desc-seo-badge", seoScoreDescription(document.getElementById("plan-description")?.value || "")],
+        ["tags-seo-badge", seoScoreTags(document.getElementById("plan-yt-tags")?.value || "")],
+    ];
+    for (const [id, result] of pairs) {
+        const badge = document.getElementById(id);
+        if (!badge) continue;
+        badge.style.display = "";
+        badge.style.background = getScoreColor(result.score);
+        badge.textContent = "SEO " + result.score;
+        badge.title = "SEO checklist (vidIQ-style, computed locally):\n" + result.notes.join("\n");
+    }
+}
 
 // Copy YouTube Tags button
 document.getElementById("copy-yt-tags-btn")?.addEventListener("click", () => {
