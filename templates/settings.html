@@ -108,6 +108,27 @@
 
             <hr class="settings-divider">
 
+            <h3>vidIQ Integration <span class="badge {{ 'connected' if vidiq_configured else 'disconnected' }}">{{ 'Configured' if vidiq_configured else 'Not Configured' }}</span></h3>
+            <p class="form-hint">Real vidIQ CTR scores and keyword data, built into plan generation: keyword research steers titles/description/tags, and every plan's title options are scored by vidIQ and topped up with vidIQ's own suggestions. Each plan uses roughly 30&ndash;50 vidIQ credits.</p>
+
+            <div class="form-group">
+                <label for="vidiq_mcp_key">vidIQ MCP Connection Key</label>
+                <input type="password" id="vidiq_mcp_key" name="vidiq_mcp_key"
+                       value="{{ ai.vidiq_mcp_key }}"
+                       placeholder="paste the key from vidIQ's MCP setup">
+                <small>Server URL: <input type="text" name="vidiq_mcp_url" value="{{ ai.vidiq_mcp_url }}" placeholder="{{ vidiq_default_url }}" style="width:18rem; display:inline-block;"> Leave blank for the default.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="vidiq_channel_id">Channel ID (improves score accuracy)</label>
+                <input type="text" id="vidiq_channel_id" name="vidiq_channel_id"
+                       value="{{ ai.vidiq_channel_id }}"
+                       placeholder="UCxxxxxxxxxxxxxxxxxxxxxx">
+                <small>Your channel's YouTube ID. <button type="button" class="btn small" id="vidiq-test-btn">Test Connection</button> <span id="vidiq-test-result"></span></small>
+            </div>
+
+            <hr class="settings-divider">
+
             <div class="form-group">
                 <label for="channel_name">Channel Name</label>
                 <input type="text" id="channel_name" name="channel_name"
@@ -803,6 +824,37 @@ document.getElementById("backend-save-btn")?.addEventListener("click", async () 
         }
     } catch (err) {
         status.textContent = "Request failed: " + err.message;
+    }
+    btn.disabled = false;
+});
+
+/* --- vidIQ connection test --- */
+document.getElementById("vidiq-test-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("vidiq-test-btn");
+    const result = document.getElementById("vidiq-test-result");
+    btn.disabled = true;
+    result.textContent = "Testing...";
+    try {
+        const resp = await fetch("/api/vidiq/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                vidiq_mcp_key: document.getElementById("vidiq_mcp_key").value.trim(),
+                vidiq_mcp_url: document.querySelector("input[name='vidiq_mcp_url']").value.trim(),
+            }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            result.textContent = "Connected as " + (data.authenticated_as || "unknown")
+                + (data.channels && data.channels.length ? " (" + data.channels.length + " channel(s))" : "");
+            result.style.color = "var(--success, #4caf50)";
+        } else {
+            result.textContent = data.error || "Connection failed.";
+            result.style.color = "var(--danger, #e57373)";
+        }
+    } catch (err) {
+        result.textContent = "Request failed: " + err.message;
+        result.style.color = "var(--danger, #e57373)";
     }
     btn.disabled = false;
 });

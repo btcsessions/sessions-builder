@@ -700,6 +700,8 @@ def generate_video_plan(
     affiliate_links: list = None,
     use_web_search: bool = True,
     lessons: list = None,
+    vidiq_keyword_section: str = "",
+    extra_tags: list = None,
 ) -> dict:
     """Generate a full video plan with title, thumbnail, outline, etc."""
 
@@ -763,7 +765,8 @@ Here are the creator's past videos for reference links:
 {past_titles}
 {_build_link_library_section(affiliate_links)}
 {_build_lessons_section(lessons)}
-{_build_title_history_section(title_history)}"""
+{_build_title_history_section(title_history)}
+{vidiq_keyword_section}"""
 
     # Real-time trend intelligence
     intel_section = ""
@@ -811,27 +814,28 @@ Use this real-time data to make the plan timely and relevant. Reference specific
         desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
-    # Build combined YouTube tags (default + generated), enforce 500 char limit
-    if default_yt_tags:
-        all_tags = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
-        generated = plan.get("tags", [])
-        seen = {t.lower() for t in all_tags}
-        for t in generated:
-            if t.lower() not in seen:
-                all_tags.append(t)
-                seen.add(t.lower())
-    else:
-        all_tags = plan.get("tags", [])
-    # Truncate to 500 chars
+    plan["yt_tags_csv"] = _build_tags_csv(plan, default_yt_tags, extra_tags)
+
+    return plan
+
+
+def _build_tags_csv(plan: dict, default_yt_tags: str = "", extra_tags: list = None) -> str:
+    """Combined YouTube tags (defaults + generated + vidIQ keywords), deduped
+    and truncated to YouTube's 500-char limit."""
+    all_tags = [t.strip() for t in (default_yt_tags or "").split(",") if t.strip()]
+    seen = {t.lower() for t in all_tags}
+    for t in list(plan.get("tags", [])) + list(extra_tags or []):
+        t = (t or "").strip()
+        if t and t.lower() not in seen:
+            all_tags.append(t)
+            seen.add(t.lower())
     csv = ""
     for t in all_tags:
         candidate = (csv + ", " + t) if csv else t
         if len(candidate) > 500:
             break
         csv = candidate
-    plan["yt_tags_csv"] = csv
-
-    return plan
+    return csv
 
 
 def parse_notes_to_plan(
@@ -850,6 +854,8 @@ def parse_notes_to_plan(
     creator_niche: str = "",
     affiliate_links: list = None,
     lessons: list = None,
+    vidiq_keyword_section: str = "",
+    extra_tags: list = None,
 ) -> dict:
     """Parse freeform notes/outline into a structured video plan."""
 
@@ -897,6 +903,7 @@ Preserve what's already good, integrate the new information, and improve where t
 {trend_section}
 {_build_link_library_section(affiliate_links)}
 {_build_lessons_section(lessons)}
+{vidiq_keyword_section}
 
 You must respond with ONLY valid JSON (no markdown, no code fences):
 
@@ -953,24 +960,7 @@ RULES:
         desc = desc.rstrip() + "\n\nPASTE TIMESTAMPS HERE"
         plan["description"] = desc
 
-    # Build combined YouTube tags, enforce 500 char limit
-    if default_yt_tags:
-        all_tags = [t.strip() for t in default_yt_tags.split(",") if t.strip()]
-        generated = plan.get("tags", [])
-        seen = {t.lower() for t in all_tags}
-        for t in generated:
-            if t.lower() not in seen:
-                all_tags.append(t)
-                seen.add(t.lower())
-    else:
-        all_tags = plan.get("tags", [])
-    csv = ""
-    for t in all_tags:
-        candidate = (csv + ", " + t) if csv else t
-        if len(candidate) > 500:
-            break
-        csv = candidate
-    plan["yt_tags_csv"] = csv
+    plan["yt_tags_csv"] = _build_tags_csv(plan, default_yt_tags, extra_tags)
 
     return plan
 

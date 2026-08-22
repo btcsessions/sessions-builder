@@ -477,6 +477,7 @@ function renderPlanFromCache(plan, cachedAiScores, titleEdits) {
     // Render titles with cached AI scores, applying any user edits
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
     aiScores = cachedAiScores;
+    if (plan.vidiq_scores) setVidiqScores(plan.vidiq_scores);
     originalTitles = [...plan.titles];
 
     const titles = titleEdits.length === plan.titles.length ? titleEdits : plan.titles;
@@ -548,6 +549,7 @@ form.addEventListener("submit", async (e) => {
             planError.textContent = data.error;
             planError.style.display = "block";
         } else {
+            if (data.vidiq_scores) setVidiqScores(data.vidiq_scores);
             renderPlan(data);
             // Carry the inferred format into follow-up calls (regenerate titles, etc.)
             currentPlanPayload.video_type = data.video_type || videoType;
@@ -708,6 +710,7 @@ document.getElementById("amend-parse-btn")?.addEventListener("click", async () =
             lastPlanData = data;
             if (data._scoring_ctx) scoringCtx = data._scoring_ctx;
             if (data.video_type) setVideoType(data.video_type);
+            if (data.vidiq_scores) setVidiqScores(data.vidiq_scores);
             renderTitles(data.titles);
             fetchAiScores(data.titles);
             renderEditableSections(data);
@@ -725,6 +728,44 @@ document.getElementById("amend-parse-btn")?.addEventListener("click", async () =
 /* --- Title CTR Scoring --- */
 let scoringCtx = null;
 let currentPlanPayload = null;
+
+/* --- vidIQ scores (real CTR scores from the vidIQ integration) --- */
+let vidiqScores = {};  // normalized title -> score (number)
+
+function vidiqNorm(t) { return (t || "").trim().toLowerCase(); }
+
+function setVidiqScores(list) {
+    (list || []).forEach(s => {
+        if (s && s.title && s.vidiq_score != null) {
+            vidiqScores[vidiqNorm(s.title)] = s.vidiq_score;
+        }
+    });
+}
+
+function vidiqChipHtml(title) {
+    const v = vidiqScores[vidiqNorm(title)];
+    if (v == null) return '<span class="vidiq-chip" style="display:none"></span>';
+    return `<span class="vidiq-chip" style="background:${getScoreColor(v)}" title="Real vidIQ CTR score">vidIQ ${v}</span>`;
+}
+
+function refreshVidiqChip(row) {
+    const input = row.querySelector(".title-editable");
+    const chip = row.querySelector(".vidiq-chip");
+    if (!input || !chip) return;
+    const v = vidiqScores[vidiqNorm(input.value)];
+    if (v == null) {
+        chip.style.display = "none";
+    } else {
+        chip.style.display = "";
+        chip.style.background = getScoreColor(v);
+        chip.textContent = "vidIQ " + v;
+        chip.title = "Real vidIQ CTR score";
+    }
+}
+
+function refreshAllVidiqChips() {
+    document.querySelectorAll("#plan-titles .title-row").forEach(refreshVidiqChip);
+}
 
 function scoreTitle(title) {
     if (!scoringCtx) return { score: 50, breakdown: [] };
@@ -907,6 +948,7 @@ function renderTitles(titles, existingAiScores) {
                 <button class="btn-icon title-move-down" data-idx="${i}" title="Move down" ${i === titles.length - 1 ? 'disabled' : ''}>&#9660;</button>
             </div>
             <div class="title-score-badge${ai ? ' ai-scored' : ''}" style="background:${getScoreColor(displayScore)}" title="${esc(tooltipText)}">${displayScore}${aiLabel ? '<span class="ai-badge-label">AI</span>' : ''}</div>
+            ${vidiqChipHtml(t)}
             <input type="text" class="title-editable" value="${esc(t)}" data-idx="${i}">
             <span class="title-score-label" style="color:${getScoreColor(displayScore)}">${getScoreLabel(displayScore)}</span>
             <button class="btn small title-rescore-btn" data-idx="${i}" title="Get AI score for this title" style="display:none">Re-score</button>
@@ -952,6 +994,7 @@ function renderTitles(titles, existingAiScores) {
                 label.textContent = getScoreLabel(score);
                 label.style.color = getScoreColor(score);
             }
+            refreshVidiqChip(row);
         });
     });
 
@@ -1172,7 +1215,9 @@ async function fetchAiScores(titles) {
             data.scores.forEach((s, i) => {
                 aiScores[i] = s;
                 aiScoredTitles[i] = titles[i];
+                if (s.vidiq != null && s.title) vidiqScores[vidiqNorm(s.title)] = s.vidiq;
             });
+            refreshAllVidiqChips();
             // Re-render with AI scores
             const container = document.getElementById("plan-titles");
             container.querySelectorAll(".title-row").forEach((row, i) => {

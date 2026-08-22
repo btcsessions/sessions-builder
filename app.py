@@ -10,6 +10,7 @@ from trends import analyze_trends
 from analytics import get_oauth_flow, save_credentials, load_credentials, is_authenticated, fetch_channel_analytics, fetch_retention_curves
 import llm
 import backend_client
+import vidiq_client
 
 load_dotenv()
 
@@ -111,7 +112,8 @@ DEFAULT_CHANNEL_NAME = "Sovereign Sessions"
 # blank values intentionally clear the key)
 AI_SETTING_KEYS = ("ai_provider", "anthropic_model", "openai_key", "maple_key", "maple_url",
                    "lmstudio_url", "openai_model", "maple_model", "lmstudio_model",
-                   "whisper_url", "whisper_model", "dictation_provider", "dictation_model")
+                   "whisper_url", "whisper_model", "dictation_provider", "dictation_model",
+                   "vidiq_mcp_key", "vidiq_mcp_url", "vidiq_channel_id")
 
 
 def _ai_settings_from_form() -> dict:
@@ -390,6 +392,8 @@ def settings_page():
             "dictation_model": llm.DEFAULT_DICTATION_ANTHROPIC_MODEL,
         },
         provider_labels=llm.PROVIDER_LABELS,
+        vidiq_default_url=vidiq_client.DEFAULT_VIDIQ_MCP_URL,
+        vidiq_configured=vidiq_client.is_configured(settings),
     )
 
 
@@ -663,6 +667,7 @@ def api_generate_plan():
             print(f"[Plan] Trend intel fetch failed: {e}")
 
         settings = load_settings()
+        vidiq_section, vidiq_keywords = _vidiq_keyword_inputs(settings, topic)
 
         plan = generate_video_plan(
             video_type=video_type,
@@ -683,12 +688,42 @@ def api_generate_plan():
             creator_niche=settings.get("channel_niche", ""),
             affiliate_links=settings.get("affiliate_links", []),
             lessons=settings.get("plan_lessons", []),
+            vidiq_keyword_section=vidiq_section,
+            extra_tags=vidiq_keywords,
         )
+        _vidiq_optimize_plan_titles(settings, plan, topic)
         plan["_scoring_ctx"] = _build_scoring_context()
         plan["_provider"] = llm.get_last_provider_used()
         return jsonify(plan)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _vidiq_keyword_inputs(settings: dict, topic: str):
+    """Best-effort vidIQ keyword research for the plan prompt + tags."""
+    if not vidiq_client.is_configured(settings):
+        return "", []
+    try:
+        return vidiq_client.keyword_prompt_section(settings, topic)
+    except Exception as e:
+        print(f"[vidIQ] keyword research failed: {e}")
+        return "", []
+
+
+def _vidiq_optimize_plan_titles(settings: dict, plan: dict, topic: str):
+    """Best-effort: score the plan's titles with vidIQ, add vidIQ's own scored
+    suggestions, and reorder best-first. Attaches plan['vidiq_scores']."""
+    if not vidiq_client.is_configured(settings) or not plan.get("titles"):
+        return
+    try:
+        optimized = vidiq_client.optimize_titles(
+            settings, plan.get("titles", []),
+            description=plan.get("description", ""), topic=topic)
+        if optimized:
+            plan["titles"] = [o["title"] for o in optimized]
+            plan["vidiq_scores"] = optimized
+    except Exception as e:
+        print(f"[vidIQ] title optimization failed: {e}")
 
 
 def _build_scoring_context() -> dict:
@@ -995,6 +1030,7 @@ def api_parse_notes():
             "info": get_current_market_info(_btc_prices),
             "summary": get_market_summary(_btc_prices, video_cache),
         }
+        vidiq_section, vidiq_keywords = _vidiq_keyword_inputs(settings, topic)
         result = parse_notes_to_plan(
             notes=notes,
             topic=topic,
@@ -1010,7 +1046,10 @@ def api_parse_notes():
             creator_niche=settings.get("channel_niche", ""),
             affiliate_links=settings.get("affiliate_links", []),
             lessons=settings.get("plan_lessons", []),
+            vidiq_keyword_section=vidiq_section,
+            extra_tags=vidiq_keywords,
         )
+        _vidiq_optimize_plan_titles(settings, result, topic)
         result["_scoring_ctx"] = _build_scoring_context()
         return jsonify(result)
     except Exception as e:
@@ -1113,9 +1152,46 @@ def api_score_titles():
             market_data=market_data,
             creator_niche=get_channel_niche(),
         )
+        # Attach real vidIQ CTR scores alongside the AI critique (best-effort)
+        if vidiq_client.is_configured(settings) and isinstance(scores, list):
+            by_title = {}
+            for t in titles:
+                try:
+                    by_title[t.strip().lower()] = vidiq_client.score_title(settings, t)
+                except Exception as e:
+                    print(f"[vidIQ] score failed for '{t[:50]}': {e}")
+            for s in scores:
+                if isinstance(s, dict):
+                    s["vidiq"] = by_title.get((s.get("title") or "").strip().lower())
         return jsonify({"scores": scores})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/vidiq/test", methods=["POST"])
+def api_vidiq_test():
+    """Validate the vidIQ MCP connection (uses the 0-credit channels call).
+
+    Unsaved values typed into the Settings form are overlaid, like
+    /api/list-models does for AI providers."""
+    data = request.get_json(silent=True) or {}
+    settings = dict(load_settings())
+    for key in ("vidiq_mcp_key", "vidiq_mcp_url"):
+        value = (data.get(key) or "").strip()
+        if value:
+            settings[key] = value
+    if not vidiq_client.is_configured(settings):
+        return jsonify({"ok": False, "error": "Enter a vidIQ MCP connection key first."})
+    try:
+        result = vidiq_client.test_connection(settings)
+        channels = result.get("channels") or []
+        return jsonify({
+            "ok": True,
+            "authenticated_as": result.get("authenticatedAs", ""),
+            "channels": [c.get("channelId", "") for c in channels if isinstance(c, dict)],
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or type(e).__name__})
 
 
 @app.route("/api/title-history", methods=["GET"])
