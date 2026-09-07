@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+from storage import locked, read_json, write_json
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get("PLANNER_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 BTC_CACHE_FILE = os.path.join(DATA_DIR, "btc_prices.json")
 SNAPSHOTS_FILE = os.path.join(DATA_DIR, "snapshots.json")
 
@@ -24,8 +25,7 @@ def _load_cached_prices() -> dict:
     """Load cached prices regardless of TTL."""
     if os.path.exists(BTC_CACHE_FILE):
         try:
-            with open(BTC_CACHE_FILE) as f:
-                return json.load(f).get("prices", {})
+            return read_json(BTC_CACHE_FILE).get("prices", {})
         except (json.JSONDecodeError, IOError):
             pass
     return {}
@@ -72,8 +72,7 @@ def fetch_btc_prices(days: int = 730) -> dict:
     if prices:
         _ensure_data_dir()
         ttl_marker = time.time() if len(prices) >= 200 else 0  # 0 = always retry
-        with open(BTC_CACHE_FILE, "w") as f:
-            json.dump({"_fetched_at": ttl_marker, "prices": prices}, f)
+        write_json(BTC_CACHE_FILE, {'_fetched_at': ttl_marker, 'prices': prices})
 
     return prices
 
@@ -389,17 +388,16 @@ def compute_longevity_score(video: dict) -> dict:
 def load_snapshots() -> dict:
     """Load historical view count snapshots. Format: {video_id: [{date, views}, ...]}"""
     if os.path.exists(SNAPSHOTS_FILE):
-        with open(SNAPSHOTS_FILE) as f:
-            return json.load(f)
+        return read_json(SNAPSHOTS_FILE)
     return {}
 
 
 def save_snapshots(snapshots: dict):
     _ensure_data_dir()
-    with open(SNAPSHOTS_FILE, "w") as f:
-        json.dump(snapshots, f)
+    write_json(SNAPSHOTS_FILE, snapshots)
 
 
+@locked
 def record_snapshot(video_cache: list, competitors_cache: list):
     """Record current view counts for all videos. Called on each app launch."""
     snapshots = load_snapshots()

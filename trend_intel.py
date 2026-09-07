@@ -21,6 +21,8 @@ Sources:
 from __future__ import annotations
 
 import json
+from storage import locked, read_json, write_json
+import threading
 import os
 import time
 import xml.etree.ElementTree as ET
@@ -28,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get("PLANNER_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 INTEL_CACHE_FILE = os.path.join(DATA_DIR, "trend_intel.json")
 NOSTR_HISTORY_FILE = os.path.join(DATA_DIR, "nostr_history.json")
 INTEL_CACHE_TTL = 4 * 3600  # 4 hours
@@ -229,8 +231,7 @@ def _load_nostr_history() -> dict:
     """Load the rolling nostr trend history."""
     if os.path.exists(NOSTR_HISTORY_FILE):
         try:
-            with open(NOSTR_HISTORY_FILE) as f:
-                return json.load(f)
+            return read_json(NOSTR_HISTORY_FILE)
         except (json.JSONDecodeError, IOError):
             pass
     return {"days": {}}
@@ -240,12 +241,12 @@ def _save_nostr_history(history: dict):
     """Save nostr trend history."""
     _ensure_data_dir()
     try:
-        with open(NOSTR_HISTORY_FILE, "w") as f:
-            json.dump(history, f)
+        write_json(NOSTR_HISTORY_FILE, history)
     except IOError as e:
         print(f"[TrendIntel] Nostr history save failed: {e}")
 
 
+@locked
 def record_nostr_snapshot(hashtags: list[str], notes: list[dict], profiles: list[dict]):
     """Record today's nostr trending data into the rolling 28-day history."""
     history = _load_nostr_history()
@@ -483,7 +484,31 @@ def _fetch_youtube_trending(api_key: str, category_id: str = "", region: str = "
     return videos
 
 
+_refresh_lock = threading.Lock()
+
+
 def gather_trend_intel() -> dict:
+    """Return last-known context immediately and refresh stale feeds off-thread."""
+    cached = _load_cache()
+    if cached:
+        return cached
+    try:
+        stale = read_json(INTEL_CACHE_FILE, {})
+    except (ValueError, OSError):
+        stale = {}
+    if _refresh_lock.acquire(blocking=False):
+        def refresh():
+            try:
+                _refresh_trend_intel()
+            except Exception as exc:
+                print(f"[TrendIntel] Background refresh failed: {exc}")
+            finally:
+                _refresh_lock.release()
+        threading.Thread(target=refresh, daemon=True).start()
+    return stale
+
+
+def _refresh_trend_intel() -> dict:
     """Gather all trend signals. Returns structured intel dict."""
     # Check cache first
     cached = _load_cache()
@@ -550,8 +575,7 @@ def _load_cache() -> dict | None:
     if not os.path.exists(INTEL_CACHE_FILE):
         return None
     try:
-        with open(INTEL_CACHE_FILE) as f:
-            data = json.load(f)
+        data = read_json(INTEL_CACHE_FILE)
         fetched = data.get("_fetched_at", "")
         if fetched:
             dt = datetime.fromisoformat(fetched)
@@ -568,8 +592,7 @@ def _save_cache(intel: dict):
     """Save intel to cache file."""
     _ensure_data_dir()
     try:
-        with open(INTEL_CACHE_FILE, "w") as f:
-            json.dump(intel, f, indent=2)
+        write_json(INTEL_CACHE_FILE, intel)
     except IOError as e:
         print(f"[TrendIntel] Cache save failed: {e}")
 
@@ -579,7 +602,8 @@ def intel_to_prompt_context(intel: dict) -> str:
     if not intel:
         return ""
 
-    lines = ["\n**CURRENT TREND INTELLIGENCE** (live data):"]
+    lines = ["\n**TREND INTELLIGENCE** (cached observations; not guaranteed current):",
+             f"Collected at: {intel.get('_fetched_at', 'unknown')}"]
 
     # --- Bitcoin network ---
     net = intel.get("bitcoin_network", {})

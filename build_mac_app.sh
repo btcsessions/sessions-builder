@@ -83,8 +83,11 @@ fi
 echo "Using python: \$PYTHON"
 \$PYTHON --version
 
-# Kill any existing instance on port 5000
-/usr/sbin/lsof -ti:5000 | xargs kill -9 2>/dev/null
+# Never terminate an unrelated process occupying the configured port.
+if /usr/sbin/lsof -tiTCP:"\${PLANNER_PORT:-5000}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Planner port is already occupied. Close the existing service before relaunching."
+    exit 1
+fi
 sleep 0.3
 
 # Launch app (foreground — the native wrapper manages the lifecycle)
@@ -128,12 +131,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Poll for server readiness, then open browser
         DispatchQueue.global().async {
+            let port = ProcessInfo.processInfo.environment["PLANNER_PORT"] ?? "5000"
+            let plannerURL = "http://127.0.0.1:\(port)"
             var ready = false
             for _ in 0..<60 {
                 let task = Process()
                 task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
                 task.arguments = ["-s", "-o", "/dev/null", "-w", "%{http_code}", "-L",
-                                  "http://127.0.0.1:5000/planner"]
+                                  "\(plannerURL)/planner"]
                 let pipe = Pipe()
                 task.standardOutput = pipe
                 task.standardError = FileHandle.nullDevice
@@ -150,7 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if ready {
                 DispatchQueue.main.async {
-                    NSWorkspace.shared.open(URL(string: "http://127.0.0.1:5000")!)
+                    NSWorkspace.shared.open(URL(string: plannerURL)!)
                 }
             }
         }

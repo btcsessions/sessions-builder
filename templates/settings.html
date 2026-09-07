@@ -188,8 +188,9 @@
         {% endif %}
 
         <div class="setup-form">
-            <h3>Cloud Sync <span class="badge {{ 'connected' if sync_configured else 'disconnected' }}">{{ 'Active' if sync_configured else 'Not Configured' }}</span></h3>
-            <p class="form-hint">Auto-sync data between machines using a private GitHub Gist.</p>
+            <p class="form-hint">Backups push after saves. Restores are manual and keep a local recovery copy. With a sync password, all backup files are encrypted.</p>
+            <h3>Cloud Backup <span class="badge {{ 'connected' if sync_configured else 'disconnected' }}">{{ 'Active' if sync_configured else 'Not Configured' }}</span></h3>
+            <p class="form-hint">Keep an off-machine backup in a GitHub Gist. Local work is never replaced at startup.</p>
 
             {% if not sync_configured %}
             <div style="margin-top:0.75rem;">
@@ -201,7 +202,7 @@
                 <div class="form-group">
                     <label for="sync_password_input">Sync Password</label>
                     <input type="password" id="sync_password_input" class="sidebar-search" placeholder="encryption password (same on all machines)">
-                    <small>Encrypts API keys before pushing to the Gist.</small>
+                    <small>Encrypts all backup files, including OAuth credentials.</small>
                 </div>
                 <div class="form-group">
                     <label for="sync_gist_id_input">Gist ID</label>
@@ -209,7 +210,7 @@
                     <small>Find this in the Gist URL or in Settings on your other machine.</small>
                 </div>
                 <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                    <button class="btn primary" id="connect-gist-btn">Connect &amp; Pull</button>
+                    <button class="btn primary" id="connect-gist-btn">Connect Backup</button>
                     <span id="sync-setup-status" class="form-hint" style="margin:0;"></span>
                 </div>
                 <details style="margin-top:1rem;">
@@ -223,7 +224,7 @@
                 <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                     <span class="form-hint" style="margin:0;">Gist ID: <code>{{ sync_gist_id[:12] }}...</code></span>
                     <button class="btn small" id="sync-push-btn">Push Now</button>
-                    <button class="btn small" id="sync-pull-btn">Pull Now</button>
+                    <button class="btn small" id="sync-pull-btn">Restore Backup</button>
                     <span id="sync-status" class="form-hint" style="margin:0;"></span>
                 </div>
                 <div style="margin-top:0.75rem;">
@@ -326,7 +327,7 @@
 
         <div class="setup-form">
             <h3>Data Export / Import</h3>
-            <p class="form-hint">Move your entire setup between machines.</p>
+            <p class="form-hint">Move your entire setup between machines. Exports include unencrypted API keys and OAuth credentials; keep the ZIP private.</p>
             <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
                 <a href="/api/export-data" class="btn primary">Export Data (.zip)</a>
                 <span class="form-hint" style="margin:0;">or</span>
@@ -506,19 +507,7 @@ if (connectGistBtn) {
             });
             const data = await resp.json();
             if (data.ok) {
-                // Auto-pull after connecting
-                syncSetupStatus.textContent = "Connected! Pulling data...";
-                try {
-                    const pullResp = await fetch("/api/sync/pull", { method: "POST" });
-                    const pullData = await pullResp.json();
-                    if (pullData.ok) {
-                        syncSetupStatus.textContent = "Synced! Reloading...";
-                    } else {
-                        syncSetupStatus.textContent = "Connected but pull failed: " + (pullData.error || "unknown error") + ". Reloading...";
-                    }
-                } catch (pullErr) {
-                    syncSetupStatus.textContent = "Connected but pull failed. Reloading...";
-                }
+                syncSetupStatus.textContent = "Connected. Use Restore Backup to restore saved data.";
                 setTimeout(() => location.reload(), 1500);
             } else {
                 syncSetupStatus.textContent = "Error: " + data.error;
@@ -552,6 +541,7 @@ if (syncPushBtn) {
 
 if (syncPullBtn) {
     syncPullBtn.addEventListener("click", async () => {
+        if (!confirm("Restore the remote backup over local saved data? A local recovery copy will be kept. Your browser draft is separate.")) return;
         syncPullBtn.disabled = true;
         syncStatus.textContent = "Pulling...";
         try {

@@ -321,12 +321,14 @@ chatForm.addEventListener("submit", async (e) => {
         setLoading(false);
 
         if (data.error) {
+            chatInput.value = message;
             appendMessage("assistant", `Error: ${data.error}`);
         } else {
             appendMessage("assistant", data.reply, data.plan_change || null, data.lessons_saved || null);
         }
     } catch (err) {
         setLoading(false);
+        chatInput.value = message;
         appendMessage("assistant", `Error: ${err.message}`);
     }
 

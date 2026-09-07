@@ -8,3 +8,6 @@ dist/
 build/
 data/
 *.app/
+
+.DS_Store
+launch.log

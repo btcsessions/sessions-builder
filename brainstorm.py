@@ -584,7 +584,7 @@ When the user states a durable preference that should apply to FUTURE plans or o
 
         plan_section += """
 
-You can see and modify this plan. When the user asks you to change something about the plan (titles, outline, hook, tags, thumbnails, description), respond with your explanation AND include the changes in a fenced code block tagged `plan_change` containing valid JSON. Only include the fields being changed.
+You can see and modify this plan. When the user asks you to change something about the plan (titles, outline, hook, tags, thumbnails, description), respond with your explanation AND include the changes in a fenced code block tagged `plan_change` containing valid JSON. Only include the fields being changed. Keep your explanation brief to leave space for complete JSON; never reproduce an unchanged outline.
 
 Example — if the user says "make the titles shorter":
 ```plan_change
@@ -608,11 +608,11 @@ IMPORTANT: Only include `plan_change` blocks when the user is explicitly asking 
         augmented_message += "\n\n---\n" + "\n\n".join(fetched_parts)
 
     messages = []
-    for msg in chat_history:
+    for msg in chat_history[-20:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": augmented_message})
 
-    return llm_chat(settings, system_prompt, messages, max_tokens=4000)
+    return llm_chat(settings, system_prompt, messages, max_tokens=12000 if plan_state else 4000)
 
 
 def _build_title_history_section(title_history: list = None) -> str:

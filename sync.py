@@ -3,9 +3,8 @@
 Requires a GitHub personal access token with 'gist' scope and a Gist ID.
 Stores each data file as a separate file in the Gist.
 
-settings.json is encrypted before pushing to prevent GitHub secret scanning
-from detecting and revoking API keys. A sync password (same on all machines)
-is used for encryption.
+All data files are encrypted when a sync password is set. Legacy backups remain
+readable through explicit restore; startup never replaces local work.
 """
 from __future__ import annotations
 
@@ -14,10 +13,13 @@ import hashlib
 import json
 import os
 import time
+import threading
+from storage import DATA_LOCK, read_json, restore_documents, validate_document
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get("PLANNER_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_REMOTE_LOCK = threading.RLock()
 
 # Files to sync
 SYNC_FILES = [
@@ -151,171 +153,123 @@ def get_last_sync_error() -> str:
     return _last_sync_error
 
 
-def pull_from_gist() -> bool:
-    """Pull latest data from the Gist. Returns True if data was updated."""
-    gist_id, token = _get_sync_config()
-    if not gist_id or not token:
-        return False
+def _remote_content(entry):
+    if entry.get("truncated"):
+        # Never install GitHub's truncated preview as a complete data file.
+        from urllib.parse import urlsplit
+        url = entry.get("raw_url", "")
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or parsed.hostname != "gist.githubusercontent.com":
+            raise ValueError("Backup has an invalid raw download URL")
+        with urlopen(Request(url, headers={"User-Agent": "sessions-builder-sync"}), timeout=30) as response:
+            content = response.read(50 * 1024 * 1024 + 1)
+        if len(content) > 50 * 1024 * 1024:
+            raise ValueError("Backup file is too large")
+        return content.decode("utf-8")
+    return entry.get("content", "")
 
-    password = _get_sync_password()
 
-    print("[Sync] Pulling data from Gist...")
-    gist = _gist_api("GET", gist_id, token)
-    if not gist:
-        print("[Sync] Pull failed.")
-        return False
+def _local_contents():
+    from pathlib import Path
+    return {name: (Path(DATA_DIR) / name).read_text(encoding="utf-8")
+            if (Path(DATA_DIR) / name).exists() else None for name in SYNC_FILES}
 
-    files = gist.get("files", {})
-    if not files:
-        print("[Sync] Gist is empty, nothing to pull.")
-        return False
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    updated = 0
-
-    for filename in SYNC_FILES:
-        settings_encrypted = False
-
-        # For settings.json, check for encrypted version first
-        if filename == "settings.json":
-            if "settings.json.enc" in files and password:
-                enc_content = files["settings.json.enc"].get("content", "")
-                if enc_content:
-                    decrypted = _decrypt(enc_content, password)
-                    if decrypted:
-                        content = decrypted
-                        settings_encrypted = True
-                        print("[Sync] Decrypted settings.json from Gist.")
-                    else:
-                        print("[Sync] WARNING: Could not decrypt settings.json — wrong password?")
-                        continue
-                else:
+def pull_from_gist(on_restore=None) -> bool:
+    """Explicit restore only; validate all files and retain a recovery snapshot."""
+    global _last_sync_error
+    with _REMOTE_LOCK:
+        gist_id, token = _get_sync_config()
+        if not gist_id or not token:
+            _last_sync_error = "Sync is not configured"
+            return False
+        password = _get_sync_password()
+        with DATA_LOCK:
+            before = _local_contents()
+        gist = _gist_api("GET", gist_id, token)
+        if gist is None:
+            return False
+        try:
+            documents = {}
+            files = gist.get("files", {})
+            for name in SYNC_FILES:
+                encrypted = name + ".enc" in files
+                entry = files.get(name + ".enc") if encrypted else files.get(name)
+                if not entry:
                     continue
-            elif filename in files:
-                # Fallback: unencrypted settings.json (legacy or no password)
-                content = files[filename].get("content", "")
-                if not content:
-                    continue
-            else:
-                continue
-        else:
-            if filename not in files:
-                continue
-            content = files[filename].get("content", "")
-            if not content:
-                continue
-
-        local_path = os.path.join(DATA_DIR, filename)
-
-        # Compare with local — skip if identical
-        local_content = ""
-        if os.path.exists(local_path):
-            try:
-                with open(local_path) as f:
-                    local_content = f.read()
-            except IOError:
-                pass
-
-        if content.strip() == local_content.strip():
-            continue
-
-        # For settings.json, preserve local-only keys (always) and
-        # secret keys (only when pulling unencrypted, since those are
-        # stripped from the Gist and the local copy has the real values)
-        if filename == "settings.json":
-            try:
-                local_settings = json.loads(local_content) if local_content.strip() else {}
-                gist_settings = json.loads(content)
-                # Always preserve local-only keys
-                for key in LOCAL_ONLY_KEYS:
-                    if key in local_settings:
-                        gist_settings[key] = local_settings[key]
-                # If unencrypted, also preserve secret keys (they were stripped)
-                if not settings_encrypted:
-                    for key in SECRET_KEYS:
-                        if key in local_settings and not gist_settings.get(key):
-                            gist_settings[key] = local_settings[key]
-                content = json.dumps(gist_settings)
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Write the Gist version locally
-        with open(local_path, "w") as f:
-            f.write(content)
-        updated += 1
-
-    if updated:
-        print(f"[Sync] Pulled {updated} file(s) from Gist.")
-    else:
-        print("[Sync] Already up to date.")
-    return updated > 0
+                content = _remote_content(entry)
+                if encrypted:
+                    if not password:
+                        raise ValueError("Enter the backup password before restoring")
+                    content = _decrypt(content, password)
+                    if content is None:
+                        raise ValueError("Cannot decrypt backup; check the sync password. Nothing was restored.")
+                value = json.loads(content)
+                validate_document(name, value)
+                if name == "settings.json":
+                    local = json.loads(before[name] or "{}")
+                    for key in LOCAL_ONLY_KEYS:
+                        value.pop(key, None)
+                        if key in local:
+                            value[key] = local[key]
+                    if not encrypted:
+                        for key in SECRET_KEYS:
+                            if key in local and not value.get(key):
+                                value[key] = local[key]
+                if value != json.loads(before[name] or "null"):
+                    documents[name] = value
+            with DATA_LOCK:
+                if _local_contents() != before:
+                    raise ValueError("Local data changed during download. Retry the restore when editing is finished.")
+                if documents:
+                    restore_documents(DATA_DIR, documents)
+                    if on_restore:
+                        on_restore()
+            _last_sync_error = ""
+            return bool(documents)
+        except (ValueError, OSError) as exc:
+            _last_sync_error = str(exc)
+            return False
 
 
 def push_to_gist() -> bool:
-    """Push current data files to the Gist. Returns True on success."""
+    """Snapshot locally, then publish. Encrypt all files when a password exists."""
     global _last_sync_error
-    gist_id, token = _get_sync_config()
-    if not gist_id or not token:
-        print(f"[Sync] Push skipped — gist_id={'set' if gist_id else 'MISSING'}, token={'set' if token else 'MISSING'}")
-        return False
-    print(f"[Sync] Config: gist_id={gist_id[:8]}..., token={token[:8]}...")
-
-    password = _get_sync_password()
-
-    files = {}
-    for filename in SYNC_FILES:
-        local_path = os.path.join(DATA_DIR, filename)
-        if os.path.exists(local_path):
-            try:
-                with open(local_path) as f:
-                    content = f.read()
-                if not content.strip():
-                    continue
-
-                if filename == "settings.json":
-                    # Strip local-only keys (they don't belong in the Gist)
-                    try:
-                        settings_data = json.loads(content)
+    with _REMOTE_LOCK:
+        gist_id, token = _get_sync_config()
+        if not gist_id or not token:
+            _last_sync_error = "Sync is not configured"
+            return False
+        password = _get_sync_password()
+        try:
+            files = {"oauth_token.json": None}
+            with DATA_LOCK:
+                for name, content in _local_contents().items():
+                    if content is None:
+                        continue
+                    value = json.loads(content)  # Fail closed: never upload corrupt settings.
+                    validate_document(name, value)
+                    if name == "settings.json":
                         for key in LOCAL_ONLY_KEYS:
-                            settings_data.pop(key, None)
-                        content = json.dumps(settings_data)
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-
+                            value.pop(key, None)
                     if password:
-                        # Encrypt settings and push as settings.json.enc
-                        encrypted = _encrypt(content, password)
-                        files["settings.json.enc"] = {"content": encrypted}
-                        print("[Sync] Settings encrypted for push.")
+                        files[name + ".enc"] = {"content": _encrypt(json.dumps(value), password)}
+                        files[name] = None  # Remove plaintext from the current Gist revision.
+                    elif name == "oauth_token.json":
+                        files[name] = None  # OAuth credentials are never backed up unencrypted.
                     else:
-                        # No password — push unencrypted (legacy behavior)
-                        # Still strip secrets that GitHub would revoke
-                        try:
-                            settings_data = json.loads(content)
+                        if name == "settings.json":
                             for key in SECRET_KEYS:
-                                settings_data.pop(key, None)
-                            content = json.dumps(settings_data)
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-                        files[filename] = {"content": content}
-                        _last_sync_error = ""
-                else:
-                    files[filename] = {"content": content}
-            except IOError:
-                continue
-
-    if not files:
-        print("[Sync] No data files to push.")
-        return False
-
-    print(f"[Sync] Pushing {len(files)} file(s) to Gist...")
-    result = _gist_api("PATCH", gist_id, token, {"files": files})
-    if result:
-        print("[Sync] Push successful.")
-        return True
-    else:
-        print("[Sync] Push failed.")
-        return False
+                                value.pop(key, None)
+                        files[name] = {"content": json.dumps(value)}
+            if not any(value is not None for value in files.values()):
+                _last_sync_error = "No data files to back up"
+                return False
+            result = _gist_api("PATCH", gist_id, token, {"files": files})
+            return result is not None
+        except (ValueError, OSError) as exc:
+            _last_sync_error = str(exc)
+            return False
 
 
 def create_sync_gist(token: str, description: str = "BTC Sessions Planner - Data Sync") -> str | None:

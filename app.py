@@ -1,3 +1,4 @@
+from storage import DATA_LOCK, locked, read_json, write_json, recover_restore, restore_documents
 import os
 import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
@@ -19,9 +20,13 @@ os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "yt-planner-secret-key")
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+DATA_DIR = os.environ.get("PLANNER_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+recover_restore(DATA_DIR)
+from security import configure_security
+configure_security(app, DATA_DIR)
+
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CACHE_FILE = os.path.join(DATA_DIR, "videos.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
@@ -69,6 +74,7 @@ def _do_sync_push():
         print(f"[Sync] Background push failed: {e}")
 
 
+@locked
 def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url="",
                    oauth_client_id="", oauth_client_secret="",
                    sync_gist_id="", sync_github_token="", sync_password="",
@@ -101,8 +107,7 @@ def save_settings(playlist_id="", google_key="", anthropic_key="", playlist_url=
     # Other managed fields (e.g. backend_url/backend_token): exact values to set
     if extra_settings is not None:
         settings.update(extra_settings)
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     _schedule_sync_push()
 
 
@@ -137,71 +142,63 @@ def get_channel_niche() -> str:
 
 def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
+        return read_json(SETTINGS_FILE)
     return {}
 
 
 def save_video_cache(videos: list):
     _ensure_data_dir()
-    with open(CACHE_FILE, "w") as f:
-        json.dump(videos, f)
+    write_json(CACHE_FILE, videos)
     _schedule_sync_push()
 
 
 def load_video_cache() -> list:
     if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE) as f:
-            return json.load(f)
+        return read_json(CACHE_FILE)
     return []
 
 
 def save_analytics(data: dict):
     _ensure_data_dir()
-    with open(ANALYTICS_FILE, "w") as f:
-        json.dump(data, f)
+    write_json(ANALYTICS_FILE, data)
     _schedule_sync_push()
 
 
 def load_analytics() -> dict:
     if os.path.exists(ANALYTICS_FILE):
-        with open(ANALYTICS_FILE) as f:
-            return json.load(f)
+        return read_json(ANALYTICS_FILE)
     return {}
 
 
+@locked
 def save_competitors(data: list):
     _ensure_data_dir()
-    with open(COMPETITORS_FILE, "w") as f:
-        json.dump(data, f)
+    write_json(COMPETITORS_FILE, data)
     _schedule_sync_push()
 
 
 def load_competitors() -> list:
     if os.path.exists(COMPETITORS_FILE):
-        with open(COMPETITORS_FILE) as f:
-            return json.load(f)
+        return read_json(COMPETITORS_FILE)
     return []
 
 
 def save_title_history(data: list):
     _ensure_data_dir()
-    with open(TITLE_HISTORY_FILE, "w") as f:
-        json.dump(data, f)
+    write_json(TITLE_HISTORY_FILE, data)
     _schedule_sync_push()
 
 
 def load_title_history() -> list:
     if os.path.exists(TITLE_HISTORY_FILE):
-        with open(TITLE_HISTORY_FILE) as f:
-            return json.load(f)
+        return read_json(TITLE_HISTORY_FILE)
     return []
 
 
+@locked
 def save_plans(data: list):
     _ensure_data_dir()
-    with open(PLANS_FILE, "w") as f:
-        json.dump(data, f)
+    write_json(PLANS_FILE, data)
     _schedule_sync_push()
 
 
@@ -240,10 +237,10 @@ def migrate_plan(plan: dict) -> dict:
     return plan
 
 
+@locked
 def load_plans() -> list:
     if os.path.exists(PLANS_FILE):
-        with open(PLANS_FILE) as f:
-            plans = json.load(f)
+        plans = read_json(PLANS_FILE)
         migrated = False
         for i, p in enumerate(plans):
             if p.get("schema_version", 1) < CURRENT_PLAN_SCHEMA:
@@ -277,36 +274,18 @@ _startup_done = threading.Event()
 def _background_startup():
     global _btc_prices, _snapshots, video_cache, analytics_cache, competitors_cache, title_history, plans_cache
     try:
-        # Sync pull — only auto-pull if a sync password is set (encrypted sync).
-        # Without a password, auto-pull would overwrite local API keys with the
-        # stripped Gist version. Users without a password can still pull manually.
-        from sync import _get_sync_password
-        _pw = _get_sync_password()
-        if _pw:
-            try:
-                if pull_from_gist():
-                    # Reload data that may have been updated by sync
-                    video_cache = load_video_cache()
-                    analytics_cache = load_analytics()
-                    competitors_cache = load_competitors()
-                    title_history = load_title_history()
-                    plans_cache = load_plans()
-                    _saved_inner = load_settings()
-                    playlist_info["playlist_id"] = _saved_inner.get("playlist_id", "") or playlist_info["playlist_id"]
-                    playlist_info["google_key"] = _saved_inner.get("google_key", "") or playlist_info["google_key"]
-            except Exception as e:
-                print(f"[Sync] Pull on startup failed: {e}")
-        else:
-            print("[Sync] Skipping auto-pull (no sync password set). Use Pull button in Settings.")
-
+        # The laptop is authoritative. Restores are explicit and recoverable.
+        # Never pull at startup: the remote backup may be older than local edits.
         # Auto-refresh competitors
         _gk = playlist_info.get("google_key", "")
         if _gk and competitors_cache:
-            for _comp in competitors_cache:
+            for _comp in list(competitors_cache):
                 try:
                     _result = fetch_channel_videos(_comp["url"], _gk, max_videos=30)
-                    _comp["videos"] = _result["videos"]
-                    _comp["name"] = _result["channel_title"]
+                    with DATA_LOCK:
+                        if _comp in competitors_cache:
+                            _comp["videos"] = _result["videos"]
+                            _comp["name"] = _result["channel_title"]
                 except Exception:
                     pass
             save_competitors(competitors_cache)
@@ -328,7 +307,8 @@ def _background_startup():
         print("[Startup] Background initialization complete.")
 
 _startup_thread = threading.Thread(target=_background_startup, daemon=True)
-_startup_thread.start()
+if os.environ.get("PLANNER_SKIP_BACKGROUND") != "1":
+    _startup_thread.start()
 
 
 @app.route("/")
@@ -504,6 +484,7 @@ def api_list_models():
 
 
 @app.route("/api/desc-template", methods=["GET", "POST"])
+@locked
 def api_desc_template():
     """Get or save the description defaults (sponsor block, default YT tags)."""
     settings = load_settings()
@@ -522,8 +503,7 @@ def api_desc_template():
     # Remove old field if migrating
     settings.pop("desc_template", None)
     _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     _schedule_sync_push()
     return jsonify({"ok": True})
 
@@ -599,11 +579,14 @@ def api_chat():
             match = re.search(r"```plan_change\s*\n([\s\S]*?)```", reply)
             if match:
                 try:
-                    plan_change = _loads_ai_json(match.group(1))
+                    from plan_changes import validate_change
+                    plan_change = validate_change(_loads_ai_json(match.group(1)))
                     # Remove the JSON block from the displayed reply
                     reply = reply[:match.start()].rstrip() + reply[match.end():].lstrip()
                 except (json.JSONDecodeError, ValueError):
-                    pass
+                    return jsonify({"error": "The AI returned an invalid plan change. Your plan has not changed. Retry or request a smaller change."}), 502
+            else:
+                return jsonify({"error": "The AI response was cut off. Your plan has not changed. Retry or request fewer sections."}), 502
 
         # Check for standing-rule (lesson) blocks the model wants saved
         lessons_saved = []
@@ -624,6 +607,7 @@ def api_chat():
 
         chat_history.append({"role": "user", "content": user_message})
         chat_history.append({"role": "assistant", "content": reply})
+        del chat_history[:-20]
 
         result = {"reply": reply}
         if plan_change:
@@ -848,6 +832,7 @@ def api_get_affiliate_links():
 
 
 @app.route("/api/affiliate-links/add", methods=["POST"])
+@locked
 def api_add_affiliate_link():
     data = request.get_json()
     title = (data.get("title") or "").strip()
@@ -864,13 +849,13 @@ def api_add_affiliate_link():
     links.append(entry)
     settings["affiliate_links"] = links
     _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     _schedule_sync_push()
     return jsonify({"ok": True})
 
 
 @app.route("/api/affiliate-links/remove", methods=["POST"])
+@locked
 def api_remove_affiliate_link():
     data = request.get_json()
     idx = data.get("index")
@@ -881,12 +866,12 @@ def api_remove_affiliate_link():
     links.pop(idx)
     settings["affiliate_links"] = links
     _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     _schedule_sync_push()
     return jsonify({"ok": True})
 
 
+@locked
 def _save_plan_lessons(texts: list, source: str = "chat") -> list:
     """Append standing rules to settings, skipping duplicates.
 
@@ -908,8 +893,7 @@ def _save_plan_lessons(texts: list, source: str = "chat") -> list:
     if saved:
         settings["plan_lessons"] = lessons
         _ensure_data_dir()
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(settings, f)
+        write_json(SETTINGS_FILE, settings)
         _schedule_sync_push()
     return saved
 
@@ -933,6 +917,7 @@ def api_add_lesson():
 
 
 @app.route("/api/lessons/remove", methods=["POST"])
+@locked
 def api_remove_lesson():
     data = request.get_json()
     idx = data.get("index")
@@ -950,8 +935,7 @@ def api_remove_lesson():
     lessons.pop(idx)
     settings["plan_lessons"] = lessons
     _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     _schedule_sync_push()
     return jsonify({"ok": True})
 
@@ -1204,6 +1188,7 @@ def api_get_title_history():
 
 
 @app.route("/api/title-history/save", methods=["POST"])
+@locked
 def api_save_title():
     global title_history
     data = request.get_json()
@@ -1227,6 +1212,7 @@ def api_save_title():
 
 
 @app.route("/api/title-history/delete", methods=["POST"])
+@locked
 def api_delete_title():
     global title_history
     data = request.get_json()
@@ -1288,6 +1274,7 @@ def api_mark_title_used():
 
 
 @app.route("/api/plans/save", methods=["POST"])
+@locked
 def api_save_plan():
     """Save or update a full plan for resuming and post-mortem tracking."""
     global plans_cache
@@ -1306,6 +1293,8 @@ def api_save_plan():
 
     # Full plan data for resuming later
     full_plan = {
+        "vidiq_scores": plan_data.get("vidiq_scores", []),
+        "vidiq_keywords": plan_data.get("vidiq_keywords", []),
         "titles": plan_data.get("titles", []),
         "thumbnail_ideas": plan_data.get("thumbnail_ideas", []),
         "intro_hook": plan_data.get("intro_hook", ""),
@@ -1331,11 +1320,12 @@ def api_save_plan():
             plan["schema_version"] = CURRENT_PLAN_SCHEMA
             save_plans(plans_cache)
             return jsonify({"ok": True, "plan_id": plan_id})
+        return jsonify({"error": "This plan no longer exists. Reload plan history before saving."}), 404
 
     # Create new plan
     plan_entry = {
         "schema_version": CURRENT_PLAN_SCHEMA,
-        "id": datetime.now().strftime("%Y%m%d%H%M%S"),
+        "id": __import__("uuid").uuid4().hex,
         "created_at": datetime.now().isoformat()[:10],
         "topic": topic,
         "video_type": video_type,
@@ -1371,6 +1361,7 @@ def api_get_archived_plans():
 
 
 @app.route("/api/plans/archive", methods=["POST"])
+@locked
 def api_archive_plan():
     global plans_cache
     data = request.get_json()
@@ -1384,6 +1375,7 @@ def api_archive_plan():
 
 
 @app.route("/api/plans/unarchive", methods=["POST"])
+@locked
 def api_unarchive_plan():
     global plans_cache
     data = request.get_json()
@@ -1397,6 +1389,7 @@ def api_unarchive_plan():
 
 
 @app.route("/api/plans/delete", methods=["POST"])
+@locked
 def api_delete_plan():
     global plans_cache
     data = request.get_json()
@@ -1723,6 +1716,7 @@ def api_add_competitor():
 
 
 @app.route("/api/competitors/remove", methods=["POST"])
+@locked
 def api_remove_competitor():
     global competitors_cache
     data = request.get_json()
@@ -1733,6 +1727,7 @@ def api_remove_competitor():
 
 
 @app.route("/api/competitors/update-category", methods=["POST"])
+@locked
 def api_update_competitor_category():
     global competitors_cache
     data = request.get_json()
@@ -1749,6 +1744,7 @@ def api_update_competitor_category():
 
 
 @app.route("/api/competitors/toggle-own-channel", methods=["POST"])
+@locked
 def api_toggle_own_channel():
     global competitors_cache
     data = request.get_json()
@@ -1764,6 +1760,7 @@ def api_toggle_own_channel():
 
 
 @app.route("/api/competitors/set-own-role", methods=["POST"])
+@locked
 def api_set_own_role():
     """Set a tracked channel's role: '' (competitor), 'legacy' (previous main
     channel), or 'current' (the new channel these plans are for)."""
@@ -1918,9 +1915,14 @@ def oauth_callback():
     client_secret = settings.get("oauth_client_secret", "")
 
     redirect_uri = url_for("oauth_callback", _external=True)
-    flow = get_oauth_flow(client_id, client_secret, redirect_uri)
-    # Restore the code verifier from the session
-    flow.code_verifier = session.get("code_verifier")
+    import secrets
+    expected_state = session.pop("oauth_state", None)
+    supplied_state = request.args.get("state", "")
+    verifier = session.pop("code_verifier", None)
+    if not expected_state or not secrets.compare_digest(expected_state, supplied_state):
+        return jsonify({"error": "OAuth state mismatch. Connect YouTube Analytics again."}), 400
+    flow = get_oauth_flow(client_id, client_secret, redirect_uri, state=expected_state)
+    flow.code_verifier = verifier
 
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -1976,25 +1978,14 @@ def api_fetch_retention():
 
 @app.route("/api/update", methods=["POST"])
 def update_app():
-    import subprocess
+    from updater import UPDATE_LOCK, prepare_update
+    if not UPDATE_LOCK.acquire(blocking=False):
+        return jsonify({"error": "An update is already in progress."}), 409
     app_dir = os.path.dirname(os.path.abspath(__file__))
     try:
-        # Detect the current branch
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=10, cwd=app_dir,
-        )
-        branch = branch_result.stdout.strip() or "claude/youtube-planning-app-B52L2"
-
-        result = subprocess.run(
-            ["git", "pull", "origin", branch],
-            capture_output=True, text=True, timeout=30, cwd=app_dir,
-        )
-        output = result.stdout.strip()
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr.strip() or "Git pull failed"}), 500
-        if "Already up to date" in output:
-            return jsonify({"updated": False, "message": "Already up to date."})
+        result = prepare_update(app_dir)
+        if not result["updated"]:
+            return jsonify(result)
 
         # A pull alone doesn't apply anything — the running process keeps its
         # already-imported modules. Restart in place (exec keeps the same PID,
@@ -2010,9 +2001,12 @@ def update_app():
                 pass
             os.execv(sys.executable, [sys.executable] + sys.argv)
         threading.Thread(target=_restart, daemon=True).start()
-        return jsonify({"updated": True, "restarting": True, "message": output})
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    finally:
+        UPDATE_LOCK.release()
 
 
 @app.route("/api/clear-chat", methods=["POST"])
@@ -2020,6 +2014,16 @@ def clear_chat():
     global chat_history
     chat_history = []
     return jsonify({"ok": True})
+
+
+@locked
+def _save_sync_config(token="", gist_id="", password=""):
+    settings = load_settings()
+    for key, value in (("sync_github_token", token), ("sync_gist_id", gist_id),
+                       ("sync_password", password)):
+        if value:
+            settings[key] = value
+    write_json(SETTINGS_FILE, settings)
 
 
 @app.route("/api/sync/create-gist", methods=["POST"])
@@ -2037,18 +2041,13 @@ def api_create_sync_gist():
         return jsonify({"error": "Failed to create Gist. Check your token has 'gist' scope."}), 400
 
     # Save to settings
-    settings = load_settings()
-    settings["sync_gist_id"] = gist_id
-    settings["sync_github_token"] = token
-    if password:
-        settings["sync_password"] = password
-    _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    _save_sync_config(token=token, gist_id=gist_id, password=password)
 
     # Immediately push current data
     from sync import push_to_gist
-    push_to_gist()
+    if not push_to_gist():
+        from sync import get_last_sync_error
+        return jsonify({"ok": False, "saved": True, "error": get_last_sync_error()}), 502
 
     return jsonify({"ok": True, "gist_id": gist_id})
 
@@ -2064,36 +2063,22 @@ def api_sync_connect():
         return jsonify({"error": "Both token and gist_id are required"}), 400
 
     # Save sync config
-    settings = load_settings()
-    settings["sync_gist_id"] = gist_id
-    settings["sync_github_token"] = token
-    if password:
-        settings["sync_password"] = password
-    _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    _save_sync_config(token=token, gist_id=gist_id, password=password)
 
-    # Pull data from the existing Gist
-    global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
-    pull_from_gist()
-    video_cache = load_video_cache()
-    analytics_cache = load_analytics()
-    competitors_cache = load_competitors()
-    title_history = load_title_history()
-    plans_cache = load_plans()
+    # Connecting chooses a backup destination; restoring is a separate action.
 
     return jsonify({"ok": True})
 
 
 @app.route("/api/sync/disconnect", methods=["POST"])
+@locked
 def api_sync_disconnect():
     """Disconnect sync by clearing Gist settings."""
     settings = load_settings()
     settings.pop("sync_gist_id", None)
     settings.pop("sync_github_token", None)
     _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    write_json(SETTINGS_FILE, settings)
     return jsonify({"ok": True})
 
 
@@ -2106,22 +2091,12 @@ def api_sync_update_token():
     password = data.get("password", "").strip()
     if not token and not gist_id and not password:
         return jsonify({"error": "Enter a token, Gist ID, or password to update"}), 400
-    settings = load_settings()
-    if token:
-        settings["sync_github_token"] = token
-    if gist_id:
-        settings["sync_gist_id"] = gist_id
-    if password:
-        settings["sync_password"] = password
-    _ensure_data_dir()
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f)
+    _save_sync_config(token=token, gist_id=gist_id, password=password)
     # Push immediately so the Gist has the updated credentials
     from sync import push_to_gist
-    try:
-        push_to_gist()
-    except Exception:
-        pass
+    if not push_to_gist():
+        from sync import get_last_sync_error
+        return jsonify({"ok": False, "saved": True, "error": get_last_sync_error()}), 502
     return jsonify({"ok": True})
 
 
@@ -2143,15 +2118,24 @@ def api_sync_pull():
     """Manually trigger a sync pull."""
     if not is_sync_configured():
         return jsonify({"error": "Sync not configured"}), 400
-    global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
-    updated = pull_from_gist()
-    if updated:
-        video_cache = load_video_cache()
-        analytics_cache = load_analytics()
-        competitors_cache = load_competitors()
-        title_history = load_title_history()
-        plans_cache = load_plans()
+    updated = pull_from_gist(on_restore=_reload_persisted_data)
+    from sync import get_last_sync_error
+    if get_last_sync_error():
+        return jsonify({"ok": False, "error": get_last_sync_error()}), 409
     return jsonify({"ok": True, "updated": updated})
+
+
+@locked
+def _reload_persisted_data():
+    global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
+    video_cache = load_video_cache()
+    analytics_cache = load_analytics()
+    competitors_cache = load_competitors()
+    title_history = load_title_history()
+    plans_cache = load_plans()
+    settings = load_settings()
+    playlist_info.update(playlist_id=settings.get("playlist_id", ""),
+                         google_key=settings.get("google_key", ""))
 
 
 @app.route("/api/export-data")
@@ -2210,19 +2194,24 @@ def api_import_data():
                 "nostr_history.json", "title_history.json",
                 "plans.json",
             }
+            documents = {}
+            if sum(info.file_size for info in zf.infolist()) > 100 * 1024 * 1024:
+                return jsonify({"error": "Uncompressed archive exceeds 100 MB"}), 400
             for name in zf.namelist():
                 if name in allowed:
-                    zf.extract(name, DATA_DIR)
+                    if name in documents:
+                        raise ValueError("Archive contains duplicate data files")
+                    documents[name] = json.loads(zf.read(name))
 
-        # Reload in-memory caches
-        global video_cache, analytics_cache, competitors_cache, title_history, plans_cache
-        video_cache = load_video_cache()
-        analytics_cache = load_analytics()
-        competitors_cache = load_competitors()
-        title_history = load_title_history()
-        plans_cache = load_plans()
+        if not documents:
+            return jsonify({"error": "Archive contains no supported data files"}), 400
+        with DATA_LOCK:
+            restore_documents(DATA_DIR, documents)
+            _reload_persisted_data()
 
         return jsonify({"ok": True, "message": "Data imported. Refresh the page."})
+    except (ValueError, UnicodeError) as e:
+        return jsonify({"error": str(e)}), 400
     except zipfile.BadZipFile:
         return jsonify({"error": "Invalid zip file"}), 400
     except Exception as e:
@@ -2245,6 +2234,11 @@ def shutdown_app():
 
 
 if __name__ == "__main__":
+    from updater import patch_installed_launcher
+    try:
+        patch_installed_launcher(os.path.dirname(os.path.abspath(__file__)))
+    except OSError as exc:
+        print(f"[Launcher] Could not apply safe port check: {exc}")
     # Disable reloader when launched from .app bundle (keeps process alive for Dock)
     use_reloader = os.environ.get("LAUNCHED_FROM_APP") != "1"
     # Auto-start the local Whisper dictation server (if installed via
@@ -2257,4 +2251,4 @@ if __name__ == "__main__":
     # network (http://<machine-ip>:5000). Default stays local-only.
     host = os.environ.get("PLANNER_HOST", "127.0.0.1")
     port = int(os.environ.get("PLANNER_PORT", "5000"))
-    app.run(debug=True, host=host, port=port, use_reloader=use_reloader)
+    app.run(debug=False, host=host, port=port, use_reloader=use_reloader)

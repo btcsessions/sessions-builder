@@ -36,6 +36,7 @@
 
     const updateBtn = document.getElementById("update-app-btn");
     updateBtn.addEventListener("click", async () => {
+        if (window.plannerSaveDraft) window.plannerSaveDraft();
         updateBtn.disabled = true;
         updateBtn.textContent = "Checking...";
         try {

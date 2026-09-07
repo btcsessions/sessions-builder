@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from storage import read_json, write_json
 import os
 import json
 from datetime import datetime, timedelta
@@ -7,12 +8,12 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get("PLANNER_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 TOKEN_FILE = os.path.join(DATA_DIR, "oauth_token.json")
 SCOPES = ["https://www.googleapis.com/auth/yt-analytics.readonly"]
 
 
-def get_oauth_flow(client_id: str, client_secret: str, redirect_uri: str) -> Flow:
+def get_oauth_flow(client_id: str, client_secret: str, redirect_uri: str, state=None) -> Flow:
     """Create an OAuth 2.0 flow for YouTube Analytics."""
     client_config = {
         "web": {
@@ -23,7 +24,7 @@ def get_oauth_flow(client_id: str, client_secret: str, redirect_uri: str) -> Flo
             "redirect_uris": [redirect_uri],
         }
     }
-    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
+    flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri, state=state)
     return flow
 
 
@@ -38,16 +39,14 @@ def save_credentials(creds: Credentials):
         "client_secret": creds.client_secret,
         "scopes": list(creds.scopes) if creds.scopes else SCOPES,
     }
-    with open(TOKEN_FILE, "w") as f:
-        json.dump(token_data, f)
+    write_json(TOKEN_FILE, token_data)
 
 
 def load_credentials() -> Credentials | None:
     """Load saved OAuth credentials."""
     if not os.path.exists(TOKEN_FILE):
         return None
-    with open(TOKEN_FILE) as f:
-        token_data = json.load(f)
+    token_data = read_json(TOKEN_FILE)
     creds = Credentials(
         token=token_data["token"],
         refresh_token=token_data.get("refresh_token"),

@@ -384,6 +384,8 @@ function setVideoType(vt) {
     }
 }
 
+window.plannerSaveDraft = () => savePlannerState();
+
 function savePlannerState() {
     const state = {
         // Form inputs
@@ -477,7 +479,8 @@ function renderPlanFromCache(plan, cachedAiScores, titleEdits) {
     // Render titles with cached AI scores, applying any user edits
     if (plan._scoring_ctx) scoringCtx = plan._scoring_ctx;
     aiScores = cachedAiScores;
-    if (plan.vidiq_scores) setVidiqScores(plan.vidiq_scores);
+    vidiqScores = {};
+    setVidiqScores(plan.vidiq_scores || []);
     originalTitles = [...plan.titles];
 
     const titles = titleEdits.length === plan.titles.length ? titleEdits : plan.titles;
@@ -735,7 +738,7 @@ let vidiqScores = {};  // normalized title -> score (number)
 function vidiqNorm(t) { return (t || "").trim().toLowerCase(); }
 
 function setVidiqScores(list) {
-    (list || []).forEach(s => {
+    (Array.isArray(list) ? list : []).forEach(s => {
         if (s && s.title && s.vidiq_score != null) {
             vidiqScores[vidiqNorm(s.title)] = s.vidiq_score;
         }
@@ -1469,7 +1472,7 @@ function renderEditableSections(plan) {
     document.getElementById("plan-description").value = plan.description;
 
     // SEO checklist badges (fed by vidIQ keyword research from plan time)
-    if (plan.vidiq_keywords) seoKeywords = plan.vidiq_keywords;
+    seoKeywords = plan.vidiq_keywords || [];
     updateSeoBadges();
 }
 
@@ -1808,6 +1811,8 @@ document.getElementById("suggest-links-btn")?.addEventListener("click", async ()
 function getCurrentPlanFromDOM() {
     if (!lastPlanData) return null;
     const plan = { ...lastPlanData };
+    plan.vidiq_scores = Object.entries(vidiqScores).map(([title, vidiq_score]) => ({title, vidiq_score}));
+    plan.vidiq_keywords = [...seoKeywords];
 
     // Titles
     plan.titles = [...document.querySelectorAll(".title-editable")].map(el => el.value);

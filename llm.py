@@ -21,6 +21,11 @@ import socket
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
+class IncompleteResponseError(RuntimeError):
+    def __init__(self):
+        super().__init__("The AI response was cut off. Your plan has not changed. Retry, or ask for fewer sections at a time.")
+
+
 PROVIDERS = ["anthropic", "openai", "maple", "lmstudio"]
 
 PROVIDER_LABELS = {
@@ -113,6 +118,8 @@ def _anthropic_chat(settings: dict, system: str, messages: list, max_tokens: int
                 tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
             )
             return _anthropic_text(response)
+        except IncompleteResponseError:
+            raise
         except Exception as e:
             print(f"[LLM] Anthropic web search unavailable, retrying without: {e}")
     response = client.messages.create(**kwargs)
@@ -120,6 +127,8 @@ def _anthropic_chat(settings: dict, system: str, messages: list, max_tokens: int
 
 
 def _anthropic_text(response) -> str:
+    if getattr(response, "stop_reason", None) in ("max_tokens", "pause_turn"):
+        raise IncompleteResponseError()
     return "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
 
 
@@ -161,6 +170,8 @@ def _openai_compat_chat(base_url: str, api_key: str, model: str, system: str,
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"Empty response from {url}")
+    if choices[0].get("finish_reason") == "length":
+        raise IncompleteResponseError()
     return (choices[0].get("message", {}).get("content") or "").strip()
 
 
