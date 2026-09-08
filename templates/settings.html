@@ -86,6 +86,7 @@
                 <small>Local server URL (enable it in LM Studio → Developer). No key needed. This is also the automatic offline fallback. Model: <input type="text" name="lmstudio_model" list="lmstudio-models" data-provider="lmstudio" autocomplete="off" value="{{ ai.lmstudio_model }}" placeholder="whatever model is loaded" style="width:14rem; display:inline-block;"><datalist id="lmstudio-models"></datalist> <span class="form-hint" id="lmstudio-model-status"></span> Leave blank to use the currently loaded model.</small>
             </div>
 
+            {% if voice_enabled %}
             <div class="form-group">
                 <label for="whisper_url">Voice Dictation — Whisper Server (local)</label>
                 <input type="text" id="whisper_url" name="whisper_url"
@@ -106,6 +107,7 @@
                 <small>Which AI tidies up your dictated speech. A fast model is best — cleanup is easy and you're waiting on it. Model: <input type="text" name="dictation_model" value="{{ ai.dictation_model }}" placeholder="blank = fast default ({{ ai_defaults.dictation_model }})" style="width:16rem; display:inline-block;"> Pick LM Studio to keep the whole voice path on this machine.</small>
             </div>
 
+            {% endif %}
             <hr class="settings-divider">
 
             <h3>vidIQ Integration <span class="badge {{ 'connected' if vidiq_configured else 'disconnected' }}">{{ 'Configured' if vidiq_configured else 'Not Configured' }}</span></h3>

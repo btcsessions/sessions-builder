@@ -32,7 +32,15 @@ def prepare_update(root):
     target = _git(root, "rev-parse", "FETCH_HEAD")
     if target == before:
         return {"updated": False, "message": "Already up to date."}
-    _git(root, "merge-base", "--is-ancestor", before, target)
+    local_only, remote_only = map(int, _git(
+        root, "rev-list", "--left-right", "--count", before + "..." + target).split())
+    if local_only and not remote_only:
+        return {"updated": False, "message":
+                "This installation has unpublished changes and is ahead of GitHub. "
+                "Publish those changes to the shared branch before receiving further updates. Nothing was changed."}
+    if local_only:
+        raise RuntimeError("This installation and GitHub both have new changes. "
+                           "Merge and publish them before updating. Your local code and data were not changed.")
     archive = subprocess.run(["git", "archive", target], cwd=root,
                              capture_output=True, check=True, timeout=30).stdout
     with tempfile.TemporaryDirectory(prefix="planner-update-") as temp:

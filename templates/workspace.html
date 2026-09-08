@@ -40,7 +40,9 @@
             <div class="form-group compact">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <label for="video-notes">Notes</label>
+                    {% if voice_enabled %}
                     <button type="button" class="btn small mic-btn" data-dictate="video-notes" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
+                    {% endif %}
                 </div>
                 <textarea id="video-notes" rows="2" placeholder="Any extra context, angle, or things you want to cover..."></textarea>
             </div>
@@ -83,7 +85,9 @@
                 <div id="amend-notes-section" style="display:none">
                     <textarea id="amend-notes-text" class="import-notes-text" rows="6" placeholder="Paste notes to merge into this plan..."></textarea>
                     <div class="import-notes-actions">
+                        {% if voice_enabled %}
                         <button type="button" class="btn small mic-btn" data-dictate="amend-notes-text" data-dictate-mode="notes" title="Dictate">🎤 Dictate</button>
+                        {% endif %}
                         <label class="btn small import-file-label">
                             Upload File
                             <input type="file" class="amend-file-input" accept=".txt,.md,.text" style="display:none">
@@ -222,7 +226,9 @@
         </div>
         <form id="chat-form" class="chat-input-area">
             <input type="text" id="chat-input" placeholder="Ask anything — paste links too..." autocomplete="off">
+            {% if voice_enabled %}
             <button type="button" class="btn small mic-btn chat-mic" data-dictate="chat-input" data-dictate-mode="chat" title="Dictate">🎤</button>
+            {% endif %}
             <button type="submit" class="btn primary">Send</button>
         </form>
     </aside>
@@ -240,7 +246,9 @@ if (nav) {
 }
 </script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
+{% if voice_enabled %}
 <script src="{{ url_for('static', filename='dictation.js') }}"></script>
+{% endif %}
 <script>
 /* --- Planner logic --- */
 const BACKEND_CONFIGURED = {{ 'true' if backend_configured else 'false' }};

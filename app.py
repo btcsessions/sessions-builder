@@ -1,5 +1,6 @@
 from storage import DATA_LOCK, locked, read_json, write_json, recover_restore, restore_documents
 import os
+import sys
 import json
 from flask import Flask, render_template, request, session, jsonify, redirect, url_for, send_file
 from dotenv import load_dotenv
@@ -121,8 +122,17 @@ AI_SETTING_KEYS = ("ai_provider", "anthropic_model", "openai_key", "maple_key", 
                    "vidiq_mcp_key", "vidiq_mcp_url", "vidiq_channel_id")
 
 
+def voice_enabled():
+    """Voice is a Mac feature; Linux keeps the typed planning workflow."""
+    return not sys.platform.startswith("linux")
+
+
 def _ai_settings_from_form() -> dict:
-    return {k: request.form.get(k, "").strip() for k in AI_SETTING_KEYS}
+    keys = AI_SETTING_KEYS
+    if not voice_enabled():
+        keys = tuple(k for k in keys if k not in
+                     ("whisper_url", "whisper_model", "dictation_provider", "dictation_model"))
+    return {k: request.form.get(k, "").strip() for k in keys}
 
 
 def get_channel_name() -> str:
@@ -132,7 +142,7 @@ def get_channel_name() -> str:
 
 @app.context_processor
 def inject_channel_name():
-    return {"channel_name": get_channel_name()}
+    return {"channel_name": get_channel_name(), "voice_enabled": voice_enabled()}
 
 
 def get_channel_niche() -> str:
@@ -1044,9 +1054,16 @@ def api_parse_notes():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/health")
+def app_health():
+    return jsonify({"application": "sessions-builder"})
+
+
 @app.route("/api/transcribe", methods=["POST"])
 def api_transcribe():
     """Transcribe dictated audio (local Whisper) and refine it into clean text."""
+    if not voice_enabled():
+        return jsonify({"error": "Voice dictation is unavailable on this platform."}), 404
     if "audio" not in request.files:
         return jsonify({"error": "No audio uploaded"}), 400
     f = request.files["audio"]
@@ -2244,7 +2261,7 @@ if __name__ == "__main__":
     # Auto-start the local Whisper dictation server (if installed via
     # setup_whisper.sh). Only in the serving process — under the werkzeug
     # reloader the parent just watches files; the child sets WERKZEUG_RUN_MAIN.
-    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    if voice_enabled() and (not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
         import whisper_manager
         whisper_manager.maybe_start_whisper(load_settings())
     # Set PLANNER_HOST=0.0.0.0 to reach the app from a phone/tablet on the same

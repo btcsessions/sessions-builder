@@ -37,6 +37,30 @@ class UpdateTests(unittest.TestCase):
         self.git(self.author, 'commit', '-m', message)
         self.git(self.author, 'push', 'origin', 'planner-test')
 
+    def local_commit(self):
+        self.git(self.install, 'config', 'user.email', 'test@example.invalid')
+        self.git(self.install, 'config', 'user.name', 'Planner tests')
+        (self.install / 'linux_support.py').write_text('VALUE=1\n')
+        self.git(self.install, 'add', 'linux_support.py')
+        self.git(self.install, 'commit', '-m', 'local Linux support')
+        return self.git(self.install, 'rev-parse', 'HEAD')
+
+    def test_unpublished_local_commit_reports_ahead_without_changing_code(self):
+        head = self.local_commit()
+        result = prepare_update(self.install)
+        self.assertFalse(result['updated'])
+        self.assertIn('ahead of GitHub', result['message'])
+        self.assertEqual(self.git(self.install, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((self.install / 'data/plans.json').read_text(), '[{"id":"keep-me"}]')
+
+    def test_diverged_branches_explain_merge_without_changing_code(self):
+        head = self.local_commit()
+        (self.author / 'mac_feature.py').write_text('VALUE=2\n')
+        self.commit('new Mac feature')
+        with self.assertRaisesRegex(RuntimeError, 'both have new changes'):
+            prepare_update(self.install)
+        self.assertEqual(self.git(self.install, 'rev-parse', 'HEAD'), head)
+
     def test_valid_update_preserves_local_data_and_branch(self):
         (self.author / 'new_module.py').write_text('VALUE=1\n')
         self.commit('valid update')

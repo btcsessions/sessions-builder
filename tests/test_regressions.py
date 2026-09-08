@@ -217,6 +217,37 @@ class AppTests(unittest.TestCase):
         self.assertEqual(settings['backend_token'], 'test')
         self.assertEqual(settings['affiliate_links'][0]['url'], 'https://example.com')
 
+    def test_linux_omits_voice_but_keeps_typed_workspace(self):
+        planner.video_cache = [{'id': 'synthetic'}]
+        with patch.object(planner.sys, 'platform', 'linux'):
+            page = self.client.get('/').get_data(as_text=True)
+            self.assertIn('video-notes', page)
+            self.assertNotIn('data-dictate=', page)
+            self.assertNotIn('dictation.js', page)
+            settings = self.client.get('/settings').get_data(as_text=True)
+            self.assertNotIn('name="whisper_url"', settings)
+            with patch.object(llm, 'transcribe_audio') as transcribe:
+                response = self.client.post('/api/transcribe', headers={'Origin': 'http://localhost'})
+                self.assertEqual(response.status_code, 404)
+                transcribe.assert_not_called()
+
+    def test_mac_retains_voice_controls(self):
+        planner.video_cache = [{'id': 'synthetic'}]
+        with patch.object(planner.sys, 'platform', 'darwin'):
+            page = self.client.get('/').get_data(as_text=True)
+            self.assertIn('data-dictate=', page)
+            self.assertIn('dictation.js', page)
+            self.assertIn('name="whisper_url"', self.client.get('/settings').get_data(as_text=True))
+
+    def test_linux_save_preserves_imported_voice_settings(self):
+        planner.save_settings(ai_settings={'whisper_url': 'http://localhost:8090/v1', 'dictation_model': 'saved-model'})
+        with patch.object(planner.sys, 'platform', 'linux'):
+            response = self.client.post('/save-settings', data={'channel_name': 'Linux channel'}, headers={'Origin': 'http://localhost'})
+        self.assertEqual(response.status_code, 302)
+        settings = planner.load_settings()
+        self.assertEqual(settings['dictation_model'], 'saved-model')
+        self.assertEqual(settings['whisper_url'], 'http://localhost:8090/v1')
+
     def test_cross_site_mutations_and_rebinding_hosts_are_rejected(self):
         self.assertEqual(self.client.post('/api/plans/save', json=self.payload, headers={'Origin': 'https://attacker.invalid'}).status_code, 403)
         self.assertEqual(self.client.post('/api/shutdown').status_code, 403)

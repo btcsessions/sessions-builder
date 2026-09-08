@@ -6,11 +6,11 @@
 
 ## Machine Setup
 
-The app runs on a **single Mac laptop** (Apple Silicon) — uses the `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`.
+The app runs on a Mac laptop and a CachyOS Linux installation. The Mac (Apple Silicon) — uses the `BTC Sessions Planner.app` bundle built with `build_mac_app.sh`.
 
 - **The .app launcher polls `/planner` as its readiness check** (plain curl, requires a literal 200) before opening the browser. The `/planner` shim route in `app.py` must always return 200 directly — removing it (or turning it into a redirect) silently breaks the dock launcher. This bit us once: removing the old /planner page broke app launch.
 
-- **CachyOS (Arch Linux) support is parked**, not removed: Ben retired that machine as an active planner client "for now." The Linux launcher files stay in the repo for potential future use.
+- **CachyOS support is active**: use setup_linux.sh and launch_linux.py. Both platforms follow this same branch. Linux omits voice controls, transcription and Whisper startup; preserve Mac voice behavior. Keep platform differences conditional, never separate platform branches.
 - **The recording machine is a delivery target, not a planner install**: finalized plans reach it as exported Markdown outlines (Export button in plan history → `plan_export.py`), never via a second copy of the app.
 
 ### Branch Policy
@@ -22,7 +22,7 @@ Never create separate branches per machine or per platform. The "Update App" but
 ### Platform-Specific Files
 
 - `build_mac_app.sh` — macOS only (builds .app bundle with native Swift launcher)
-- `yt-planner.desktop`, `launch.fish` — parked Linux support (kept for potential future use)
+- `yt-planner.desktop`, `launch.fish` — legacy Linux launchers; current setup uses setup_linux.sh
 - `setup.sh`, `launch.sh`, `app.py`, `sync.py` — shared, cross-platform
 
 ### Gist Sync
